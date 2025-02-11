@@ -1,0 +1,9 @@
+services:
+  pdf_to_md:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    command: [ "/app/data", "--output-path", "/app/output" ]
