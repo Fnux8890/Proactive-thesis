@@ -1,4 +1,4 @@
-Literature Study
+# Literature Study
 
 Proactive Climate Simulation for Data-Driven Greenhouse Optimization
 Author: Michael H. Pedersen Date: 2025-02-07

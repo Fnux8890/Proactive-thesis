@@ -1,0 +1,122 @@
+# Modern Docker Compose file (no version needed)
+name: data-ingestion # Explicitly name the project
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg12
+    env_file: .env
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      # Check if the plants database exists and is accepting connections
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - ingestion-net
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - ingestion-net
+
+  airflow-init:
+    image: apache/airflow:2.3.0
+    env_file: .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    command: db init
+    networks:
+      - ingestion-net
+
+  airflow-webserver:
+    image: apache/airflow:2.3.0
+    env_file: .env
+    volumes:
+      - ./airflow_dags:/opt/airflow/dags:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    command: webserver
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ingestion-net
+
+  airflow-scheduler:
+    image: apache/airflow:2.3.0
+    env_file: .env
+    volumes:
+      - ./airflow_dags:/opt/airflow/dags:ro
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
+    restart: unless-stopped
+    command: scheduler
+    healthcheck:
+      test: [ "CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ingestion-net
+
+  data_processing:
+    build:
+      context: ./data_processing
+      dockerfile: Dockerfile
+    env_file: .env
+    volumes:
+      - ./data_processing:/app
+      - ../Data:/app/data:ro
+      - data_processing_logs:/app/logs
+    depends_on:
+      airflow-scheduler:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensures Python output is sent straight to container log
+    restart: unless-stopped
+    networks:
+      - ingestion-net
+
+volumes:
+  timescaledb_data:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_timescaledb_data
+  data_processing_logs:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_processing_logs
+
+networks:
+  ingestion-net:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_network
+    driver: bridge
