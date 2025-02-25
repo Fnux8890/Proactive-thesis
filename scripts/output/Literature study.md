@@ -52,7 +52,7 @@ solution in controlled environments.
 
 1
 
-The work presented in the following report is a systematic approach towards the understanding of the
+The work presented in the following report is a systematic approach towards the understanding of the
 conflicts that occur between energy efficiency and optimum plant health in a greenhouse system. This
 thesis aims at improving the current knowledge on the application of IoT and machine learning for
 climate control to develop better, versatile solutions for sustainable and climate resilient agriculture.
@@ -205,7 +205,7 @@ robustness.
 
 3
 
-Paper 2: AFDACAND [3]
+Paper 2: AFDACAND [3]
 
 Title of the
 paper:
@@ -306,7 +306,7 @@ configuration.
 
 4
 
-Your
+Your
 evaluation of
 the reported
 results with
@@ -1737,7 +1737,7 @@ ep.13889.
 
 21
 
-[13] P. Hosseini Monjezi, M. Taki, S. Abdanan Mehdizadeh, A. Rohani, and M. S. Ahamed,
+[13] P. Hosseini Monjezi, M. Taki, S. Abdanan Mehdizadeh, A. Rohani, and M. S. Ahamed,
 
 “Prediction of Greenhouse Indoor Air Temperature Using Artificial Intelligence (AI) Combined
 with Sensitivity Analysis,” Horticulturae, vol. 9, no. 853, p. , 2023, doi: 10.3390/
