@@ -62,25 +62,49 @@ defmodule IngestionService.Pipeline.Processor do
     # Extract data from the file
     result =
       try do
-        {data, metadata} = extract_data(event, type)
+        # Use Circuit Breaker to protect against repeated failures
+        # If excessive failures occur for a specific file type, the circuit
+        # will open temporarily to prevent cascading failures
+        case IngestionService.Resilience.CircuitBreaker.execute({:process, type}, fn ->
+               extract_data(event, type)
+             end) do
+          {:ok, {data, metadata}} ->
+            # Track telemetry for this processing
+            duration = System.monotonic_time() - start_time
 
-        # Track telemetry for this processing
-        duration = System.monotonic_time() - start_time
+            :telemetry.execute(
+              [:ingestion_service, :pipeline, :process],
+              %{duration: duration, success: true},
+              %{file_type: type, path: event.file_path}
+            )
 
-        :telemetry.execute(
-          [:ingestion_service, :pipeline, :process],
-          %{duration: duration, success: true},
-          %{file_type: type, path: event.file_path}
-        )
+            # Return processed event
+            %{
+              event
+              | data: data,
+                metadata: metadata,
+                status: :processed,
+                processed_at: DateTime.utc_now()
+            }
 
-        # Return processed event
-        %{
-          event
-          | data: data,
-            metadata: metadata,
-            status: :processed,
-            processed_at: DateTime.utc_now()
-        }
+          {:error, reason} ->
+            # Log the error from circuit breaker
+            Logger.error(
+              "Circuit breaker error processing #{type} file #{event.file_path}: #{inspect(reason)}"
+            )
+
+            # Track telemetry for this failed processing
+            duration = System.monotonic_time() - start_time
+
+            :telemetry.execute(
+              [:ingestion_service, :pipeline, :process],
+              %{duration: duration, success: false},
+              %{file_type: type, path: event.file_path, error: inspect(reason)}
+            )
+
+            # Return event with error
+            %{event | status: :error, error: inspect(reason), processed_at: DateTime.utc_now()}
+        end
       rescue
         error ->
           # Log the error
@@ -104,102 +128,31 @@ defmodule IngestionService.Pipeline.Processor do
 
   # Extract data from CSV files
   defp extract_data(%{file_path: path} = _event, :csv) do
-    # First, try to detect the delimiter by analyzing the file
-    {delimiter, encoding} = detect_csv_format(path)
-    
-    # Log detected format
-    Logger.info("Processing CSV file #{path} with delimiter: '#{delimiter}' and encoding: #{encoding}")
-    
-    # Use NimbleCSV with detected delimiter
-    parser = IngestionService.Utils.CsvSeparators.get_parser(delimiter)
+    # Use the enhanced CSV processor
+    result = IngestionService.Pipeline.Processor.CSVEnhanced.process_csv(path)
 
-    # Read and parse the CSV file
-    data =
-      path
-      |> File.stream!([], :line, encoding)
-      |> parser.parse_stream()
-      |> Stream.with_index()
-      |> Enum.reduce({[], nil}, fn {row, idx}, {rows, headers} ->
-        if idx == 0 do
-          # First row is headers
-          {rows, row}
-        else
-          # Convert row to map with header keys
-          row_map = Enum.zip(headers, row) |> Enum.into(%{})
-          {[row_map | rows], headers}
-        end
-      end)
-      |> elem(0)
-      |> Enum.reverse()
+    # Extract data and metadata
+    data = result.data
+    metadata = Map.drop(result, [:data])
 
-    # Extract metadata from the CSV
-    headers =
-      data
-      |> List.first()
-      |> Map.keys()
-
-    row_count = length(data)
-
-    metadata = %{
-      headers: headers,
-      row_count: row_count,
-      format: :csv,
-      delimiter: delimiter,
-      encoding: encoding
-    }
+    # Log some details about the extracted data
+    Logger.info("CSV enhanced processing: extracted #{length(data)} rows from #{path}")
 
     {data, metadata}
   end
-  
+
   # Detect CSV delimiter and encoding by analyzing file content
   defp detect_csv_format(path) do
-    # Possible delimiters to check
-    delimiters = [",", ";", "\t", "|"]
-    
-    # Try to read file with UTF-8 encoding first
-    case File.read(path) do
-      {:ok, content} -> 
-        # File could be read with UTF-8
-        delimiter = detect_delimiter(content, delimiters)
-        {delimiter, :utf8}
-        
-      {:error, _} ->
-        # Try with Latin-1 encoding
-        case :file.read_file(path) do
-          {:ok, content} ->
-            content_latin1 = :unicode.characters_to_binary(content, :latin1, :utf8)
-            delimiter = detect_delimiter(content_latin1, delimiters)
-            {delimiter, :latin1}
-            
-          {:error, _} ->
-            # Default fallback if nothing works
-            {",", :utf8}
-        end
-    end
+    # This is now handled by the enhanced CSV processor
+    # Kept for backward compatibility
+    {",", :utf8}
   end
-  
+
   # Detect the most likely delimiter by analyzing file content
   defp detect_delimiter(content, delimiters) do
-    # Take first few lines for analysis
-    first_lines = 
-      content
-      |> String.split("\n", parts: 6)
-      |> Enum.take(5)
-    
-    # Count occurrences of each delimiter in each line
-    counts = Enum.map(delimiters, fn delimiter ->
-      count = Enum.reduce(first_lines, 0, fn line, acc ->
-        acc + (String.split(line, delimiter) |> length) - 1
-      end)
-      {delimiter, count}
-    end)
-    
-    # Select the delimiter with the highest count
-    {best_delimiter, _} = 
-      counts
-      |> Enum.max_by(fn {_, count} -> count end, fn -> {",", 0} end)
-    
-    best_delimiter
+    # This is now handled by the enhanced CSV processor
+    # Kept for backward compatibility
+    ","
   end
 
   # Extract data from JSON files
@@ -209,44 +162,45 @@ defmodule IngestionService.Pipeline.Processor do
       {:ok, data} ->
         # Process data based on structure type
         {processed_data, structure_type} = process_json_structure(data)
-        
+
         # Extract metadata depending on structure
-        metadata = case structure_type do
-          :array ->
-            %{
-              record_count: length(processed_data),
-              format: :json_array,
-              structure: structure_type
-            }
+        metadata =
+          case structure_type do
+            :array ->
+              %{
+                record_count: length(processed_data),
+                format: :json_array,
+                structure: structure_type
+              }
 
-          :object ->
-            %{
-              keys: Map.keys(processed_data),
-              format: :json_object,
-              structure: structure_type
-            }
+            :object ->
+              %{
+                keys: Map.keys(processed_data),
+                format: :json_object,
+                structure: structure_type
+              }
 
-          :nested_array ->
-            %{
-              record_count: length(processed_data),
-              format: :json_nested_array,
-              structure: structure_type,
-              flattened: true
-            }
+            :nested_array ->
+              %{
+                record_count: length(processed_data),
+                format: :json_nested_array,
+                structure: structure_type,
+                flattened: true
+              }
 
-          _ ->
-            %{format: :json_unknown}
-        end
+            _ ->
+              %{format: :json_unknown}
+          end
 
         {processed_data, metadata}
-        
+
       {:error, error} ->
         # Log the JSON parsing error
         Logger.error("Failed to parse JSON file #{path}: #{inspect(error)}")
         raise "JSON parsing error: #{inspect(error)}"
     end
   end
-  
+
   # Process JSON data based on its structure
   defp process_json_structure(data) when is_list(data) do
     # It's already an array of items
@@ -258,7 +212,7 @@ defmodule IngestionService.Pipeline.Processor do
       {Enum.map(data, fn item -> %{"value" => item} end), :array}
     end
   end
-  
+
   defp process_json_structure(data) when is_map(data) do
     cond do
       # Look for common array properties
@@ -266,23 +220,23 @@ defmodule IngestionService.Pipeline.Processor do
         # Extract and use the "data" array
         Logger.info("Found 'data' array in JSON object, extracting...")
         {data["data"], :nested_array}
-        
+
       Map.has_key?(data, "results") and is_list(data["results"]) ->
         # Extract and use the "results" array
         Logger.info("Found 'results' array in JSON object, extracting...")
         {data["results"], :nested_array}
-        
+
       Map.has_key?(data, "items") and is_list(data["items"]) ->
         # Extract and use the "items" array
         Logger.info("Found 'items' array in JSON object, extracting...")
         {data["items"], :nested_array}
-        
+
       # Check if it's a single object with simple values
       Enum.all?(data, fn {_k, v} -> not is_map(v) and not is_list(v) end) ->
         # Single object, convert to a list with one item
         Logger.info("Processing single JSON object")
         {[data], :object}
-        
+
       # Complex nested structure
       true ->
         # Flatten the structure by extracting all leaf key-value pairs
@@ -291,27 +245,27 @@ defmodule IngestionService.Pipeline.Processor do
         {[flattened], :object}
     end
   end
-  
+
   # Fallback for any other JSON type
   defp process_json_structure(data) do
     Logger.warn("Unexpected JSON structure type: #{inspect(data)}")
     {[%{"value" => inspect(data)}], :unknown}
   end
-  
+
   # Recursively flatten a nested JSON structure
   defp flatten_json_structure(data, prefix \\ "") do
     Enum.reduce(data, %{}, fn {key, value}, acc ->
       full_key = if prefix == "", do: key, else: "#{prefix}.#{key}"
-      
+
       case value do
         %{} ->
           # Nested object, recursively flatten
           Map.merge(acc, flatten_json_structure(value, full_key))
-          
+
         list when is_list(list) ->
           # For arrays, store as JSON string to preserve the data
           Map.put(acc, full_key, Jason.encode!(list))
-          
+
         _ ->
           # Primitive value
           Map.put(acc, full_key, value)
@@ -366,9 +320,11 @@ defmodule IngestionService.Pipeline.Processor do
   # Select events based on file type
   defp selector(event, type) do
     # Convert atom to string for comparison if needed
-    event_type = if is_atom(event.file_type), do: event.file_type, else: String.to_atom(event.file_type)
+    event_type =
+      if is_atom(event.file_type), do: event.file_type, else: String.to_atom(event.file_type)
+
     type_atom = if is_atom(type), do: type, else: String.to_atom(type)
-    
+
     # Compare the types
     event_type == type_atom
   end

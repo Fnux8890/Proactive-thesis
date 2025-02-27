@@ -7,44 +7,51 @@ defmodule IngestionService.Application do
 
   @impl true
   def start(_type, _args) do
-    # Store application start time for monitoring
-    Application.put_env(:ingestion_service, :started_at, DateTime.utc_now())
-    
+    # Store application start time for uptime metrics
+    Application.put_env(:ingestion_service, :start_time, System.monotonic_time())
+
     children = [
       # Start the Ecto repository
       IngestionService.Repo,
-      
-      # Start the Redix connection
-      {Redix, name: :redix, host: System.get_env("REDIS_HOST", "redis"), port: String.to_integer(System.get_env("REDIS_PORT", "6379"))},
-      
-      # Start Finch for HTTP requests
+
+      # Start Redis connection
+      {Redix, {System.get_env("REDIS_URL", "redis://localhost:6379"), [name: :redix]}},
+
+      # Start Finch HTTP client
       {Finch, name: IngestionService.Finch},
-      
+
       # Start the PubSub system
       {Phoenix.PubSub, name: IngestionService.PubSub},
-      
-      # Start the Telemetry supervisor
+
+      # Start Telemetry supervisor
       IngestionService.Telemetry,
-      
-      # Start the ingestion pipeline supervisor
+
+      # Start Circuit Breaker
+      {IngestionService.Resilience.CircuitBreaker,
+       name: IngestionService.Resilience.CircuitBreaker},
+
+      # Start the Dynamic Supervisor for dynamic pipelines
+      {DynamicSupervisor, strategy: :one_for_one, name: IngestionService.DynamicSupervisor},
+
+      # Start the Dynamic Pipeline manager
+      IngestionService.Pipeline.DynamicPipeline,
+
+      # Start the Metadata Catalog Service
+      IngestionService.Metadata.CatalogService,
+
+      # Start the default ingestion pipeline
       IngestionService.Pipeline.Supervisor,
-      
+
       # Start the endpoint when the application starts
-      IngestionService.Endpoint
+      IngestionServiceWeb.Endpoint
     ]
+
+    # Attach telemetry handlers
+    :ok = IngestionService.Telemetry.attach_handlers()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: IngestionService.Supervisor]
-    
-    # Start metrics collection
-    :telemetry.attach(
-      "ingestion-metrics",
-      [:ingestion_service, :pipeline, :process],
-      &IngestionService.Telemetry.handle_event/4,
-      nil
-    )
-
     Supervisor.start_link(children, opts)
   end
 
@@ -52,7 +59,7 @@ defmodule IngestionService.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    IngestionService.Endpoint.config_change(changed, removed)
+    IngestionServiceWeb.Endpoint.config_change(changed, removed)
     :ok
   end
-end 
+end
