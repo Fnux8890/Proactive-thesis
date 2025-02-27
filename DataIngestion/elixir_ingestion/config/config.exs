@@ -38,5 +38,8 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Configure the verification output directory
+config :ingestion_service, :verification_dir, System.get_env("VERIFICATION_DIR", "/app/verification")
+
 # Import environment specific config
 import_config "#{config_env()}.exs" 

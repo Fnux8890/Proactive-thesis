@@ -1,53 +1,60 @@
-FROM elixir:1.16-alpine as builder
+FROM elixir:1.16-alpine AS build
 
-# Install build dependencies
-RUN apk add --no-cache build-base git
+# Install build dependencies using apk (Alpine-based)
+RUN apk update && apk add --no-cache \
+    git \
+    build-base \
+    nodejs \
+    npm \
+    bash \
+    curl
 
-# Set environment variables
+# Set production environment
 ENV MIX_ENV=prod
 
-# Create app directory and copy the Elixir projects into it
+# Set working directory and cache dependencies by copying mix files first
 WORKDIR /app
+COPY mix.exs mix.lock ./
 
-# Install hex package manager and rebar
-RUN mix local.hex --force && \
-    mix local.rebar --force
-
-# Copy configuration files
-COPY config ./config
-COPY mix.exs .
-COPY mix.lock .
-
-# Fetch dependencies
+# Install Hex, Rebar and production dependencies
+RUN mix local.hex --force && mix local.rebar --force
 RUN mix deps.get --only prod
-RUN mix deps.compile
 
-# Copy lib files
-COPY lib ./lib
-COPY priv ./priv
+# Copy the rest of the project and compile assets
+COPY . .
+RUN mix deps.compile && mix compile && mix phx.digest
 
-# Compile the project
-RUN mix compile
-
-# Build release
+# Build the release
 RUN mix release
 
-# Start a new build stage for the final image
-FROM alpine:3.19
+# -----------------------------------------------------------------------------
+FROM alpine:3.17 AS app
 
-# Install runtime dependencies
-RUN apk add --no-cache bash openssl libstdc++ ncurses-libs
+# Install runtime dependencies including C++ standard libraries and inotify-tools
+RUN apk add --no-cache openssl ncurses-libs libstdc++ libgcc inotify-tools
 
 # Set environment variables
-ENV MIX_ENV=prod
+ENV MIX_ENV=prod \
+    APP_NAME=ingestion_service \
+    PORT=4000
 
 WORKDIR /app
 
-# Copy the release from the builder stage
-COPY --from=builder /app/_build/prod/rel/ingestion_service ./
+# Copy the release from the build stage
+COPY --from=build /app/_build/prod/rel/ingestion_service ./
 
-# Expose port for the Phoenix API
+# Create data directory if it doesn't exist
+RUN mkdir -p /app/data
+
+# Create verification directory
+RUN mkdir -p /app/verification
+
+# Expose the port used by the Phoenix app
 EXPOSE 4000
 
-# Start the Phoenix server
-CMD ["/app/bin/ingestion_service", "start"] 
+# Create a simple health-check script and add a HEALTHCHECK instruction
+RUN echo '#!/bin/sh\necho "OK"' > health.sh && chmod +x health.sh
+HEALTHCHECK CMD ["/app/health.sh"]
+
+# Define default command to start the release
+ENTRYPOINT ["/app/bin/ingestion_service", "start"]

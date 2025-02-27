@@ -3,14 +3,15 @@ name: data-ingestion # Explicitly name the project
 
 services:
   timescaledb:
-    image: timescale/timescaledb:latest-pg12
+    image: timescale/timescaledb-ha:pg12
     env_file: .env
     volumes:
-      - timescaledb_data:/var/lib/postgresql/data
+      - timescaledb_data:/home/postgres/pgdata/data
+      # Mount all migration scripts to the container's initialization directory
+      - ./database_migrations:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     healthcheck:
-      # Check if the plants database exists and is accepting connections
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1" ]
       interval: 10s
       timeout: 5s
@@ -21,20 +22,90 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # Ensure PostGIS extension is available
+      TIMESCALEDB_EXTRA_EXTENSIONS: "postgis,uuid-ossp"
     networks:
       - ingestion-net
 
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
       - "5050:80"
     depends_on:
       timescaledb:
         condition: service_healthy
+    networks:
+      - ingestion-net
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ingestion-net
+
+  # Elixir-based data ingestion service (new)
+  elixir_ingestion:
+    build:
+      context: ./elixir_ingestion
+      dockerfile: Dockerfile
+    volumes:
+      - ../Data:/app/data:ro
+      - ./verification:/app/verification:rw  # Mount for verification output files
+    ports:
+      - "4000:4000" # Phoenix API port
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${PROCESSING_DB_URL}
+      REDIS_URL: ${REDIS_URL}
+      MIX_ENV: prod
+      PYTHON_PROCESSING_SERVICE: ${PROCESSING_SERVICE_URL}
+      DATA_SOURCE_PATH: /app/data
+      SECRET_KEY_BASE: ${ELIXIR_SECRET_KEY}
+      VERIFICATION_DIR: /app/verification  # Add verification directory environment variable
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "4000" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - ingestion-net
+
+  metadata-catalog:
+    build:
+      context: ./metadata_catalog
+      dockerfile: Dockerfile
+    volumes:
+      - ./metadata_catalog:/app
+      - metadata_catalog_data:/app/data
+    ports:
+      - "5000:5000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PROCESSING_DB_URL: ${PROCESSING_DB_URL}
+      REDIS_URL: ${REDIS_URL}
     networks:
       - ingestion-net
 
@@ -90,31 +161,83 @@ services:
     networks:
       - ingestion-net
 
+  # Python-based data processing service with API endpoint
   data_processing:
     build:
       context: ./data_processing
       dockerfile: Dockerfile
-    env_file: .env
     volumes:
       - ./data_processing:/app
-      - ../Data:/app/data:ro
-      - data_processing_logs:/app/logs
+      - data_processing_data:/app/processed
+    ports:
+      - "8000:8000" # FastAPI port
     depends_on:
-      airflow-scheduler:
-        condition: service_healthy
       timescaledb:
         condition: service_healthy
+      metadata-catalog:
+        condition: service_started
     environment:
-      - PYTHONUNBUFFERED=1 # Ensures Python output is sent straight to container log
-    restart: unless-stopped
+      - PYTHONUNBUFFERED=1
+      - METADATA_SERVICE_URL=http://metadata-catalog:5000
+      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
+      - REDIS_URL=${REDIS_URL}
+    networks:
+      - ingestion-net
+
+  # Separate service for feature extraction
+  feature_extraction:
+    build:
+      context: ./data_processing
+      dockerfile: Dockerfile
+    volumes:
+      - ./data_processing:/app
+      - feature_extraction_data:/app/features
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      metadata-catalog:
+        condition: service_started
+      data_processing:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - METADATA_SERVICE_URL=http://metadata-catalog:5000
+      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
+      - FEATURE_EXTRACTION_CONFIG=/app/config/feature_extraction.yaml
+    networks:
+      - ingestion-net
+
+  # Quality monitoring and feedback service
+  quality_monitor:
+    build:
+      context: ./quality_monitor
+      dockerfile: Dockerfile
+    volumes:
+      - ./quality_monitor:/app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      data_processing:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - METADATA_SERVICE_URL=http://metadata-catalog:5000
+      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
+      - REDIS_URL=${REDIS_URL}
     networks:
       - ingestion-net
 
 volumes:
   timescaledb_data:
     name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_timescaledb_data
-  data_processing_logs:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_processing_logs
+  data_processing_data:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_processing_data
+  redis_data:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_redis_data
+  metadata_catalog_data:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_metadata_data
+  feature_extraction_data:
+    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_feature_data
 
 networks:
   ingestion-net:

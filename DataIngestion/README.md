@@ -87,11 +87,82 @@ services:
 - **Custom Dockerfile for Data Processing:** Ensure that your `./data_processing` directory includes a valid Dockerfile that sets up your data cleaning and wrangling scripts.
 - **Persistence:** Consider adding volume mappings in your `docker-compose.yml` to persist data across container restarts.
 
+## TimescaleDB Initialization and Migrations
+
+The pipeline uses TimescaleDB with automated database migrations for schema management and initialization. Here's how it works:
+
+### Migration Scripts
+
+Migration scripts are located in the `database_migrations` directory and are executed automatically when the database container starts for the first time. The scripts are executed in numerical order (based on filename prefix). 
+
+The migration structure:
+- `01_create_schemas.sql` - Creates the base schemas and extensions
+- `02_create_staging_tables.sql` - Creates tables for incoming raw data
+- `03_create_timeseries_tables.sql` - Creates hypertables for time-series data
+- `04_create_feature_tables.sql` - Creates tables for processed features
+
+### How Migrations Work
+
+1. Migration scripts are mounted to the container's `/docker-entrypoint-initdb.d` directory
+2. PostgreSQL automatically executes all scripts in this directory during initialization
+3. Each migration logs its execution in the `metadata.schema_migrations` table
+4. Extensions like PostGIS and UUID-OSSP are automatically enabled
+
+### Adding New Migrations
+
+To add a new migration:
+1. Create a SQL file with a sequential prefix (e.g., `05_...sql`)
+2. Place it in the `database_migrations` directory
+3. Restart the database container or run `docker-compose down -v && docker-compose up -d timescaledb` to test
+
 ## Troubleshooting
 
 - Verify environment variables in your `.env` file.
 - Check service logs using `docker compose logs <service_name>`.
 - Ensure that no port conflicts exist on your host system.
+
+## File Format Handling
+
+The ingestion pipeline supports multiple file formats with robust detection and processing capabilities:
+
+### CSV Files
+- Automatic delimiter detection (supports comma, semicolon, tab, and pipe delimiters)
+- Multiple encoding support (UTF-8 with fallback to Latin-1 and other encodings)
+- Robust error handling for malformed CSV files
+
+### JSON Files
+- Support for different JSON structures:
+  - JSON arrays of objects (standard format)
+  - Single JSON objects
+  - Nested JSON structures with automatic flattening
+  - Special handling for common patterns like data/results/items arrays
+
+### Excel Files
+- Support for multiple sheets
+- Automatic header detection and mapping
+
+## Verification Mechanism
+
+The Elixir ingestion service now includes a robust verification system:
+
+1. **Verification Files**: For each processed file, a detailed verification report is generated in the `/verification` directory, including:
+   - Timestamps and processing metadata
+   - File format details (delimiter, encoding, structure)
+   - Record counts and sample data
+   - Success/failure status and any error messages
+
+2. **Summary File**: A master summary file (`ingestion_summary.txt`) tracks all files processed with their status.
+
+3. **External Access**: All verification files are mounted outside the Docker container for easy inspection.
+
+To access verification files:
+```bash
+# View the summary file
+cat ./verification/ingestion_summary.txt
+
+# List all verification reports
+ls -la ./verification
+```
 
 ## Conclusion
 

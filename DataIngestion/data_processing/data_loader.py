@@ -79,28 +79,38 @@ class DataLoader:
             # Determine file type and read accordingly
             if file_path.suffix == '.csv':
                 try:
-                    # First try to infer the delimiter and number of columns
+                    # Use a more robust delimiter detection by examining multiple lines
+                    possible_delimiters = [',', ';', '\t', '|']
+                    delimiter_counts = {d: 0 for d in possible_delimiters}
+                    
+                    # Sample the first few lines to detect delimiter
+                    sample_size = 5
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        first_line = f.readline().strip()
-                        for delimiter in [',', ';', '\t']:
-                            if delimiter in first_line:
-                                self.logger.info(f"Detected delimiter: {delimiter} for file {file_path}")
-                                df = pd.read_csv(
-                                    file_path,
-                                    delimiter=delimiter,
-                                    encoding='utf-8',
-                                    on_bad_lines='warn',
-                                    **kwargs
-                                )
+                        for i, line in enumerate(f):
+                            if i >= sample_size:
                                 break
-                        else:
-                            self.logger.warning(f"Could not detect delimiter for {file_path}, using comma")
-                            df = pd.read_csv(
-                                file_path,
-                                encoding='utf-8',
-                                on_bad_lines='warn',
-                                **kwargs
-                            )
+                            # Count occurrences of each delimiter
+                            for delimiter in possible_delimiters:
+                                delimiter_counts[delimiter] += line.count(delimiter)
+                    
+                    # Select the delimiter that appears most consistently
+                    best_delimiter = max(delimiter_counts.items(), key=lambda x: x[1])[0]
+                    
+                    # If no delimiter was found with confidence, default to comma
+                    if delimiter_counts[best_delimiter] == 0:
+                        self.logger.warning(f"Could not detect delimiter for {file_path}, using comma")
+                        best_delimiter = ','
+                    else:
+                        self.logger.info(f"Detected delimiter: '{best_delimiter}' for file {file_path}")
+                    
+                    # Try to read the CSV with the detected delimiter
+                    df = pd.read_csv(
+                        file_path,
+                        delimiter=best_delimiter,
+                        encoding='utf-8',
+                        on_bad_lines='warn',
+                        **kwargs
+                    )
                 except UnicodeDecodeError:
                     # If UTF-8 fails, try with different encodings
                     for encoding in ['latin1', 'iso-8859-1', 'cp1252']:
@@ -118,7 +128,44 @@ class DataLoader:
                     else:
                         raise ValueError(f"Could not read file {file_path} with any known encoding")
             elif file_path.suffix == '.json':
-                df = pd.read_json(file_path, **kwargs)
+                try:
+                    # Try to read the JSON file
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        json_content = f.read()
+                    
+                    # Parse the JSON content
+                    import json
+                    parsed_json = json.loads(json_content)
+                    
+                    # Handle different JSON structures
+                    if isinstance(parsed_json, list):
+                        # JSON array of objects - standard case
+                        self.logger.info(f"Detected JSON array with {len(parsed_json)} records")
+                        df = pd.json_normalize(parsed_json, **kwargs)
+                    elif isinstance(parsed_json, dict):
+                        # Handle nested structures with optional path flattening
+                        self.logger.info(f"Detected JSON object with keys: {list(parsed_json.keys())}")
+                        
+                        # If it's a single object, convert to a list with one element
+                        if all(not isinstance(v, (list, dict)) for v in parsed_json.values()):
+                            df = pd.json_normalize([parsed_json], **kwargs)
+                        # If it contains a data array, use that
+                        elif 'data' in parsed_json and isinstance(parsed_json['data'], list):
+                            self.logger.info(f"Using 'data' property with {len(parsed_json['data'])} records")
+                            df = pd.json_normalize(parsed_json['data'], **kwargs)
+                        # If it has nested records, try to flatten them
+                        else:
+                            self.logger.info(f"Attempting to flatten complex JSON structure")
+                            df = pd.json_normalize(parsed_json, **kwargs)
+                    else:
+                        # Unexpected JSON format
+                        self.logger.error(f"Unexpected JSON format in {file_path}")
+                        return None
+                except Exception as e:
+                    self.logger.error(f"Error processing JSON file {file_path}: {str(e)}")
+                    # Default fallback to pandas read_json
+                    self.logger.info(f"Falling back to standard pandas read_json method")
+                    df = pd.read_json(file_path, **kwargs)
             elif file_path.suffix in ['.xls', '.xlsx']:
                 df = pd.read_excel(file_path, **kwargs)
             else:
