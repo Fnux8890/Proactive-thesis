@@ -4,6 +4,28 @@
 
 We've been working on enhancing the data ingestion pipeline for the Proactive Energy Thesis project. The primary focus has been on improving the Elixir ingestion service to handle various file formats robustly and ensure correct processing of data files.
 
+## Updated Pipeline Architecture
+
+The data ingestion pipeline has been revised to better reflect the comprehensive role of the Elixir component:
+
+```
+Raw Data Sources → Elixir Ingestion & Processing → Staging Tables → Python Processing → Timeseries Tables → Feature Extraction
+```
+
+The Elixir component now handles not just file ingestion, but also substantial initial processing:
+- File watching and event generation
+- Data production and streaming
+- Type-specific processing for different formats
+- Schema inference
+- Data profiling
+- Time series processing
+- Validation
+- Metadata enrichment
+- Transformation
+- Writing to TimescaleDB
+
+This comprehensive processing in Elixir allows the Python components to focus on specialized, domain-specific transformations rather than basic data preparation.
+
 ## Components Investigated
 
 1. **Elixir Ingestion Service**

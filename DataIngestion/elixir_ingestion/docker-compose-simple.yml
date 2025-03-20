@@ -1,0 +1,12 @@
+services:
+  elixir_processor:
+    build:
+      context: .
+      dockerfile: simple_dockerfile
+    volumes:
+      - ./results:/app/results
+      - ../../Data:/data
+    ports:
+      - "4000:4000"
+    environment:
+      - MIX_ENV=dev

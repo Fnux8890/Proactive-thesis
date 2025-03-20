@@ -1,0 +1,75 @@
+# Build stage
+FROM elixir:1.18-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache build-base git nodejs npm
+
+WORKDIR /app
+
+# Install hex and rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Copy mix files for dependency caching
+COPY mix.exs mix.lock ./
+RUN mix deps.get --only prod
+
+# Copy config files
+COPY config config
+
+# Set up Phoenix 1.7 assets directory structure
+COPY assets assets
+
+# Create required directories for Phoenix assets
+RUN mkdir -p priv/static
+
+# Copy the rest of the application code
+COPY lib lib
+COPY priv priv
+
+# Compile and build release
+ENV MIX_ENV=prod
+RUN mix deps.compile
+RUN mix compile
+
+# Create the css/app.css file required by Tailwind
+RUN mkdir -p assets/css
+RUN echo "/* Base CSS file */" > assets/css/app.css
+RUN echo "@import \"tailwindcss/base\";" >> assets/css/app.css
+RUN echo "@import \"tailwindcss/components\";" >> assets/css/app.css
+RUN echo "@import \"tailwindcss/utilities\";" >> assets/css/app.css
+
+# Install and compile assets
+RUN mix assets.deploy
+
+# Build a release
+RUN mix release
+
+# Runtime stage - Using elixir-slim for minimal footprint
+FROM elixir:1.18-alpine
+
+# Install runtime dependencies only
+RUN apk add --no-cache bash openssl libstdc++ ncurses-libs
+
+WORKDIR /app
+
+# Set environment variables
+ENV MIX_ENV=prod
+ENV PORT=4000
+
+# Create directories for data and results
+RUN mkdir -p /app/results
+
+# Copy the release from the builder stage
+COPY --from=builder /app/_build/prod/rel/web_service ./
+COPY --from=builder /app/priv ./priv
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget -q -O- http://localhost:4000/health || exit 1
+
+# Expose port
+EXPOSE 4000
+
+# Start the Phoenix app as a release
+CMD ["bin/web_service", "start"]

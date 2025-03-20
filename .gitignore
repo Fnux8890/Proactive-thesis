@@ -86,3 +86,7 @@ coverage.xml
 
 # Quality monitor - decide if you want to include or exclude these
 DataIngestion/quality_monitor/
+.windsurfrules
+
+DataIngestion/elixir_ingestion/web_service/_build/*
+DataIngestion/elixir_ingestion/web_service/deps/*

@@ -1,0 +1,82 @@
+<div class="bg-white p-6 rounded-lg shadow-md">
+  <h1 class="text-2xl font-bold mb-6">Elixir Data Ingestion Pipeline Dashboard</h1>
+  
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Available Data Files Section -->
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <h2 class="text-xl font-semibold mb-4">Available Data Files</h2>
+      
+      <%= if Enum.empty?(@data_files) do %>
+        <p class="text-gray-500 italic">No data files found</p>
+      <% else %>
+        <div class="overflow-y-auto max-h-96">
+          <table class="min-w-full">
+            <thead>
+              <tr class="bg-gray-200">
+                <th class="py-2 px-4 text-left">File Name</th>
+                <th class="py-2 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for file <- @data_files do %>
+                <tr class="border-b hover:bg-gray-100">
+                  <td class="py-2 px-4 font-mono text-sm"><%= file %></td>
+                  <td class="py-2 px-4 text-right">
+                    <form action={~p"/pipeline/process"} method="post">
+                      <input type="hidden" name="file" value={file}>
+                      <input type="hidden" name="_csrf_token" value={get_csrf_token()}>
+                      <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded text-sm">
+                        Process
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    </div>
+    
+    <!-- Processed Results Section -->
+    <div class="bg-gray-50 p-4 rounded-lg">
+      <h2 class="text-xl font-semibold mb-4">Processed Results</h2>
+      
+      <%= if Enum.empty?(@results) do %>
+        <p class="text-gray-500 italic">No processed results found</p>
+      <% else %>
+        <div class="overflow-y-auto max-h-96">
+          <table class="min-w-full">
+            <thead>
+              <tr class="bg-gray-200">
+                <th class="py-2 px-4 text-left">Result File</th>
+                <th class="py-2 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for result <- @results do %>
+                <tr class="border-b hover:bg-gray-100">
+                  <td class="py-2 px-4 font-mono text-sm"><%= result %></td>
+                  <td class="py-2 px-4 text-right">
+                    <a href={~p"/pipeline/results/#{result}"} class="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded text-sm">
+                      View
+                    </a>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    </div>
+  </div>
+  
+  <div class="mt-6 text-center">
+    <p class="text-gray-600">
+      The Elixir Data Ingestion Pipeline processes CSV files and generates analysis reports.
+    </p>
+    <p class="text-sm text-gray-500 mt-2">
+      Pipeline modules: FileWatcher → Producer → Processor → SchemaInference → DataProfiler → TimeSeriesProcessor → Validator → MetaDataEnricher → Transformer → Writer
+    </p>
+  </div>
+</div>

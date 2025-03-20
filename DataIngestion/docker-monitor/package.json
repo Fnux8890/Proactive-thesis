@@ -1,0 +1,24 @@
+{
+  "name": "docker-monitor",
+  "module": "index.ts",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Docker Compose monitoring tool that extracts important information for LLM analysis",
+  "scripts": {
+    "start": "bun run start-monitor.js",
+    "monitor": "bun run start-monitor.js",
+    "monitor:all": "bun run start-monitor.js",
+    "monitor:elixir": "bun run monitor-elixir.js",
+    "monitor:redis": "bun run monitor-redis.js",
+    "monitor:elixir-redis": "bun run monitor-elixir-redis.js",
+    "monitor:db": "bun run start-monitor.js --services=timescaledb",
+    "help": "bun run start-monitor.js --help"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {}
+}
