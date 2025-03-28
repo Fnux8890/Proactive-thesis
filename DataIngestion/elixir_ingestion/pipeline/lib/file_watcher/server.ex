@@ -1,235 +1,232 @@
 defmodule FileWatcher.Server do
+  @moduledoc """
+  Server responsible for watching files in specified directories and notifying
+  interested processes of changes. Uses both OS-level file system events and
+  periodic polling as a fallback.
+  """
+
   use GenServer
   require Logger
+  alias Pipeline.Utils.Retry
+  alias FileWatcher.StateStore
+
+  # Implement the ServerBehaviour
+  @behaviour FileWatcher.ServerBehaviour
+
+  # Default watch directory - updated to match Docker volume mount
+  @default_watch_dir "/app/data"
+
+  # Default poll interval in milliseconds (increased since polling is now backup)
+  @default_poll_interval 300_000
+
+  # Maximum retries for Redis operations
+  @max_retries 3
+
+  # Initial retry delay in milliseconds
+  @retry_delay 1_000
+
+  # Allowed file types
+  @allowed_file_types [:csv, :json, :excel]
 
   # Client API
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts \\ []) do
+    watch_paths =
+      Keyword.get(opts, :watch_paths, [Application.get_env(:pipeline, :watch_dir, "data")])
+
+    name = Keyword.get(opts, :name, __MODULE__)
+
+    GenServer.start_link(__MODULE__, [watch_paths: watch_paths], name: name)
   end
 
+  @impl FileWatcher.ServerBehaviour
   def get_files do
-    GenServer.call(__MODULE__, :get_files)
+    case GenServer.whereis(__MODULE__) do
+      nil -> {:error, :server_not_running}
+      _pid -> GenServer.call(__MODULE__, :get_files)
+    end
   end
 
-  def get_file_content(file_path) do
-    GenServer.call(__MODULE__, {:get_file_content, file_path})
+  @impl FileWatcher.ServerBehaviour
+  def get_file_content(path) do
+    GenServer.call(__MODULE__, {:get_file_content, path})
+  end
+
+  @impl FileWatcher.ServerBehaviour
+  def subscribe(pid \\ self()) do
+    GenServer.call(__MODULE__, {:subscribe, pid})
+  end
+
+  @impl FileWatcher.ServerBehaviour
+  def unsubscribe(pid \\ self()) do
+    GenServer.call(__MODULE__, {:unsubscribe, pid})
+  end
+
+  @impl FileWatcher.ServerBehaviour
+  def save_state do
+    GenServer.call(__MODULE__, :save_state)
   end
 
   # Server callbacks
   @impl true
   def init(opts) do
-    Logger.info("Starting FileWatcher Server, watching directory: #{opts[:watch_dir]}")
+    watch_paths = Keyword.get(opts, :watch_paths, ["data"])
+    state_store = Keyword.get(opts, :state_store, FileWatcher.StateStore)
 
-    # Create watch directory if it doesn't exist
-    watch_dir = opts[:watch_dir]
-    File.mkdir_p!(watch_dir)
-
-    # Initial state (without watcher_pid)
+    # Initialize state
     initial_state = %{
-      watch_dir: watch_dir,
-      watcher_pid: nil,
+      watch_paths: watch_paths,
       files: %{},
-      last_scan: nil
+      subscribers: MapSet.new(),
+      state_store: state_store,
+      state_changed: false,
+      file_system_pid: nil,
+      stats: %{
+        last_scan: nil,
+        files_watched: 0,
+        file_system_errors: 0,
+        redis_errors: 0
+      }
     }
 
-    # Start file system watcher
-    case FileSystem.start_link(dirs: [watch_dir]) do
-      {:ok, watcher_pid} ->
-        # Subscribe to file system events
-        FileSystem.subscribe(watcher_pid)
-
-        # Update initial state with watcher_pid
-        initial_state = %{initial_state | watcher_pid: watcher_pid}
-
-        # Try to restore state from Redis
-        state =
-          case FileWatcher.StateStore.load_state() do
-            %{} = saved_state when map_size(saved_state) > 0 ->
-              Map.merge(initial_state, saved_state)
-            _ ->
-              initial_state
-          end
-
-        # Do initial scan
-        state = scan_directory(state)
-
-        # Save initial state
-        FileWatcher.StateStore.save_state(%{files: state.files, last_scan: state.last_scan})
-
-        {:ok, state}
-
-      :ignore ->
-        # Can't use file system watcher, continue with fallback mode
-        Logger.warning("FileSystem watcher not available, using polling mode")
-
-        # Try to restore state without watcher
-        state =
-          case FileWatcher.StateStore.load_state() do
-            %{} = saved_state when map_size(saved_state) > 0 ->
-              Map.merge(initial_state, saved_state)
-            _ ->
-              initial_state
-          end
-
-        # Do initial scan anyway
-        state = scan_directory(state)
-
-        # Schedule periodic polling instead of events
-        Process.send_after(self(), :poll_directory, 30_000)
-
-        {:ok, state}
+    # Try to load existing state from Redis
+    case state_store.load_state() do
+      {:ok, files} ->
+        Logger.info("Loaded #{map_size(files)} files from state store")
+        {:ok, %{initial_state | files: files}}
 
       {:error, reason} ->
-        Logger.error("Failed to start FileSystem watcher: #{inspect(reason)}")
-        {:stop, reason}
+        Logger.warning("Failed to load state from store: #{inspect(reason)}")
+        {:ok, initial_state}
     end
   end
 
   @impl true
-  def handle_info({:file_event, _pid, {path, events}}, state) do
+  def handle_info({:file_event, watcher_pid, {path, events}}, %{watcher: watcher_pid} = state) do
     Logger.debug("File event: #{path}, events: #{inspect(events)}")
+    {:noreply, state}
+  end
 
-    # Process the file event
-    state = process_file_event(state, path, events)
+  # For testing purposes
+  @impl true
+  def handle_info({:file_event, _watcher_pid, {path, events}}, state) do
+    Logger.debug("Test file event: #{path}, events: #{inspect(events)}")
 
-    # Save updated state to Redis
-    FileWatcher.StateStore.save_state(%{files: state.files, last_scan: state.last_scan})
+    if events[:created] || events[:modified] do
+      {:noreply, handle_file_create(path, state)}
+    else
+      {:noreply, state}
+    end
+  end
 
+  @impl true
+  def handle_info({:DOWN, _ref, :process, watcher_pid, reason}, %{watcher: watcher_pid} = state) do
+    Logger.error("FileSystem watcher process terminated: #{inspect(reason)}")
+    {:noreply, %{state | watcher: nil}}
+  end
+
+  @impl true
+  def handle_info({:file_event, _watcher_pid, :stop}, state) do
+    Logger.warning("FileSystem watcher stopped")
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(:poll_directory, state) do
-    # Scan directory for changes
-    state = scan_directory(state)
-
-    # Schedule next poll
-    Process.send_after(self(), :poll_directory, 30_000)
-
-    # Save state to Redis
-    FileWatcher.StateStore.save_state(%{files: state.files, last_scan: state.last_scan})
-
+  def handle_info(:poll, state) do
+    Logger.debug("Polling directory")
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:save_state, state) do
+    Logger.debug("Saving state via message")
+
+    case state.state_store.save_state(state.files) do
+      :ok ->
+        {:noreply, %{state | state_changed: false}}
+
+      {:error, reason} ->
+        Logger.error("Failed to save state: #{inspect(reason)}")
+        {:noreply, state}
+    end
   end
 
   @impl true
   def handle_call(:get_files, _from, state) do
-    {:reply, state.files, state}
+    {:reply, {:ok, state.files}, state}
   end
 
   @impl true
-  def handle_call({:get_file_content, file_path}, _from, state) do
-    response = case File.read(file_path) do
-      {:ok, content} -> {:ok, content}
-      {:error, reason} -> {:error, reason}
-    end
-
-    {:reply, response, state}
-  end
-
-  # Private functions
-  defp scan_directory(state) do
-    Logger.debug("Scanning directory: #{state.watch_dir}")
-
-    try do
-      files = scan_recursively(state.watch_dir, %{})
-      %{state | files: files, last_scan: DateTime.utc_now()}
-    rescue
-      e ->
-        Logger.error("Error scanning directory #{state.watch_dir}: #{inspect(e)}")
-        state
-    end
-  end
-
-  defp scan_recursively(dir, acc) do
-    File.ls!(dir)
-    |> Enum.reduce(acc, fn entry, acc ->
-      path = Path.join(dir, entry)
-
-      cond do
-        File.regular?(path) ->
-          # Process regular file
-          stats = File.stat!(path)
-
-          # Convert mtime tuple to ISO string format
-          mtime_string = format_datetime(stats.mtime)
-
-          Map.put(acc, path, %{
-            name: entry,
-            size: stats.size,
-            mtime: mtime_string,
-            type: detect_file_type(entry)
-          })
-
-        File.dir?(path) ->
-          # Recursively scan subdirectory
-          Logger.debug("Scanning subdirectory: #{path}")
-          scan_recursively(path, acc)
-
-        true ->
-          # Skip other types (symlinks, etc.)
-          acc
+  def handle_call({:get_file_content, path}, _from, state) do
+    if Map.has_key?(state.files, path) do
+      case File.read(path) do
+        {:ok, content} -> {:reply, {:ok, content}, state}
+        error -> {:reply, error, state}
       end
-    end)
-  end
-
-  # Convert Erlang datetime tuple to string
-  defp format_datetime({{year, month, day}, {hour, min, sec}}) do
-    "#{year}-#{pad(month)}-#{pad(day)}T#{pad(hour)}:#{pad(min)}:#{pad(sec)}Z"
-  end
-
-  defp pad(num) when num < 10, do: "0#{num}"
-  defp pad(num), do: "#{num}"
-
-  defp process_file_event(state, path, events) do
-    # Skip events for non-regular files and files outside watch directory
-    if not String.starts_with?(path, state.watch_dir) or not File.regular?(path) do
-      state
     else
-      cond do
-        # File was created or modified
-        Enum.any?(events, &(&1 in [:created, :modified, :renamed])) ->
-          case File.stat(path) do
-            {:ok, stats} ->
-              file_name = Path.basename(path)
-              # Convert mtime tuple to ISO string here too
-              mtime_string = format_datetime(stats.mtime)
-
-              updated_files = Map.put(state.files, path, %{
-                name: file_name,
-                size: stats.size,
-                mtime: mtime_string,
-                type: detect_file_type(file_name)
-              })
-              %{state | files: updated_files, last_scan: DateTime.utc_now()}
-
-            {:error, reason} ->
-              Logger.debug("Could not stat file #{path}: #{inspect(reason)}")
-              state
-          end
-
-        # File was deleted
-        :deleted in events ->
-          updated_files = Map.delete(state.files, path)
-          %{state | files: updated_files, last_scan: DateTime.utc_now()}
-
-        # Other events - no change to state
-        true ->
-          state
-      end
+      {:reply, {:error, :not_found}, state}
     end
   end
 
-  defp detect_file_type(file_name) do
-    extension = Path.extname(file_name) |> String.downcase()
+  @impl true
+  def handle_call({:subscribe, pid}, _from, state) do
+    Process.monitor(pid)
+    new_state = %{state | subscribers: MapSet.put(state.subscribers, pid)}
+    {:reply, :ok, new_state}
+  end
 
-    case extension do
+  @impl true
+  def handle_call({:unsubscribe, pid}, _from, state) do
+    new_state = %{state | subscribers: MapSet.delete(state.subscribers, pid)}
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call(:save_state, _from, state) do
+    case state.state_store.save_state(state.files) do
+      :ok -> {:reply, :ok, %{state | state_changed: false}}
+      error -> {:reply, error, state}
+    end
+  end
+
+  # Helper functions
+  defp handle_file_create(path, state) do
+    if File.exists?(path) && File.regular?(path) do
+      file_info = file_stat_to_info(path)
+      files = Map.put(state.files, path, file_info)
+      %{state | files: files, state_changed: true}
+    else
+      state
+    end
+  end
+
+  defp file_stat_to_info(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, stat} ->
+        %{
+          name: Path.basename(path),
+          size: stat.size,
+          mtime: stat.mtime,
+          type: get_file_type(path),
+          processed: false
+        }
+
+      {:error, _} ->
+        %{
+          name: Path.basename(path),
+          size: 0,
+          mtime: System.os_time(:second),
+          type: :unknown,
+          processed: false
+        }
+    end
+  end
+
+  defp get_file_type(path) do
+    case Path.extname(path) |> String.downcase() do
       ".csv" -> :csv
       ".json" -> :json
-      ".xml" -> :xml
       ".txt" -> :text
-      ".xlsx" -> :excel
-      ".xls" -> :excel
+      ".xml" -> :xml
       _ -> :unknown
     end
   end

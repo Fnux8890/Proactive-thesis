@@ -24,9 +24,14 @@ defmodule Pipeline.Supervisor do
 
       # Additional pipeline components will be added here
       # as they are implemented
-      # {Pipeline.Producer, []},
       # {Pipeline.Processor.Supervisor, []},
       # ...
+
+      # Add our producers supervisor
+      Producer.Supervisor,
+
+      # Add tracking supervisor if not already present
+      Pipeline.Tracking.Supervisor
     ]
 
     # Use :one_for_one strategy for pipeline components so that
