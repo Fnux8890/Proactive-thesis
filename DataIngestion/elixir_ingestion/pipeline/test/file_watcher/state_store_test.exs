@@ -158,21 +158,18 @@ defmodule FileWatcher.StateStore do
 end
 
 defmodule FileWatcher.StateStoreTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   import Mox
 
   # Verify mocks after each test
   setup :verify_on_exit!
-  # Set mox to global mode to allow any process to call mocked modules
-  setup :set_mox_global
 
   setup do
     # Start a GenServer with our test implementation
-    pid = start_supervised!(FileWatcher.StateStore)
+    pid = start_supervised!({FileWatcher.StateStore, []})
 
-    # Allow this test process to handle calls from any process
-    # When in global mode, use ExUnit.Server as the owner_pid
-    Mox.allow(MockRedisClient, Process.whereis(ExUnit.Server), self())
+    # Allow this test process to use mocks
+    Mox.allow(MockRedisClient, self())
 
     # Return the pid for use in tests
     {:ok, %{pid: pid}}

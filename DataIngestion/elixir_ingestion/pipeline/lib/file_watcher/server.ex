@@ -1,233 +1,177 @@
 defmodule FileWatcher.Server do
   @moduledoc """
-  Server responsible for watching files in specified directories and notifying
-  interested processes of changes. Uses both OS-level file system events and
-  periodic polling as a fallback.
+  Scans watch directories, identifies new files based on Redis state,
+  and queues them for processing via Redis.
   """
-
   use GenServer
   require Logger
-  alias Pipeline.Utils.Retry
-  alias FileWatcher.StateStore
 
-  # Implement the ServerBehaviour
-  @behaviour FileWatcher.ServerBehaviour
-
-  # Default watch directory - updated to match Docker volume mount
-  @default_watch_dir "/app/data"
-
-  # Default poll interval in milliseconds (increased since polling is now backup)
-  @default_poll_interval 300_000
-
-  # Maximum retries for Redis operations
-  @max_retries 3
-
-  # Initial retry delay in milliseconds
-  @retry_delay 1_000
-
-  # Allowed file types
-  @allowed_file_types [:csv, :json, :excel]
+  # --- Configuration ---
+  # Check every 5 seconds
+  @default_poll_interval 5_000
+  # HASH: path -> "discovered" | "processing" | "processed" | "failed"
+  @redis_state_hash "file_processing_state"
+  # LIST: [path1, path2, ...]
+  @redis_queue_list "files_to_process"
+  @allowed_extensions [".csv", ".json"]
+  # --- Dependencies ---
+  # Make these configurable via opts or Application config
+  @redis_client ConnectionHandler.Client
+  # Name of the producer to notify
+  @producer_dispatcher Producer.Dispatcher
 
   # Client API
   def start_link(opts \\ []) do
+    # Ensure watch_paths is a list
     watch_paths =
-      Keyword.get(opts, :watch_paths, [Application.get_env(:pipeline, :watch_dir, "data")])
+      Keyword.get(opts, :watch_paths, Application.get_env(:pipeline, :watch_dir, ["data"]))
 
+    watch_paths = if is_list(watch_paths), do: watch_paths, else: [watch_paths]
+
+    poll_interval = Keyword.get(opts, :poll_interval, @default_poll_interval)
     name = Keyword.get(opts, :name, __MODULE__)
 
-    GenServer.start_link(__MODULE__, [watch_paths: watch_paths], name: name)
+    GenServer.start_link(__MODULE__, [watch_paths: watch_paths, poll_interval: poll_interval],
+      name: name
+    )
   end
 
-  @impl FileWatcher.ServerBehaviour
-  def get_files do
-    case GenServer.whereis(__MODULE__) do
-      nil -> {:error, :server_not_running}
-      _pid -> GenServer.call(__MODULE__, :get_files)
-    end
-  end
-
-  @impl FileWatcher.ServerBehaviour
-  def get_file_content(path) do
-    GenServer.call(__MODULE__, {:get_file_content, path})
-  end
-
-  @impl FileWatcher.ServerBehaviour
-  def subscribe(pid \\ self()) do
-    GenServer.call(__MODULE__, {:subscribe, pid})
-  end
-
-  @impl FileWatcher.ServerBehaviour
-  def unsubscribe(pid \\ self()) do
-    GenServer.call(__MODULE__, {:unsubscribe, pid})
-  end
-
-  @impl FileWatcher.ServerBehaviour
-  def save_state do
-    GenServer.call(__MODULE__, :save_state)
-  end
-
-  # Server callbacks
+  # Server Callbacks
   @impl true
   def init(opts) do
-    watch_paths = Keyword.get(opts, :watch_paths, ["data"])
-    state_store = Keyword.get(opts, :state_store, FileWatcher.StateStore)
+    watch_paths = Keyword.fetch!(opts, :watch_paths)
+    poll_interval = Keyword.fetch!(opts, :poll_interval)
 
-    # Initialize state
-    initial_state = %{
+    Logger.info("Starting FileWatcher.Server, watching: #{inspect(watch_paths)}")
+
+    # Schedule the first poll
+    schedule_poll(poll_interval)
+
+    state = %{
       watch_paths: watch_paths,
-      files: %{},
-      subscribers: MapSet.new(),
-      state_store: state_store,
-      state_changed: false,
-      file_system_pid: nil,
-      stats: %{
-        last_scan: nil,
-        files_watched: 0,
-        file_system_errors: 0,
-        redis_errors: 0
-      }
+      poll_interval: poll_interval,
+      # Will be set by schedule_poll
+      poll_timer: nil
     }
 
-    # Try to load existing state from Redis
-    case state_store.load_state() do
-      {:ok, files} ->
-        Logger.info("Loaded #{map_size(files)} files from state store")
-        {:ok, %{initial_state | files: files}}
-
-      {:error, reason} ->
-        Logger.warning("Failed to load state from store: #{inspect(reason)}")
-        {:ok, initial_state}
-    end
-  end
-
-  @impl true
-  def handle_info({:file_event, watcher_pid, {path, events}}, %{watcher: watcher_pid} = state) do
-    Logger.debug("File event: #{path}, events: #{inspect(events)}")
-    {:noreply, state}
-  end
-
-  # For testing purposes
-  @impl true
-  def handle_info({:file_event, _watcher_pid, {path, events}}, state) do
-    Logger.debug("Test file event: #{path}, events: #{inspect(events)}")
-
-    if events[:created] || events[:modified] do
-      {:noreply, handle_file_create(path, state)}
-    else
-      {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_info({:DOWN, _ref, :process, watcher_pid, reason}, %{watcher: watcher_pid} = state) do
-    Logger.error("FileSystem watcher process terminated: #{inspect(reason)}")
-    {:noreply, %{state | watcher: nil}}
-  end
-
-  @impl true
-  def handle_info({:file_event, _watcher_pid, :stop}, state) do
-    Logger.warning("FileSystem watcher stopped")
-    {:noreply, state}
+    {:ok, state}
   end
 
   @impl true
   def handle_info(:poll, state) do
-    Logger.debug("Polling directory")
+    Logger.debug("Polling for new files...")
+    scan_and_queue_files(state.watch_paths)
+    new_timer_ref = schedule_poll(state.poll_interval)
+    {:noreply, %{state | poll_timer: new_timer_ref}}
+  end
+
+  # Catch-all for unexpected messages
+  @impl true
+  def handle_info(msg, state) do
+    Logger.warn("Received unexpected message: #{inspect(msg)}")
     {:noreply, state}
   end
 
-  @impl true
-  def handle_info(:save_state, state) do
-    Logger.debug("Saving state via message")
+  # --- Private Helpers ---
 
-    case state.state_store.save_state(state.files) do
-      :ok ->
-        {:noreply, %{state | state_changed: false}}
+  defp schedule_poll(interval) do
+    Process.send_after(self(), :poll, interval)
+  end
+
+  defp scan_and_queue_files(watch_paths) do
+    new_files_count =
+      Enum.reduce(watch_paths, 0, fn path, acc ->
+        acc + scan_directory(path)
+      end)
+
+    if new_files_count > 0 do
+      Logger.info("Found and queued #{new_files_count} new files.")
+      # Notify the producer that new work might be available
+      # Use cast for fire-and-forget notification
+      GenServer.cast(@producer_dispatcher, :check_work)
+    else
+      Logger.debug("No new files found in this poll.")
+    end
+  end
+
+  defp scan_directory(dir_path) do
+    case File.ls(dir_path) do
+      {:ok, entries} ->
+        Enum.reduce(entries, 0, fn entry, acc ->
+          full_path = Path.join(dir_path, entry)
+
+          if File.regular?(full_path) && allowed_extension?(full_path) do
+            acc + maybe_queue_file(full_path)
+          else
+            # Optionally log skipping directory or non-allowed file type
+            acc
+          end
+        end)
 
       {:error, reason} ->
-        Logger.error("Failed to save state: #{inspect(reason)}")
-        {:noreply, state}
+        Logger.error("Failed to list directory #{dir_path}: #{inspect(reason)}")
+        0
     end
   end
 
-  @impl true
-  def handle_call(:get_files, _from, state) do
-    {:reply, {:ok, state.files}, state}
+  defp allowed_extension?(path) do
+    Path.extname(path) in @allowed_extensions
   end
 
-  @impl true
-  def handle_call({:get_file_content, path}, _from, state) do
-    if Map.has_key?(state.files, path) do
-      case File.read(path) do
-        {:ok, content} -> {:reply, {:ok, content}, state}
-        error -> {:reply, error, state}
-      end
-    else
-      {:reply, {:error, :not_found}, state}
+  # Checks Redis and queues the file if it's new or failed previously
+  defp maybe_queue_file(file_path) do
+    case @redis_client.hget(@redis_state_hash, file_path) do
+      # File is completely new
+      {:ok, nil} ->
+        queue_file(file_path)
+
+      # File failed before, retry
+      {:ok, "failed"} ->
+        Logger.info("Re-queueing previously failed file: #{file_path}")
+        queue_file(file_path)
+
+      # File exists with state (discovered, processing, processed)
+      {:ok, state} ->
+        Logger.debug("Skipping known file: #{file_path} with state: #{state}")
+        # Not a new file to queue
+        0
+
+      {:error, reason} ->
+        Logger.error("Redis HGET error for #{file_path}: #{inspect(reason)}")
+        # Avoid queueing on error
+        0
     end
   end
 
-  @impl true
-  def handle_call({:subscribe, pid}, _from, state) do
-    Process.monitor(pid)
-    new_state = %{state | subscribers: MapSet.put(state.subscribers, pid)}
-    {:reply, :ok, new_state}
-  end
+  # Adds file to Redis queue and updates its state to "discovered"
+  defp queue_file(file_path) do
+    # Pipeline: 1. Set state to discovered, 2. Push to queue
+    commands = [
+      ["HSET", @redis_state_hash, file_path, "discovered"],
+      ["LPUSH", @redis_queue_list, file_path]
+    ]
 
-  @impl true
-  def handle_call({:unsubscribe, pid}, _from, state) do
-    new_state = %{state | subscribers: MapSet.delete(state.subscribers, pid)}
-    {:reply, :ok, new_state}
-  end
+    case @redis_client.pipeline(commands) do
+      {:ok, [hset_result, _lpush_result]} ->
+        # We check HSET result: 1 means new field, 0 means updated field
+        # Both are acceptable here.
+        if hset_result == 0 || hset_result == 1 do
+          Logger.debug("Queued file: #{file_path}")
+          # Indicate one file was queued
+          1
+        else
+          Logger.error(
+            "Redis pipeline failed to HSET/LPUSH for #{file_path}. HSET result: #{inspect(hset_result)}"
+          )
 
-  @impl true
-  def handle_call(:save_state, _from, state) do
-    case state.state_store.save_state(state.files) do
-      :ok -> {:reply, :ok, %{state | state_changed: false}}
-      error -> {:reply, error, state}
-    end
-  end
+          # Consider attempting to revert or cleanup state if possible
+          0
+        end
 
-  # Helper functions
-  defp handle_file_create(path, state) do
-    if File.exists?(path) && File.regular?(path) do
-      file_info = file_stat_to_info(path)
-      files = Map.put(state.files, path, file_info)
-      %{state | files: files, state_changed: true}
-    else
-      state
-    end
-  end
-
-  defp file_stat_to_info(path) do
-    case File.stat(path, time: :posix) do
-      {:ok, stat} ->
-        %{
-          name: Path.basename(path),
-          size: stat.size,
-          mtime: stat.mtime,
-          type: get_file_type(path),
-          processed: false
-        }
-
-      {:error, _} ->
-        %{
-          name: Path.basename(path),
-          size: 0,
-          mtime: System.os_time(:second),
-          type: :unknown,
-          processed: false
-        }
-    end
-  end
-
-  defp get_file_type(path) do
-    case Path.extname(path) |> String.downcase() do
-      ".csv" -> :csv
-      ".json" -> :json
-      ".txt" -> :text
-      ".xml" -> :xml
-      _ -> :unknown
+      {:error, reason} ->
+        Logger.error("Redis pipeline error queueing #{file_path}: #{inspect(reason)}")
+        # Failed to queue
+        0
     end
   end
 end

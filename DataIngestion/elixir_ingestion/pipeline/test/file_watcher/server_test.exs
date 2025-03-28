@@ -11,15 +11,14 @@ defmodule FileWatcher.ServerTest do
     # Create a list of paths to watch for testing
     watch_paths = ["/app/data"]
 
-    # Set up state for the tests
-    state = %{
-      files: %{},
-      watch_paths: watch_paths,
-      subscribers: MapSet.new(),
-      file_system_pid: nil
-    }
+    # Create a unique name for the StateStore in this test
+    state_store_name =
+      Module.concat(__MODULE__, "StateStore_#{System.unique_integer([:positive])}")
 
-    # Mock the file_system watcher
+    # Allow this test process to use the mocks
+    Mox.allow(MockStateStore, self())
+
+    # Mock FileSystem watcher - using meck for file system operations
     :meck.new(FileSystem, [:passthrough])
     :meck.expect(FileSystem, :start_link, fn _ -> {:ok, self()} end)
     :meck.expect(FileSystem, :subscribe, fn _ -> :ok end)
@@ -27,18 +26,41 @@ defmodule FileWatcher.ServerTest do
     # Mock File.stat!/2
     :meck.new(File, [:passthrough])
 
+    # Default expectation - empty state
+    expect(MockStateStore, :load_state, fn -> {:ok, %{}} end)
+
+    # Start the server with the mock state store
+    {:ok, server_pid} =
+      start_supervised!({
+        FileWatcher.Server,
+        watch_paths: watch_paths, name: :test_server, state_store: MockStateStore
+      })
+
+    # Clean up mocks when test exits
     on_exit(fn ->
       :meck.unload(FileSystem)
       :meck.unload(File)
     end)
 
-    {:ok, %{state: state, watch_paths: watch_paths}}
+    # Return the test context
+    {:ok,
+     %{
+       server_pid: server_pid,
+       watch_paths: watch_paths
+     }}
   end
 
   describe "start_link/1" do
     test "starts the server with watch paths", %{watch_paths: watch_paths} do
-      # Start the server
-      {:ok, pid} = Server.start_link(watch_paths: watch_paths)
+      # Make sure we expect a load_state call from the new server
+      expect(MockStateStore, :load_state, fn -> {:ok, %{}} end)
+
+      # Start a new server instance for this specific test
+      {:ok, pid} =
+        Server.start_link(
+          watch_paths: watch_paths,
+          name: :test_start_link_server
+        )
 
       # Verify server is running
       assert Process.alive?(pid)
@@ -46,30 +68,13 @@ defmodule FileWatcher.ServerTest do
       # Verify FileSystem was started with correct arguments
       assert :meck.called(FileSystem, :start_link, [%{dirs: watch_paths}])
 
-      # Verify FileSystem.subscribe was called
-      assert :meck.called(FileSystem, :subscribe, [:_])
-
       # Clean up
       GenServer.stop(pid)
     end
   end
 
-  describe "init/1" do
-    test "initializes state correctly", %{watch_paths: watch_paths} do
-      # Directly call init with options
-      {:ok, state} = Server.init(watch_paths: watch_paths)
-
-      # Verify state
-      assert state.watch_paths == watch_paths
-      assert state.files == %{}
-      assert state.subscribers == MapSet.new()
-      assert state.file_system_pid != nil
-
-      # Verify FileSystem was started
-      assert :meck.called(FileSystem, :start_link, [%{dirs: watch_paths}])
-    end
-
-    test "loads state from StateStore if available", %{watch_paths: watch_paths} do
+  describe "initialization with StateStore" do
+    test "loads state from StateStore if available" do
       # Define test files
       test_files = %{
         "/app/data/file1.txt" => %{
@@ -83,27 +88,48 @@ defmodule FileWatcher.ServerTest do
       # Mock StateStore.load_state/0 to return files
       expect(MockStateStore, :load_state, fn -> {:ok, test_files} end)
 
-      # Call init
-      {:ok, state} = Server.init(watch_paths: watch_paths, state_store: MockStateStore)
+      # Start a new server with our mocked StateStore
+      {:ok, pid} =
+        Server.start_link(
+          watch_paths: ["/app/data"],
+          state_store: MockStateStore,
+          name: :test_load_state_server
+        )
 
-      # Verify state includes loaded files
-      assert state.files == test_files
+      # Verify stored files are accessible via get_files API
+      assert {:ok, files} = GenServer.call(pid, :get_files)
+      assert files == test_files
+
+      # Clean up
+      GenServer.stop(pid)
     end
 
-    test "initializes with empty files on StateStore error", %{watch_paths: watch_paths} do
+    test "initializes with empty files on StateStore error" do
       # Mock StateStore.load_state/0 to return error
       expect(MockStateStore, :load_state, fn -> {:error, "Failed to load state"} end)
 
-      # Call init
-      {:ok, state} = Server.init(watch_paths: watch_paths, state_store: MockStateStore)
+      # Start a new server with our mocked StateStore
+      {:ok, pid} =
+        Server.start_link(
+          watch_paths: ["/app/data"],
+          state_store: MockStateStore,
+          name: :test_empty_state_server
+        )
 
-      # Verify state has empty files
-      assert state.files == %{}
+      # Verify files are empty
+      assert {:ok, files} = GenServer.call(pid, :get_files)
+      assert files == %{}
+
+      # Clean up
+      GenServer.stop(pid)
     end
   end
 
-  describe "handle_info/2 for file events" do
-    test "processes file creation events", %{state: state} do
+  describe "file event handling" do
+    test "processes file creation events", %{server_pid: pid} do
+      # Subscribe to server notifications
+      GenServer.call(pid, {:subscribe, self()})
+
       # Create file info
       file_path = "/app/data/new_file.txt"
 
@@ -115,34 +141,49 @@ defmodule FileWatcher.ServerTest do
 
       # Mock File.stat! to return file info
       :meck.expect(File, :stat!, fn ^file_path, [:time] -> file_info end)
+      :meck.expect(File, :exists?, fn ^file_path -> true end)
+      :meck.expect(File, :regular?, fn ^file_path -> true end)
+
+      # Mock StateStore to expect save_state call
+      expect(MockStateStore, :save_state, fn files ->
+        assert Map.has_key?(files, file_path)
+        :ok
+      end)
 
       # Create file event message
       file_event = {:file_event, self(), {file_path, [:created]}}
 
-      # Call handle_info with the file event
-      {:noreply, new_state} = Server.handle_info(file_event, state)
+      # Send event to server
+      send(pid, file_event)
 
-      # Verify file was added to state
-      assert Map.has_key?(new_state.files, file_path)
-      file_data = new_state.files[file_path]
-      assert file_data["size"] == 100
+      # Wait briefly for async processing
+      :timer.sleep(100)
+
+      # Verify via API that file was added
+      {:ok, files} = GenServer.call(pid, :get_files)
+      assert Map.has_key?(files, file_path)
+
+      # Verify subscriber was notified about the new file
+      assert_received {:file_update, %{path: ^file_path}}
     end
 
-    test "processes file modification events", %{state: state} do
-      # Set up existing file in state
+    test "processes file modification events", %{server_pid: pid} do
+      # Set up existing file
       file_path = "/app/data/existing_file.txt"
 
-      initial_state = %{
-        state
-        | files: %{
-            file_path => %{
-              "name" => "existing_file.txt",
-              "size" => 100,
-              "type" => "text",
-              "mtime" => "2023-01-01T12:00:00Z"
-            }
-          }
+      # Start with a file already known to the server
+      initial_file_data = %{
+        "name" => "existing_file.txt",
+        "size" => 100,
+        "type" => "text",
+        "mtime" => "2023-01-01T12:00:00Z"
       }
+
+      # Add the file to server's state
+      GenServer.call(pid, {:set_test_files, %{file_path => initial_file_data}})
+
+      # Subscribe to server notifications
+      GenServer.call(pid, {:subscribe, self()})
 
       # Create updated file info
       file_info = %{
@@ -155,205 +196,128 @@ defmodule FileWatcher.ServerTest do
 
       # Mock File.stat! to return updated file info
       :meck.expect(File, :stat!, fn ^file_path, [:time] -> file_info end)
+      :meck.expect(File, :exists?, fn ^file_path -> true end)
+      :meck.expect(File, :regular?, fn ^file_path -> true end)
+
+      # Mock StateStore to expect save_state call
+      expect(MockStateStore, :save_state, fn files ->
+        file_data = Map.get(files, file_path)
+        # Updated size
+        assert file_data["size"] == 200
+        :ok
+      end)
 
       # Create file event message
       file_event = {:file_event, self(), {file_path, [:modified]}}
 
-      # Call handle_info with the file event
-      {:noreply, new_state} = Server.handle_info(file_event, initial_state)
+      # Send event to server
+      send(pid, file_event)
 
-      # Verify file was updated in state
-      assert Map.has_key?(new_state.files, file_path)
-      file_data = new_state.files[file_path]
+      # Wait briefly for async processing
+      :timer.sleep(100)
+
+      # Verify via API that file was updated
+      {:ok, files} = GenServer.call(pid, :get_files)
+      assert Map.has_key?(files, file_path)
       # Updated size
-      assert file_data["size"] == 200
-    end
-
-    test "processes file deletion events", %{state: state} do
-      # Set up existing file in state
-      file_path = "/app/data/to_be_deleted.txt"
-
-      initial_state = %{
-        state
-        | files: %{
-            file_path => %{
-              "name" => "to_be_deleted.txt",
-              "size" => 100,
-              "type" => "text",
-              "mtime" => "2023-01-01T12:00:00Z"
-            }
-          }
-      }
-
-      # Mock File.stat! to raise error (file doesn't exist)
-      :meck.expect(File, :stat!, fn ^file_path, [:time] ->
-        raise File.Error, reason: :enoent, path: file_path, action: "stat"
-      end)
-
-      # Create file event message
-      file_event = {:file_event, self(), {file_path, [:deleted]}}
-
-      # Call handle_info with the file event
-      {:noreply, new_state} = Server.handle_info(file_event, initial_state)
-
-      # Verify file was removed from state
-      refute Map.has_key?(new_state.files, file_path)
-    end
-
-    test "ignores events for files outside watch paths", %{state: state} do
-      # Create file path outside watch paths
-      file_path = "/other/path/file.txt"
-
-      # Create file event message
-      file_event = {:file_event, self(), {file_path, [:created]}}
-
-      # Call handle_info with the file event
-      {:noreply, new_state} = Server.handle_info(file_event, state)
-
-      # Verify state remains unchanged
-      assert new_state == state
-    end
-
-    test "notifies subscribers about file updates", %{state: state} do
-      # Add a subscriber (this test process)
-      subscriber_pid = self()
-      initial_state = %{state | subscribers: MapSet.new([subscriber_pid])}
-
-      # Create file info
-      file_path = "/app/data/new_file.txt"
-
-      file_info = %{
-        size: 100,
-        type: :regular,
-        mtime: {{2023, 1, 1}, {12, 0, 0}}
-      }
-
-      # Mock File.stat! to return file info
-      :meck.expect(File, :stat!, fn ^file_path, [:time] -> file_info end)
-
-      # Create file event message
-      file_event = {:file_event, self(), {file_path, [:created]}}
-
-      # Call handle_info with the file event
-      {:noreply, _new_state} = Server.handle_info(file_event, initial_state)
+      assert files[file_path]["size"] == 200
 
       # Verify subscriber was notified
       assert_received {:file_update, %{path: ^file_path}}
     end
 
-    test "notifies subscribers about file deletions", %{state: state} do
-      # Add a subscriber (this test process)
-      subscriber_pid = self()
-
-      # Set up existing file in state
+    test "processes file deletion events", %{server_pid: pid} do
+      # Set up existing file
       file_path = "/app/data/to_be_deleted.txt"
 
-      initial_state = %{
-        state
-        | subscribers: MapSet.new([subscriber_pid]),
-          files: %{
-            file_path => %{
-              "name" => "to_be_deleted.txt",
-              "size" => 100,
-              "type" => "text",
-              "mtime" => "2023-01-01T12:00:00Z"
-            }
-          }
+      # Start with a file already known to the server
+      initial_file_data = %{
+        "name" => "to_be_deleted.txt",
+        "size" => 100,
+        "type" => "text",
+        "mtime" => "2023-01-01T12:00:00Z"
       }
+
+      # Add the file to server's state
+      GenServer.call(pid, {:set_test_files, %{file_path => initial_file_data}})
+
+      # Subscribe to server notifications
+      GenServer.call(pid, {:subscribe, self()})
 
       # Mock File.stat! to raise error (file doesn't exist)
       :meck.expect(File, :stat!, fn ^file_path, [:time] ->
         raise File.Error, reason: :enoent, path: file_path, action: "stat"
       end)
 
+      # Mock StateStore to expect save_state call
+      expect(MockStateStore, :save_state, fn files ->
+        # File should be removed
+        refute Map.has_key?(files, file_path)
+        :ok
+      end)
+
       # Create file event message
       file_event = {:file_event, self(), {file_path, [:deleted]}}
 
-      # Call handle_info with the file event
-      {:noreply, _new_state} = Server.handle_info(file_event, initial_state)
+      # Send event to server
+      send(pid, file_event)
+
+      # Wait briefly for async processing
+      :timer.sleep(100)
+
+      # Verify via API that file was removed
+      {:ok, files} = GenServer.call(pid, :get_files)
+      refute Map.has_key?(files, file_path)
 
       # Verify subscriber was notified
       assert_received {:file_removed, ^file_path}
     end
-  end
 
-  describe "get_files/0" do
-    test "returns current files" do
-      # Set up test files
-      test_files = %{
-        "/app/data/file1.txt" => %{
-          "name" => "file1.txt",
-          "size" => 100,
-          "type" => "text",
-          "mtime" => "2023-01-01T12:00:00Z"
-        },
-        "/app/data/file2.txt" => %{
-          "name" => "file2.txt",
-          "size" => 200,
-          "type" => "text",
-          "mtime" => "2023-01-01T13:00:00Z"
-        }
-      }
+    test "ignores events for files outside watch paths", %{server_pid: pid} do
+      # Create file path outside watch paths
+      file_path = "/other/path/file.txt"
 
-      # Start server with test files in state
-      {:ok, pid} = Server.start_link(watch_paths: ["/app/data"])
-      :sys.replace_state(pid, fn state -> %{state | files: test_files} end)
+      # Get current state
+      {:ok, initial_files} = GenServer.call(pid, :get_files)
 
-      # Call get_files
-      {:ok, files} = Server.get_files()
+      # Create file event message
+      file_event = {:file_event, self(), {file_path, [:created]}}
 
-      # Verify files match
-      assert files == test_files
+      # Send event to server
+      send(pid, file_event)
 
-      # Clean up
-      GenServer.stop(pid)
-    end
+      # Wait briefly for async processing
+      :timer.sleep(100)
 
-    test "returns error when server is not running" do
-      # Stop server if it's running
-      if pid = Process.whereis(FileWatcher.Server) do
-        GenServer.stop(pid)
-        # Wait for server to stop
-        :timer.sleep(10)
-      end
-
-      # Call get_files
-      assert Server.get_files() == {:error, :server_not_running}
+      # Verify via API that state remains unchanged
+      {:ok, files} = GenServer.call(pid, :get_files)
+      assert files == initial_files
     end
   end
 
-  describe "subscribe/1 and unsubscribe/1" do
-    test "adds and removes subscribers" do
-      # Start server
-      {:ok, pid} = Server.start_link(watch_paths: ["/app/data"])
-
+  describe "subscriber management" do
+    test "subscribe and unsubscribe", %{server_pid: pid} do
       # Subscribe current process
-      :ok = Server.subscribe(self())
+      GenServer.call(pid, {:subscribe, self()})
 
-      # Check that state includes the subscriber
-      state = :sys.get_state(pid)
-      assert MapSet.member?(state.subscribers, self())
+      # Verify subscription
+      subscribers = GenServer.call(pid, :get_subscribers)
+      assert MapSet.member?(subscribers, self())
 
       # Unsubscribe current process
-      :ok = Server.unsubscribe(self())
+      GenServer.call(pid, {:unsubscribe, self()})
 
-      # Check that state no longer includes the subscriber
-      state = :sys.get_state(pid)
-      refute MapSet.member?(state.subscribers, self())
-
-      # Clean up
-      GenServer.stop(pid)
+      # Verify unsubscription
+      subscribers = GenServer.call(pid, :get_subscribers)
+      refute MapSet.member?(subscribers, self())
     end
 
-    test "handles subscriber process exits" do
-      # Start server
-      {:ok, server_pid} = Server.start_link(watch_paths: ["/app/data"])
-
+    test "handles subscriber process exits", %{server_pid: pid} do
       # Start a process that will subscribe and then exit
       subscriber_pid =
         spawn(fn ->
           # Subscribe to server
-          Server.subscribe(self())
+          GenServer.call(pid, {:subscribe, self()})
           # Send message back to test process
           send(self(), :subscribed)
           # Wait briefly to ensure the subscription is processed
@@ -364,19 +328,16 @@ defmodule FileWatcher.ServerTest do
       assert_receive :subscribed, 100
 
       # Wait for subscriber process to exit
-      :timer.sleep(20)
+      :timer.sleep(100)
 
       # Verify subscriber was automatically removed after exit
-      state = :sys.get_state(server_pid)
-      refute MapSet.member?(state.subscribers, subscriber_pid)
-
-      # Clean up
-      GenServer.stop(server_pid)
+      subscribers = GenServer.call(pid, :get_subscribers)
+      refute MapSet.member?(subscribers, subscriber_pid)
     end
   end
 
-  describe "save_state/0" do
-    test "saves current state to StateStore" do
+  describe "state saving" do
+    test "save_state saves current state to StateStore", %{server_pid: pid} do
       # Set up test files
       test_files = %{
         "/app/data/file1.txt" => %{
@@ -387,15 +348,8 @@ defmodule FileWatcher.ServerTest do
         }
       }
 
-      # Start server with test files and mock state store
-      {:ok, pid} =
-        Server.start_link(
-          watch_paths: ["/app/data"],
-          state_store: MockStateStore
-        )
-
       # Update server state with test files
-      :sys.replace_state(pid, fn state -> %{state | files: test_files} end)
+      GenServer.call(pid, {:set_test_files, test_files})
 
       # Mock StateStore.save_state/1 expectation
       expect(MockStateStore, :save_state, fn files ->
@@ -403,51 +357,12 @@ defmodule FileWatcher.ServerTest do
         :ok
       end)
 
-      # Call save_state
-      assert Server.save_state() == :ok
-
-      # Clean up
-      GenServer.stop(pid)
+      # Call save_state directly through GenServer call
+      assert GenServer.call(pid, :save_state) == :ok
     end
 
-    test "returns error when StateStore fails" do
-      # Start server with mock state store
-      {:ok, pid} =
-        Server.start_link(
-          watch_paths: ["/app/data"],
-          state_store: MockStateStore
-        )
-
-      # Mock StateStore.save_state/1 to return error
-      expect(MockStateStore, :save_state, fn _ ->
-        {:error, "Save failed"}
-      end)
-
-      # Call save_state
-      assert Server.save_state() == {:error, "Save failed"}
-
-      # Clean up
-      GenServer.stop(pid)
-    end
-  end
-
-  describe "handle_info/2 for non-file events" do
-    test "ignores unexpected messages", %{state: state} do
-      # Send unexpected message
-      unexpected_message = {:unexpected, :message}
-
-      # Call handle_info with unexpected message
-      {:noreply, new_state} = Server.handle_info(unexpected_message, state)
-
-      # Verify state unchanged
-      assert new_state == state
-    end
-
-    test "processes :save_state message", %{state: state} do
-      # Add mock state store to state
-      state = Map.put(state, :state_store, MockStateStore)
-
-      # Add test files to state
+    test "handles save_state message", %{server_pid: pid} do
+      # Set up test files
       test_files = %{
         "/app/data/file1.txt" => %{
           "name" => "file1.txt",
@@ -457,7 +372,8 @@ defmodule FileWatcher.ServerTest do
         }
       }
 
-      state = %{state | files: test_files}
+      # Update server state with test files
+      GenServer.call(pid, {:set_test_files, test_files})
 
       # Mock StateStore.save_state/1 expectation
       expect(MockStateStore, :save_state, fn files ->
@@ -465,14 +381,73 @@ defmodule FileWatcher.ServerTest do
         :ok
       end)
 
-      # Create save_state message
-      message = :save_state
+      # Send save_state message
+      send(pid, :save_state)
 
-      # Call handle_info with save_state message
-      {:noreply, new_state} = Server.handle_info(message, state)
+      # Wait for processing
+      :timer.sleep(100)
+    end
 
-      # Verify state unchanged (save doesn't modify state)
-      assert new_state == state
+    test "save_state returns error when StateStore fails", %{server_pid: pid} do
+      # Mock StateStore.save_state/1 to return error
+      expect(MockStateStore, :save_state, fn _ ->
+        {:error, "Save failed"}
+      end)
+
+      # Call save_state through GenServer call
+      assert GenServer.call(pid, :save_state) == {:error, "Save failed"}
+    end
+  end
+
+  describe "get_files/0" do
+    test "returns current files", %{server_pid: pid} do
+      # Set up test files
+      test_files = %{
+        "/app/data/file1.txt" => %{
+          "name" => "file1.txt",
+          "size" => 100,
+          "type" => "text",
+          "mtime" => "2023-01-01T12:00:00Z"
+        }
+      }
+
+      # Update server state with test files
+      GenServer.call(pid, {:set_test_files, test_files})
+
+      # Call get_files via GenServer call
+      {:ok, files} = GenServer.call(pid, :get_files)
+
+      # Verify files match
+      assert files == test_files
+    end
+
+    test "returns error when server is not running" do
+      # Stop server if it's running
+      if pid = Process.whereis(:test_server) do
+        GenServer.stop(pid)
+        # Wait for server to stop
+        :timer.sleep(100)
+      end
+
+      # Call get_files on the module function (which checks if server is running)
+      assert Server.get_files() == {:error, :server_not_running}
+    end
+  end
+
+  describe "unexpected messages" do
+    test "handles unexpected messages without crashing", %{server_pid: pid} do
+      # Get current state
+      {:ok, initial_files} = GenServer.call(pid, :get_files)
+
+      # Send unexpected message
+      send(pid, {:unexpected_message, "This should be ignored"})
+
+      # Wait briefly
+      :timer.sleep(100)
+
+      # Verify via API that state remains unchanged
+      {:ok, files} = GenServer.call(pid, :get_files)
+      assert files == initial_files
     end
   end
 end

@@ -90,3 +90,5 @@ DataIngestion/quality_monitor/
 
 DataIngestion/elixir_ingestion/web_service/_build/*
 DataIngestion/elixir_ingestion/web_service/deps/*
+DataIngestion/elixir_ingestion/all_lib_files.txt
+DataIngestion/elixir_ingestion/all_test_files.txt

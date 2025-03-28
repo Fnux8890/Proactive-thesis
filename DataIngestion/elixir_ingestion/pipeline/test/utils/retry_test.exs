@@ -51,13 +51,16 @@ defmodule Pipeline.Utils.RetryTest do
   describe "retry_with_backoff/3" do
     test "succeeds on first attempt" do
       fun = fn -> {:ok, "success on first try"} end
-      result = TestRetry.retry_with_backoff(fun, "test operation")
+      result = Retry.retry_with_backoff(fun, "test operation")
       assert result == {:ok, "success on first try"}
     end
 
-    test "retries on error tuple and succeeds", %{agent: agent} do
+    test "retries on error tuple and succeeds" do
+      counter = :counters.new(1, [])
+
       fun = fn ->
-        count = Agent.get_and_update(agent, fn count -> {count, count + 1} end)
+        count = :counters.get(counter, 1)
+        :counters.add(counter, 1, 1)
 
         case count do
           0 -> {:error, "temporary error"}
@@ -65,30 +68,34 @@ defmodule Pipeline.Utils.RetryTest do
         end
       end
 
-      result = TestRetry.retry_with_backoff(fun, "retry test", max_retries: 3, initial_delay: 1)
+      result = Retry.retry_with_backoff(fun, "retry test", max_retries: 3, initial_delay: 1)
       assert result == {:ok, "success after retry"}
       # One initial attempt + one retry = 2 calls
-      assert Agent.get(agent, fn count -> count end) == 2
+      assert :counters.get(counter, 1) == 2
     end
 
-    test "gives up after max retries on error tuple", %{agent: agent} do
+    test "gives up after max retries on error tuple" do
+      counter = :counters.new(1, [])
       error_msg = "persistent error"
 
       fun = fn ->
-        Agent.update(agent, fn count -> count + 1 end)
+        :counters.add(counter, 1, 1)
         {:error, error_msg}
       end
 
-      result = TestRetry.retry_with_backoff(fun, "failing test", max_retries: 3, initial_delay: 1)
+      result = Retry.retry_with_backoff(fun, "failing test", max_retries: 3, initial_delay: 1)
       # Original implementation wraps the error once
       assert result == {:error, {:error, error_msg}}
       # Initial attempt + 3 retries = 4 calls
-      assert Agent.get(agent, fn count -> count end) == 4
+      assert :counters.get(counter, 1) == 4
     end
 
-    test "retries on exception and succeeds", %{agent: agent} do
+    test "retries on exception and succeeds" do
+      counter = :counters.new(1, [])
+
       fun = fn ->
-        count = Agent.get_and_update(agent, fn count -> {count, count + 1} end)
+        count = :counters.get(counter, 1)
+        :counters.add(counter, 1, 1)
 
         case count do
           0 -> raise "temporary boom"
@@ -96,29 +103,26 @@ defmodule Pipeline.Utils.RetryTest do
         end
       end
 
-      result =
-        TestRetry.retry_with_backoff(fun, "exception test", max_retries: 3, initial_delay: 1)
-
+      result = Retry.retry_with_backoff(fun, "exception test", max_retries: 3, initial_delay: 1)
       assert result == {:ok, "success after exception"}
       # One initial attempt + one retry = 2 calls
-      assert Agent.get(agent, fn count -> count end) == 2
+      assert :counters.get(counter, 1) == 2
     end
 
-    test "gives up after max retries on exception", %{agent: agent} do
+    test "gives up after max retries on exception" do
+      counter = :counters.new(1, [])
+
       fun = fn ->
-        Agent.update(agent, fn count -> count + 1 end)
+        :counters.add(counter, 1, 1)
         raise "persistent boom"
       end
 
       result =
-        TestRetry.retry_with_backoff(fun, "failing exception test",
-          max_retries: 3,
-          initial_delay: 1
-        )
+        Retry.retry_with_backoff(fun, "failing exception test", max_retries: 3, initial_delay: 1)
 
       assert {:error, %RuntimeError{message: "persistent boom"}} = result
       # Initial attempt + 3 retries = 4 calls
-      assert Agent.get(agent, fn count -> count end) == 4
+      assert :counters.get(counter, 1) == 4
     end
   end
 end
