@@ -1,0 +1,85 @@
+---
+description: For detailing how to read markdown files
+globs: Docs/*.md
+---
+# Documentation Guidelines (`Docs/*.md`)
+
+The Markdown files located directly within the `Docs` directory serve as key resources for the project. These files contain comprehensive software engineering documentation that guides the architecture, design decisions, and overall structure of the project. They are considered authoritative sources and must be referenced for proper implementation and future updates.
+
+---
+
+## Purpose
+
+- **Project Guidance:**  
+  The documentation files provide crucial information about the project’s vision, structure, and operational workflows. They describe how various components interact and cumulate into a cohesive system.
+
+- **Design and Architecture:**  
+  These files outline the reasoning behind design decisions, including technical approaches, module responsibilities, and system integrations. They help ensure consistency and predictability across the project.
+
+- **Standards and Best Practices:**  
+  The documentation incorporates standards and coding practices (e.g., TypeScript conventions, React component structure, Tailwind CSS usage) that conform to our key principles. They clarify how to write concise, technical code following best practices in both front-end and back-end development.
+
+---
+
+## Glob Specifier
+
+- **Target Files:**  
+  - The rule applies to all files that have a `.md` extension and are located directly within the `Docs` directory.  
+  - **Specifier:** `Docs/*.md`  
+  - *Note:* If documentation in subdirectories is needed in the future, consider an updated glob (e.g., `Docs/**/*.md`).  
+
+---
+
+## Guidelines and Rules
+
+1. **Document Scope and Focus**  
+   - All Markdown files in the `Docs` directory must address software engineering topics related to the project.  
+   - They are to be used as a primary reference for understanding product architecture, implementation guidelines, and module interactions.
+
+2. **Content Structure and Clarity**  
+   - The documents should be well-structured and include clear headings, subheadings, and bullet points to improve readability.  
+   - Organize content into sections like Overview, Guidelines, Examples, and References.
+
+3. **Technical Accuracy and Detail**  
+   - Ensure that technical content, code examples, and instructions use the correct and up-to-date practices related to Next.js, React, TypeScript, Node.js, Tailwind, Shadcn UI, and other relevant technologies.
+   - Use precise language that is consistent with programming and technical terminology.
+
+4. **Reference and Alignment**  
+   - The documentation should be referenced whenever making code changes or introducing features.  
+   - All modifications in code or architecture should be looked up against the documented guidelines to ensure consistency.
+
+5. **Maintenance and Updates**  
+   - As the project evolves, ensure that the documentation is updated in tandem with new design choices and architectural improvements.  
+   - Regular audits may be performed to verify that the documentation remains authoritative and reflective of current practices.
+
+---
+
+## Examples and Use Cases
+
+- **New Feature Development:**  
+  When implementing a new component or updating existing functionality, developers must review the relevant sections in the documentation. For example, if adding a new React component, check the component structure and styling conventions detailed in the documentation.
+
+- **Design Review:**  
+  Prior to code merging, conduct a design review that includes consultation of the documentation. This ensures that any changes comply with established architectural guidelines and industry best practices.
+
+- **Onboarding New Developers:**  
+  New team members should begin by reading through these Markdown files. They act as an induction guide, providing an overview of the project’s technical stack, key design patterns, and coding standards such as modularization, functional programming, and declarative JSX.
+
+- **Alignment with Standards:**  
+  Developers can use these docs to verify that the project’s code adheres to principles such as those outlined in Next.js, React, and TypeScript best practices, including functional components and strict typing.
+
+---
+
+## Additional Reference Information
+
+- **Key Principles:**  
+  - Write concise, technical code with accurate examples, following a declarative style.
+  - Prioritize functional programming patterns and best practices over duplication.
+  - Emphasize descriptive naming conventions and modular file structures.
+  - Ensure compliance with performance optimization and best practices for both server and client components.
+
+- **Broader Context:**  
+  The guidelines outlined here are part of a larger schema that includes rules for commit messages, development standards, coding style, and custom slash commands. Each documentation file in `Docs/*.md` should harmonize with these overarching project conventions.
+
+- **Collaboration and Version Control:**  
+  Changes to these documentation files should be tracked under version control. Any modifications should be accompanied by clear commit messages referencing the documentation update, following the conventional commits style guidelines detailed in the project documentation.
