@@ -1,0 +1,91 @@
+{
+  "data": {
+    "file_path": "/data/sample_data.csv",
+    "delimiter": ",",
+    "headers": [
+      "id",
+      "name",
+      "age",
+      "city",
+      "country"
+    ],
+    "sample_size": 10,
+    "file_size_bytes": 333,
+    "line_count": 11,
+    "header_count": 5,
+    "sample": [
+      {
+        "age": "35",
+        "city": "New York",
+        "country": "USA",
+        "id": "1",
+        "name": "John Doe"
+      },
+      {
+        "age": "28",
+        "city": "London",
+        "country": "UK",
+        "id": "2",
+        "name": "Jane Smith"
+      },
+      {
+        "age": "42",
+        "city": "Paris",
+        "country": "France",
+        "id": "3",
+        "name": "Robert Johnson"
+      },
+      {
+        "age": "31",
+        "city": "Madrid",
+        "country": "Spain",
+        "id": "4",
+        "name": "Maria Garcia"
+      },
+      {
+        "age": "39",
+        "city": "Hong Kong",
+        "country": "China",
+        "id": "5",
+        "name": "Michael Wong"
+      },
+      {
+        "age": "27",
+        "city": "Tokyo",
+        "country": "Japan",
+        "id": "6",
+        "name": "Sophia Lee"
+      },
+      {
+        "age": "33",
+        "city": "Dubai",
+        "country": "UAE",
+        "id": "7",
+        "name": "Ahmed Khan"
+      },
+      {
+        "age": "45",
+        "city": "Moscow",
+        "country": "Russia",
+        "id": "8",
+        "name": "Anna Petrovna"
+      },
+      {
+        "age": "29",
+        "city": "Madrid",
+        "country": "Spain",
+        "id": "9",
+        "name": "Carlos Rodriguez"
+      },
+      {
+        "age": "36",
+        "city": "Sydney",
+        "country": "Australia",
+        "id": "10",
+        "name": "Emma Wilson"
+      }
+    ]
+  },
+  "status": "ok",
+  "timestamp": "2025-03-10T14:06:40.235446Z"
+}

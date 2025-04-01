@@ -4,6 +4,8 @@
 
 This document summarizes the changes made to the data pipeline architecture to address the issues identified in the refactoring plan. The primary goal was to establish a clear, sequential flow from data ingestion through to feature extraction, with TimescaleDB as the central source of truth.
 
+The architecture now clearly distinguishes between the initial processing done by the Elixir ingestion service and subsequent processing by Python services, maintaining a well-defined data flow throughout the pipeline.
+
 ## Key Architectural Changes
 
 ### 1. Established Clear Data Flow
@@ -11,7 +13,7 @@ This document summarizes the changes made to the data pipeline architecture to a
 The pipeline now follows a strict sequential flow:
 
 ```
-Raw Data Sources → Ingestion → Staging Tables → Processing → Timeseries Tables → Feature Extraction
+Raw Data Sources → Elixir Ingestion & Processing → Staging Tables → Python Processing → Timeseries Tables → Feature Extraction
 ```
 
 Each step has well-defined inputs and outputs, with no circular dependencies or bypassing of steps.
@@ -30,8 +32,8 @@ All downstream processes (feature extraction, quality monitoring) now read exclu
 
 Each component in the pipeline has a well-defined responsibility:
 
-- **Elixir Ingestion Service**: File detection, validation, and triggering
-- **Data Processing Service**: Data cleaning, transformation, and persistence
+- **Elixir Ingestion & Processing Service**: File detection, validation, parsing, initial processing, data profiling, schema inference, transformation, and persistence to staging tables
+- **Data Processing Service**: Additional data cleaning, transformation, and persistence to timeseries tables
 - **Feature Extraction Service**: Feature discovery, evaluation, and selection
 - **Quality Monitoring Service**: Data quality assessment and anomaly detection
 

@@ -1,0 +1,359 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "id": "m8onhgrl9es4yu4p4fo",
+      "type": "rectangle",
+      "x": 100,
+      "y": 100,
+      "width": 200,
+      "height": 120,
+      "backgroundColor": "#b2dfff",
+      "strokeColor": "#1971c2",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onhjv4qt29lrmmcwm",
+      "type": "text",
+      "x": 150,
+      "y": 120,
+      "strokeColor": "#000000",
+      "text": "FileWatcher.Server",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onhn3oyoh1c53ttw9",
+      "type": "text",
+      "x": 105,
+      "y": 150,
+      "strokeColor": "#000000",
+      "text": "- Monitors directory for files\n- Saves state to Redis\n- Uses circuit breaker pattern",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onhqm3yjs880kyk3q",
+      "type": "rectangle",
+      "x": 400,
+      "y": 100,
+      "width": 200,
+      "height": 120,
+      "backgroundColor": "#ffd8d6",
+      "strokeColor": "#c13c37",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onhth8lg65847zb5k",
+      "type": "text",
+      "x": 420,
+      "y": 120,
+      "strokeColor": "#000000",
+      "text": "FileWatcher.StateStore",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onhwmpwgouf0ahfth",
+      "type": "text",
+      "x": 405,
+      "y": 150,
+      "strokeColor": "#000000",
+      "text": "- Persists state to Redis\n- Implements retry mechanism\n- Handles Redis errors gracefully",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onhzwcacgn2ylr69f",
+      "type": "rectangle",
+      "x": 100,
+      "y": 300,
+      "width": 200,
+      "height": 120,
+      "backgroundColor": "#d0e8ff",
+      "strokeColor": "#364fc7",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8oni38oh3t6prvdrrk",
+      "type": "text",
+      "x": 110,
+      "y": 320,
+      "strokeColor": "#000000",
+      "text": "FileWatcherConnector",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8oni6q78u38rtrli6g",
+      "type": "text",
+      "x": 105,
+      "y": 350,
+      "strokeColor": "#000000",
+      "text": "- Polls for new files\n- Avoids duplicate files\n- Circuit breaker for errors\n- Retries with backoff",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onia4ulgbspi099q",
+      "type": "rectangle",
+      "x": 400,
+      "y": 300,
+      "width": 200,
+      "height": 120,
+      "backgroundColor": "#b5f4c5",
+      "strokeColor": "#087f5b",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onidbw50bha55f4kp",
+      "type": "text",
+      "x": 420,
+      "y": 320,
+      "strokeColor": "#000000",
+      "text": "FileQueueProducer",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onih9i4pdlwl8imes",
+      "type": "text",
+      "x": 405,
+      "y": 350,
+      "strokeColor": "#000000",
+      "text": "- Queue management (max 20)\n- Backpressure via GenStage\n- Priority queuing\n- Rate limiting (2 files/sec)",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onikkkc6939spvg3a",
+      "type": "rectangle",
+      "x": 400,
+      "y": 500,
+      "width": 200,
+      "height": 100,
+      "backgroundColor": "#f5e6ff",
+      "strokeColor": "#862e9c",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8oninlox7aobjpvlw",
+      "type": "text",
+      "x": 455,
+      "y": 520,
+      "strokeColor": "#000000",
+      "text": "Consumer(s)",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8oniqzzjpq0nxd54v",
+      "type": "text",
+      "x": 420,
+      "y": 550,
+      "strokeColor": "#000000",
+      "text": "- Process files (max 5 concurrent)\n- Report completion",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8oniun6nwoq1qhyhw7",
+      "type": "ellipse",
+      "x": 650,
+      "y": 150,
+      "width": 120,
+      "height": 60,
+      "backgroundColor": "#fffcc9",
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onixouu94r04fvak",
+      "type": "text",
+      "x": 680,
+      "y": 170,
+      "strokeColor": "#000000",
+      "text": "Redis",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onj10mc49ibzziesd",
+      "type": "rectangle",
+      "x": 20,
+      "y": 150,
+      "width": 40,
+      "height": 40,
+      "backgroundColor": "#fffdf7",
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onj46rfdpnrg2xuot",
+      "type": "text",
+      "x": 30,
+      "y": 160,
+      "strokeColor": "#000000",
+      "text": "File",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onj7s34baumyymsdi",
+      "type": "arrow",
+      "x": 60,
+      "y": 170,
+      "width": 40,
+      "height": 0,
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onjapx1w1eycenohi",
+      "type": "arrow",
+      "x": 300,
+      "y": 160,
+      "width": 100,
+      "height": 0,
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onjdwb1nk02mkjykn",
+      "type": "arrow",
+      "x": 600,
+      "y": 160,
+      "width": 50,
+      "height": 0,
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onjh07coz0ucc58de",
+      "type": "arrow",
+      "x": 200,
+      "y": 220,
+      "width": 0,
+      "height": 80,
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onjka9a4bjjzr3mll",
+      "type": "arrow",
+      "x": 300,
+      "y": 360,
+      "width": 100,
+      "height": 0,
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onjnjkssq6dksv1ts",
+      "type": "arrow",
+      "x": 500,
+      "y": 420,
+      "width": 0,
+      "height": 80,
+      "strokeColor": "#000000",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m8onjqqdufmcd4xnn3",
+      "type": "text",
+      "x": 350,
+      "y": 30,
+      "strokeColor": "#000000",
+      "text": "Data Processing Pipeline Architecture",
+      "fontSize": 20,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onjuh6pzd7l4wy9dg",
+      "type": "rectangle",
+      "x": 20,
+      "y": 500,
+      "width": 330,
+      "height": 150,
+      "backgroundColor": "#f8f9fa",
+      "strokeColor": "#495057",
+      "strokeWidth": 1
+    },
+    {
+      "id": "m8onjya8so84kfi07i",
+      "type": "text",
+      "x": 30,
+      "y": 510,
+      "strokeColor": "#000000",
+      "text": "Key Design Patterns",
+      "fontSize": 16,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onk2zfzpbfp35657",
+      "type": "text",
+      "x": 30,
+      "y": 540,
+      "strokeColor": "#000000",
+      "text": "• Circuit Breaker: Prevents cascading failures\n• Retry with Backoff: Handles transient errors\n• Producer-Consumer: Manages workload via GenStage\n• Queue Management: Controls flow and backpressure\n• Priority Queuing: Processes files by importance\n• Monitoring & Logging: Comprehensive observability",
+      "fontSize": 12,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onk65jaguwyn9lcxe",
+      "type": "text",
+      "x": 300,
+      "y": 340,
+      "strokeColor": "#000000",
+      "text": "File Data",
+      "fontSize": 10,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onk98kgc37bi3rpss",
+      "type": "text",
+      "x": 300,
+      "y": 140,
+      "strokeColor": "#000000",
+      "text": "State",
+      "fontSize": 10,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onkcegbjrfidcy5bt",
+      "type": "text",
+      "x": 600,
+      "y": 140,
+      "strokeColor": "#000000",
+      "text": "Persist",
+      "fontSize": 10,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onkfkk6uu00rdlh6u",
+      "type": "text",
+      "x": 190,
+      "y": 250,
+      "strokeColor": "#000000",
+      "text": "Poll",
+      "fontSize": 10,
+      "fontFamily": "1"
+    },
+    {
+      "id": "m8onkj0n5ec8bpsvzvg",
+      "type": "text",
+      "x": 500,
+      "y": 450,
+      "strokeColor": "#000000",
+      "text": "Files",
+      "fontSize": 10,
+      "fontFamily": "1"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}

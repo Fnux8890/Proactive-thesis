@@ -1,0 +1,59 @@
+# Build Stage
+FROM hexpm/elixir:1.18.3-erlang-27.3-alpine-3.18.9 AS build
+
+
+# Install build dependencies
+RUN apk add --no-cache build-base git
+
+# Set environment variables for building
+ENV MIX_ENV=prod
+
+WORKDIR /app
+
+# Install hex and rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Create basic project structure
+COPY . .
+
+# Create mix.exs if it doesn't exist
+RUN if [ ! -f mix.exs ]; then \
+      mix new . --sup --app pipeline && \
+      sed -i 's/defp deps do/defp deps do\n    [\n      {:redix, "~> 1.1"},\n      {:jason, "~> 1.4"},\n      {:file_system, "~> 0.2"}\n    ]/' mix.exs && \
+      sed -i 's/deps: deps()/deps: deps(),\n      releases: [\n        pipeline: [\n          include_executables_for: [:unix],\n          applications: [runtime_tools: :permanent]\n        ]\n      ]/' mix.exs; \
+    fi
+
+# Fetch and compile dependencies
+RUN mix deps.get --only prod && \
+    mix deps.compile
+
+# Compile the application
+RUN mix compile
+
+# Build release
+RUN mix release
+
+# Runtime Stage
+FROM alpine:3.18 AS app
+
+# Install runtime dependencies
+RUN apk add --no-cache libstdc++ ncurses-libs openssl inotify-tools
+
+ENV LANG=C.UTF-8
+ENV MIX_ENV=prod
+
+WORKDIR /app
+
+# Create directories
+RUN mkdir -p /app/data /app/results
+
+# Copy release from build stage
+COPY --from=build /app/_build/prod/rel/pipeline ./
+
+# Set proper permissions
+RUN chown -R nobody: /app
+USER nobody
+
+# Set default command
+ENTRYPOINT ["/app/bin/pipeline", "start"]
