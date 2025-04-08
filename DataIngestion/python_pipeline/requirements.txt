@@ -1,0 +1,13 @@
+pandas>=1.5,<3.0
+SQLAlchemy>=1.4,<3.0
+# Required for PostgreSQL/TimescaleDB interaction
+psycopg2-binary>=2.9,<3.0
+# Required for Parquet output format
+pyarrow>=10.0,<17.0
+# Add other dependencies if needed by specific cleaners or utils
+# openpyxl # Uncomment if Excel reading needed
+# python-dotenv # Useful for local development with .env files
+# Add other libraries like:
+# sqlalchemy
+# psycopg2-binary # Or psycopg2 depending on system build tools
+# openpyxl # For reading Excel files if needed 

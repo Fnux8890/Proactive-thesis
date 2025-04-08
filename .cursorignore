@@ -1,0 +1,96 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz  
+
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+*.log.*.*.*.*
+*.log.*.*.*.*.*
+*.log.*.*.*.*.*.*
+
+.env
+
+# Elixir specific
+/_build/
+/deps/
+/cover/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+*.beam
+/config/*.secret.exs
+.elixir_ls/
+
+# More specific Elixir patterns for this project
+DataIngestion/elixir_ingestion/_build/
+DataIngestion/elixir_ingestion/deps/
+DataIngestion/elixir_ingestion/priv/static/
+DataIngestion/elixir_ingestion/.elixir_ls/
+
+# Consider whether you want to include or exclude these Elixir files
+DataIngestion/elixir_ingestion/lib/ingestion_service/utils/
+DataIngestion/elixir_ingestion/priv/
+# DataIngestion/elixir_ingestion/mix.lock - This should be committed for reproducible builds
+
+# Metadata catalog - decide if you want to include or exclude
+DataIngestion/metadata_catalog/
+
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Docker volumes and data
+**/data/
+**/volumes/
+!/Data/
+
+# Airflow specific
+airflow.db
+airflow.cfg
+webserver_config.py
+DataIngestion/logs/
+DataIngestion/plugins/__pycache__/
+
+# Python specific (additional)
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pytest_cache/
+.coverage
+coverage.xml
+*.cover
+
+# Quality monitor - decide if you want to include or exclude these
+DataIngestion/quality_monitor/
+.windsurfrules
+
+DataIngestion/elixir_ingestion/web_service/_build/*
+DataIngestion/elixir_ingestion/web_service/deps/*
+DataIngestion/elixir_ingestion/all_lib_files.txt
+DataIngestion/elixir_ingestion/all_test_files.txt

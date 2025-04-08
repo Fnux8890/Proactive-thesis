@@ -62,6 +62,8 @@ defmodule Producer.FileQueueProducer do
     # Support both keyword list and map for options
     opts = if is_list(opts), do: opts, else: Map.to_list(opts)
 
+    Logger.info("[Producer.FileQueueProducer] Initializing with opts: #{inspect(opts)}")
+
     queue_check_interval = Keyword.get(opts, :queue_check_interval, 5_000)
     timeout_ms = Application.get_env(:pipeline, :producer_timeout_ms, @producer_timeout_ms)
     name = Keyword.get(opts, :name, __MODULE__)
@@ -93,6 +95,7 @@ defmodule Producer.FileQueueProducer do
 
   @impl true
   def handle_demand(demand, state) do
+    Logger.debug("[Producer.FileQueueProducer] handle_demand(#{demand}) called. Current demand: #{state.demand}, queue size: #{length(state.events)}")
     # Add the demand to existing demand
     total_demand = state.demand + demand
     Logger.debug("Received demand for #{demand} event(s), total demand: #{total_demand}")
@@ -122,6 +125,7 @@ defmodule Producer.FileQueueProducer do
 
   @impl true
   def handle_call({:enqueue_file, file_path, metadata}, _from, state) do
+    Logger.debug("[Producer.FileQueueProducer] handle_call(:enqueue_file, #{file_path}) called.")
     # Ensure the file exists
     if File.exists?(file_path) do
       # Generate a UUID for the file
@@ -185,7 +189,7 @@ defmodule Producer.FileQueueProducer do
       new_state = %{state | in_progress_files: new_in_progress}
 
       Logger.info("File #{file_id} processing completed")
-      {:reply, :ok, state}
+      {:reply, :ok, new_state}
     else
       # File wasn't found in our tracking
       Logger.warning("Cannot complete unknown file ID: #{file_id}")
@@ -244,6 +248,7 @@ defmodule Producer.FileQueueProducer do
 
   @impl true
   def handle_info(:check_timeouts, state) do
+    Logger.debug("[Producer.FileQueueProducer] handle_info(:check_timeouts) called.")
     timeout_ms = Application.get_env(:pipeline, :producer_timeout_ms, @producer_timeout_ms)
     now = System.system_time(:millisecond)
 

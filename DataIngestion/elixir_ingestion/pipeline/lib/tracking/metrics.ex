@@ -8,6 +8,7 @@ defmodule Pipeline.Tracking.Metrics do
   - Generate performance reports
   - Monitor pipeline throughput and latency
   """
+  use GenServer
   require Logger
 
   # ETS table name for metrics storage
@@ -16,16 +17,19 @@ defmodule Pipeline.Tracking.Metrics do
   # Metrics reporting interval (10 seconds)
   @reporting_interval 10_000
 
+  # --- Client API ---
+
   @doc """
-  Initializes the metrics system.
-
-  Creates the required ETS tables and schedules periodic reporting.
-  Should be called during application startup.
-
-  ## Returns
-    * :ok
+  Starts the Metrics GenServer.
   """
-  def init do
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  # --- Server Callbacks ---
+
+  @impl true
+  def init(_opts) do
     # Create metrics table if it doesn't exist
     if :ets.info(@metrics_table) == :undefined do
       :ets.new(@metrics_table, [
@@ -46,8 +50,28 @@ defmodule Pipeline.Tracking.Metrics do
     # Schedule metrics reporting
     schedule_reporting()
 
-    :ok
+    {:ok, %{}}
   end
+
+  # Handle periodic metrics reporting
+  @impl true
+  def handle_info(:report_metrics, state) do
+    # Get current rates
+    rates = get_processing_rates()
+
+    # Log metrics
+    Logger.info(
+      "Pipeline metrics: received=#{rates.received}, processed=#{rates.processed}, " <>
+        "failed=#{rates.failed}, skipped=#{rates.skipped}"
+    )
+
+    # Schedule next reporting
+    schedule_reporting()
+
+    {:noreply, state}
+  end
+
+  # --- Public Functions (that interact via ETS, no GenServer calls needed) ---
 
   @doc """
   Records the start of processing for a stage.
@@ -92,7 +116,7 @@ defmodule Pipeline.Tracking.Metrics do
 
       [] ->
         # No start time found, just record an event
-        Logger.warn("No start time found for #{item_id} at stage #{stage_id}")
+        Logger.warning("No start time found for #{item_id} at stage #{stage_id}")
     end
 
     # Increment appropriate counter based on status
@@ -163,30 +187,28 @@ defmodule Pipeline.Tracking.Metrics do
     * Map of stage IDs to their processing statistics
   """
   def get_stage_statistics do
-    # Find all duration entries (they have a specific format)
-    duration_pattern = {:_, :duration, :_}
-    all_durations = :ets.match(@metrics_table, {duration_pattern, {'$1', '$2'}})
+    # Match object pattern: {KeyPattern, ValuePattern}
+    # Key: "<stage_id>:duration"
+    # Value: {<total_duration>, <count>}
+    match_pattern = {"$1:duration", {"$2", "$3"}}
 
-    # Group by stage ID and calculate statistics
-    all_durations
-    |> Enum.group_by(fn [stage_id, _] -> stage_id end)
-    |> Enum.map(fn {stage_id, entries} ->
-      {total, count} =
-        Enum.reduce(entries, {0, 0}, fn [_, {t, c}], {acc_t, acc_c} ->
-          {acc_t + t, acc_c + c}
-        end)
+    # Fetch all matching entries: [[stage_id_str, total_duration, count]]
+    all_stats = :ets.match_object(@metrics_table, match_pattern)
 
-      # Calculate statistics
-      avg = if count > 0, do: total / count, else: 0
-
-      {stage_id,
+    # Process the matched statistics
+    all_stats
+    |> Enum.map(fn [stage_id_str, total, count] ->
+      # Calculate average, handling count=0
+      avg = if count > 0, do: total / count, else: 0.0
+      # Return map for this stage
+      {stage_id_str,
        %{
          avg_duration_ms: avg,
          total_items: count,
          total_duration_ms: total
        }}
     end)
-    |> Enum.into(%{})
+    |> Enum.into(%{}) # Convert list of {stage_id, stats_map} into a map
   end
 
   @doc """
@@ -251,22 +273,5 @@ defmodule Pipeline.Tracking.Metrics do
   # Schedule periodic metrics reporting
   defp schedule_reporting do
     Process.send_after(self(), :report_metrics, @reporting_interval)
-  end
-
-  # Handle periodic metrics reporting
-  def handle_info(:report_metrics, state) do
-    # Get current rates
-    rates = get_processing_rates()
-
-    # Log metrics
-    Logger.info(
-      "Pipeline metrics: received=#{rates.received}, processed=#{rates.processed}, " <>
-        "failed=#{rates.failed}, skipped=#{rates.skipped}"
-    )
-
-    # Schedule next reporting
-    schedule_reporting()
-
-    {:noreply, state}
   end
 end

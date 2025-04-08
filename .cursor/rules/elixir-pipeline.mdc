@@ -1,0 +1,73 @@
+---
+description: 
+globs: pipeline/**/*.{ex,exs}
+alwaysApply: false
+---
+# Cursor Rule: Elixir Data Ingestion Pipeline
+
+## High-Level Goal
+
+You are an expert Elixir developer assisting with a data ingestion pipeline. The primary goal is to create a robust, concurrent, and fault-tolerant system for processing files (initially CSV and JSON) discovered in a watched directory. Processed data is pushed to a Redis queue for downstream consumption. Prioritize clarity, OTP principles, efficient error handling, code standards, and preventative error mitigation through static analysis.
+
+## Project Structure (`pipeline/lib/`)
+
+*   `application.ex` & `pipeline.ex`: Main application and supervision tree setup.
+*   `connection_handler/`: Manages external connections (e.g., Redis pool via `ConnectionHandler.Client`).
+*   `file_watcher/`: Detects new/changed files (`FileWatcher.Server`). Uses Redis (`@redis_state_hash`) to track file states. Queues eligible files to Redis (`@redis_queue_list`).
+*   `producer/`: Dispatches work (`Producer.Dispatcher`). Manages concurrency limits (`@max_concurrent`), takes files from the Redis queue (`@redis_queue_list`), starts `Processor.FileProcessor` workers via `Processor.Supervisor`, monitors them, and updates Redis state (`@redis_state_hash`).
+*   `processer/`: Contains the actual file processing logic (`Processor.FileProcessor`) and its `DynamicSupervisor` (`Processor.Supervisor`). Handles parsing (CSV, JSON) and sending parsed data to Redis (`@redis_parsed_data_queue`).
+*   `tracking/`: (Likely for metrics/monitoring, e.g., `Pipeline.Tracking.Metrics`).
+*   `schemaInference/`: (Likely for determining data structure, consumes `parsed_data_queue`).
+*   `utils/`: General helper modules.
+*   `fault_handling/`: (Potentially for defining custom error handling or backoff strategies - currently unused).
+*   **Redis Usage:** Key interactions involve:
+    *   State Hash: `@redis_state_hash` (e.g., `file_processing_state`) storing states like "discovered", "processing", "processed", "failed", "permanently_failed".
+    *   Work Queue: `@redis_queue_list` (e.g., `files_to_process`) used by `FileWatcher` (LPUSH) and `Dispatcher` (RPOP).
+    *   Output Queue: `@redis_parsed_data_queue` (e.g., `parsed_data_queue`) where `Processor.FileProcessor` sends parsed data (LPUSH).
+
+## Elixir Best Practices
+
+*   **OTP Principles:** Adhere strictly to OTP. Use GenServers, Supervisors (including DynamicSupervisor where appropriate), and Tasks correctly. Ensure proper process linking and monitoring.
+*   **Concurrency:** Leverage Elixir's concurrency but be mindful of potential race conditions, especially when interacting with shared resources like Redis or the filesystem.
+*   **Immutability:** Embrace immutable data structures.
+*   **Pattern Matching:** Use pattern matching extensively in function heads and case statements for clarity and robustness.
+*   **Function Specs & Type Safety:** Use `@spec` typespecs diligently for all public functions and complex private functions to improve clarity and enable Dialyzer checks.
+*   **Static Analysis (Emphasized):** **Run `mix dialyzer` frequently** during development to catch type inconsistencies and potential runtime errors *before* they happen. Treat Dialyzer warnings seriously.
+*   **Code Style & Consistency (Emphasized):**
+    *   **Formatting:** **Always run `mix format`** before committing code. Ensure code adheres to standard Elixir formatting conventions for readability and maintainability.
+    *   **Linter Checks:** If Credo is configured (`mix credo`), **adhere to its suggestions**. Focus on rules related to code clarity, complexity reduction, consistency, and avoiding common pitfalls.
+*   **Logging:** Use the built-in `Logger` module. Use appropriate log levels (`debug`, `info`, `warning`, `error`). Provide context in log messages (e.g., file path, process ID). Avoid `Logger.warn` (use `Logger.warning`).
+*   **Dependencies:** Manage dependencies via `mix.exs`. Use established libraries (like `NimbleCSV`, `Jason`, `Redix`) where appropriate.
+*   **Configuration:** Use `config/config.exs` (and runtime/prod/dev variants) for configurable values (Redis host, paths, concurrency limits, etc.). Access them via `Application.get_env/3`.
+*   **Performance:** Be mindful of performance, especially with file I/O and large data streams. Use streaming (`Stream` module) where appropriate. Avoid loading entire large files into memory if possible. Benchmark critical sections if performance issues are suspected.
+*   **Testability:** Write code with testability in mind, even if not writing exhaustive tests currently. Prefer pure functions, clear module boundaries, and explicit dependencies to make future testing easier and reduce hidden side effects.
+
+## Error Handling & Fault Tolerance
+
+*   **Let It Crash (Selectively):** For transient errors within a worker (`Processor.FileProcessor`), allow the process to crash if recovery isn't straightforward.
+*   **Supervisor Strategy:**
+    *   `Processor.FileProcessor` workers started by `Producer.Dispatcher` via `Processor.Supervisor` should use `restart: :temporary`. The Dispatcher is responsible for handling the failure state in Redis.
+    *   Other core components (Dispatcher, FileWatcher, Connection Pools) should likely use `:one_for_one` or `:rest_for_one` depending on dependencies, with appropriate restart limits to prevent cascading failures or infinite restart loops.
+*   **State Management on Failure:** When a file fails processing permanently (e.g., unparseable CSV), the `Producer.Dispatcher` MUST update its state in Redis (`@redis_state_hash`) to `"permanently_failed"`.
+*   **File Watcher Skip:** The `FileWatcher.Server` MUST check the Redis state (`@redis_state_hash`) before queueing a file. It should skip files marked as `"processed"` or `"permanently_failed"`. It should re-queue files marked as `"failed"` (allowing for retries on transient errors, although current dispatcher logic sets `permanently_failed`).
+*   **Clear Error Messages:** Log descriptive error messages including the file path, the specific error reason, and relevant context.
+*   **Redis Robustness:** Handle potential Redis errors (connection issues, command failures) gracefully. Log errors but avoid crashing critical supervisors if possible. Currently, failures are logged, and processing for that specific file stops.
+
+## Specific Known Issues & Approaches
+
+*   **CSV Parsing (`\"` escape):** `NimbleCSV` struggles with `\"` as an escape character within quoted headers.
+    *   **Current Approach:** Manually split the file content into lines, separate the header, and parse *only* the data lines using `NimbleCSV.parse_string(..., headers: false)`.
+    *   **Future / Next Step:** Once basic data line parsing is confirmed working (Attempt 4), the immediate next step is to implement the logic to convert the list of values from each data row into a map. This will likely involve:
+        1.  Cleaning the original header line (read in `parse_csv_content`, replace `\"` with `"`).
+        2.  Implementing `convert_row_to_map(row_list, cleaned_header_keys)` (or similar) to zip the row values with the derived keys.
+        3.  Re-introducing the `Stream.map` call using this new function.
+*   **Debugging:** Use detailed `Logger.debug` calls within tricky functions (`Processor.FileProcessor.parse_csv_content`, `Producer.Dispatcher.dispatch_pending_work`) to trace execution flow and variable states when troubleshooting. Use the `results/processor_log.txt` for basic activity logging.
+
+## Code Generation Instructions
+
+*   When editing code, maintain the existing style and structure.
+*   Add `@spec` annotations for new or significantly modified functions.
+*   If adding new configuration, update `config/config.exs` and access via `Application.get_env`.
+*   When fixing bugs, explain the root cause and the fix clearly.
+*   If unsure about the best approach, explain the options and ask for clarification.
+*   **Always check for compilation errors (`mix compile`), formatting (`mix format`), and static analysis issues (`mix dialyzer`, `mix credo` if applicable) after making changes.** Resolve warnings and errors reported by these tools before proceeding. These checks are key to preventing runtime issues.

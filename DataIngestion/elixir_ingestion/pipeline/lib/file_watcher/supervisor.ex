@@ -8,7 +8,9 @@ defmodule FileWatcher.Supervisor do
 
   @impl true
   def init(_args) do
-    Logger.info("Starting FileWatcher Supervisor")
+    # Ensure previous logs are kept if they existed
+    Logger.info("[FileWatcher.Supervisor] Initializing...")
+    Logger.info("Starting FileWatcher Supervisor") # Keep original log if present
 
     children = [
       # Redis-based state store for file watcher
@@ -16,7 +18,14 @@ defmodule FileWatcher.Supervisor do
 
       # Main file watcher server that tracks files
       {FileWatcher.Server, [
-        watch_dir: Application.get_env(:pipeline, :watch_dir, "data")
+        # Pass :watch_paths key, ensuring it's a list
+        watch_paths:
+          case Application.get_env(:pipeline, :watch_dir, "/app/data") do
+            paths when is_list(paths) -> paths
+            path when is_binary(path) -> [path]
+            # Default to /app/data if config is invalid or missing
+            _ -> ["/app/data"]
+          end
       ]}
 
       # Additional file watcher components will go here

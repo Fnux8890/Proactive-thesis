@@ -225,7 +225,7 @@ defmodule Pipeline.FaultHandling.Recovery do
 
   # Move a failed item to the dead letter queue
   defp move_to_dead_letter_queue(failure_id, failure_data, config) do
-    Logger.warn(
+    Logger.warning(
       "Moving failed event #{failure_id} to dead letter queue after #{failure_data.recovery_attempts} attempts"
     )
 

@@ -1,0 +1,60 @@
+---
+description: 
+globs: DataIngestion/python_pipeline/**/*.py
+alwaysApply: false
+---
+<!-- Cursor Rules -->
+<!-- Glob: DataIngestion/python_pipeline/**/*.py -->
+<!-- ↑ The glob above targets all Python files within the python_pipeline directory and its subdirectories -->
+
+## Python Data Pipeline Guidelines
+
+When working on Python files within the `DataIngestion/python_pipeline/` directory, please adhere to the following guidelines:
+
+**1. Pipeline Goal:**
+   - The primary goal is to ingest raw data (CSV, JSON from `../../Data/`) and produce cleaned Parquet files in `DataIngestion/python_pipeline/cleaned_data/`.
+   - Refer to `DataIngestion/python_pipeline/meta_data.md` for detailed information on input file formats, delimiters, headers, and JSON structures. Use this metadata to inform loading and cleaning logic.
+
+**2. Core Libraries & Tools:**
+   - **Pandas:** Use Pandas for data manipulation (loading, cleaning, transforming).
+   - **Pathlib:** Prefer `pathlib.Path` over `os.path` for file system operations.
+   - **UV:** Use `uv` for package management if installing or updating dependencies (`uv pip install ...`, `uv pip freeze > requirements.txt`).
+   - **Environment Variables:** Use `os.getenv()` to read configuration like `DATA_SOURCE_PATH` and `OUTPUT_DATA_PATH`. Provide sensible defaults (e.g., `../../Data/` and `./cleaned_data/`).
+
+**3. Loading Data (`load_csv`, `load_json`):**
+   - **CSV:**
+     - Use `pandas.read_csv`.
+     - Leverage parameters based on `meta_data.md` (e.g., `sep`, `header`, `quoting`).
+     - Handle potential bad lines (`on_bad_lines='warn'` or `'skip'`).
+     - Consider `dtype` specification for specific columns if needed.
+   - **JSON:**
+     - Use `pandas.read_json` (especially with `lines=True` for JSON Lines format).
+     - For nested JSON, use the `json` library to load and then `pandas.json_normalize` to flatten.
+     - Check the `format` specified in `meta_data.md` to determine the loading strategy.
+     - Implement robust error handling (`try...except json.JSONDecodeError`).
+
+**4. Cleaning Data (`clean_data`):**
+   - Create a copy of the DataFrame before cleaning (`df.copy()`).
+   - Refer to `meta_data.md` for expected data types and formats.
+   - **Missing Values:** Fill numerical columns (e.g., with median/mean) and categorical/object columns (e.g., with mode or 'Unknown').
+   - **Data Types:** Convert columns to appropriate types (e.g., `pd.to_datetime` with `errors='coerce'`, `pd.to_numeric` with `errors='coerce'`). Handle conversion failures (e.g., drop `NaT` rows).
+   - **Standardization:** Strip whitespace from string columns (`.str.strip()`). Rename columns for consistency (snake_case, no special characters).
+   - **Quoted Data:** Pay attention to data that might be enclosed in quotes (especially in the `output-*.csv` files) and handle potential type conversion issues.
+   - **Duplicates/Outliers:** Implement strategies if necessary.
+
+**5. Saving Data (`save_data`):**
+   - Save cleaned data to Parquet format using `df.to_parquet(..., index=False)`.
+   - Ensure the output directory exists (`output_dir.mkdir(parents=True, exist_ok=True)`).
+   - Use a clear naming convention (e.g., `cleaned_{original_stem}.parquet`).
+
+**6. Docker & Testing:**
+   - The pipeline is intended to be runnable via Docker Compose.
+   - Use the command `docker compose up -d --build` for building and running in detached mode.
+   - Ensure the `Dockerfile` uses `uv` and the `docker-compose.yml` correctly maps volumes for data input and output.
+
+**7. General Python Style:**
+   - Follow PEP 8 guidelines.
+   - Use type hints.
+   - Keep functions modular and focused.
+
+Remember to consult the `meta_data.md` file frequently when implementing loading or cleaning logic specific to a file type.

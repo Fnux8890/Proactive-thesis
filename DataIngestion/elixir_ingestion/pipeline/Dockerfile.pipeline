@@ -1,59 +1,77 @@
 # Build Stage
-FROM hexpm/elixir:1.18.3-erlang-27.3-alpine-3.18.9 AS build
+# Use the full Debian-based image
+FROM elixir:1.18.3 AS build
 
+# Install build dependencies using apt-get
+# Clean up apt cache afterwards
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install build dependencies
-RUN apk add --no-cache build-base git
+# Set the flags to completely disable time correction
+# ENV ERL_FLAGS="+c false"
+# ENV ERL_AFLAGS="+c false"
 
 # Set environment variables for building
-ENV MIX_ENV=prod
+ENV MIX_ENV=dev
+ENV MIX_DEPS_PATH=/app/deps
+ENV MIX_BUILD_PATH=/app/_build
 
 WORKDIR /app
 
-# Install hex and rebar
-RUN mix local.hex --force && \
-    mix local.rebar --force
+# --- Dependency Caching Optimization ---
+# 1. Copy only dependency definition files
+COPY mix.exs mix.lock ./
 
-# Create basic project structure
-COPY . .
-
-# Create mix.exs if it doesn't exist
+# 2. Create mix.exs if it doesn't exist (only runs if mix.exs wasn't copied)
+#    (Note: This logic might be less useful now if mix.exs is always expected)
 RUN if [ ! -f mix.exs ]; then \
       mix new . --sup --app pipeline && \
-      sed -i 's/defp deps do/defp deps do\n    [\n      {:redix, "~> 1.1"},\n      {:jason, "~> 1.4"},\n      {:file_system, "~> 0.2"}\n    ]/' mix.exs && \
+      sed -i 's/defp deps do/defp deps do\n    [\n      {:redix, "~> 1.1"},\n      {:jason, "~> 1.4"}\n      # Add other deps here if needed\n    ]/' mix.exs && \
       sed -i 's/deps: deps()/deps: deps(),\n      releases: [\n        pipeline: [\n          include_executables_for: [:unix],\n          applications: [runtime_tools: :permanent]\n        ]\n      ]/' mix.exs; \
     fi
 
-# Fetch and compile dependencies
-RUN mix deps.get --only prod && \
-    mix deps.compile
+# 3. Fetch and compile dependencies in separate steps
+# These will now run with ERL_FLAGS set
+RUN mix deps.get --only prod
+RUN mix deps.compile
 
-# Compile the application
+# --- Application Build ---
+# 4. Copy the rest of the application code
+COPY . .
+
+# 5. Compile the application (already compiled deps won't be recompiled)
 RUN mix compile
 
-# Build release
-RUN mix release
+# Create the release AND verify directory existence in one step
+# If mix release fails, this whole step fails and shows output
+RUN mix release && ls -la /app/_build/rel/
 
-# Runtime Stage
-FROM alpine:3.18 AS app
+# --- Runtime Stage ---
+# Use the full Debian-based image for runtime as well for consistency
+FROM elixir:1.18.3 AS app
 
-# Install runtime dependencies
-RUN apk add --no-cache libstdc++ ncurses-libs openssl inotify-tools
+# Install runtime dependencies (full image has many pre-installed)
+# Only install essentials if not already present
+RUN apt-get update && apt-get install -y --no-install-recommends curl wget \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=C.UTF-8
-ENV MIX_ENV=prod
+ENV MIX_ENV=dev
 
 WORKDIR /app
 
 # Create directories
 RUN mkdir -p /app/data /app/results
 
-# Copy release from build stage
-COPY --from=build /app/_build/prod/rel/pipeline ./
+# Copy release from build stage (using corrected path)
+COPY --from=build /app/_build/rel/pipeline ./
 
-# Set proper permissions
-RUN chown -R nobody: /app
-USER nobody
+# Set proper permissions (Run as non-root)
+# Create a non-root user and group
+RUN groupadd -g 1000 appuser && \
+    useradd -u 1000 -g 1000 -ms /bin/bash appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Set default command
 ENTRYPOINT ["/app/bin/pipeline", "start"]

@@ -75,6 +75,7 @@ defmodule Producer.Supervisor do
 
   @impl true
   def init(_opts) do
+    Logger.info("[Producer.Supervisor] Initializing...")
     # Define child processes
     children = [
       # Start FileQueueProducer

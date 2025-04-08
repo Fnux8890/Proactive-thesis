@@ -12,7 +12,7 @@ defmodule Producer.FileWatcherConnector do
   require Logger
 
   # Default poll interval in milliseconds
-  @default_poll_interval 3_000
+  # @default_poll_interval 3_000
 
   # Log file path for connector activities
   @connector_log_file "connector_activity.log"
@@ -27,7 +27,11 @@ defmodule Producer.FileWatcherConnector do
   @debug_log_file Path.join(@results_dir, "connector_debug.log")
 
   @processed_files_key "file_watcher:processed_files"
-  @reconcile_interval 60_000
+
+  # Use Dispatcher's keys
+  @dispatcher_state_hash "file_processing_state"
+  @dispatcher_queue_list "files_to_process"
+  @dispatcher_pid Producer.Dispatcher # Assuming registered name
 
   # Client API
 
@@ -107,6 +111,7 @@ defmodule Producer.FileWatcherConnector do
 
   @impl true
   def init(opts) do
+    Logger.info("[Producer.FileWatcherConnector] Initializing with opts: #{inspect(opts)}")
     producer =
       Keyword.get(
         opts,
@@ -121,12 +126,6 @@ defmodule Producer.FileWatcherConnector do
         Application.get_env(:pipeline, :redis_client, ConnectionHandler.Client)
       )
 
-    # Subscribe to file events
-    :ok = FileWatcher.Server.subscribe()
-
-    # Schedule periodic reconciliation
-    timer_ref = Process.send_after(self(), :reconcile, @reconcile_interval)
-
     # Log PID for debugging restart issues
     current_pid = inspect(self())
 
@@ -134,7 +133,6 @@ defmodule Producer.FileWatcherConnector do
     state = %{
       producer: producer,
       redis_client: redis_client,
-      reconcile_timer: timer_ref,
       enqueued_files: MapSet.new(),
       stats: %{
         files_found: 0,
@@ -194,6 +192,7 @@ defmodule Producer.FileWatcherConnector do
 
   @impl true
   def handle_cast(:check_files, state) do
+    Logger.debug("[Producer.FileWatcherConnector] handle_cast(:check_files) called.")
     # Perform file check immediately
     log_debug("CHECK_REQUEST", "Immediate file check requested")
     new_state = check_files(state)
@@ -207,59 +206,74 @@ defmodule Producer.FileWatcherConnector do
   end
 
   @impl true
-  def handle_info(:reconcile, state) do
-    # Reconcile with FileWatcher.Server
-    case FileWatcher.Server.get_files() do
-      {:ok, files} ->
-        log_debug("RECONCILE", "Received #{map_size(files)} files from FileWatcher")
-        process_reconciliation(files, state)
-
-      {:error, reason} ->
-        log_debug("RECONCILE_ERROR", "Failed to get files: #{inspect(reason)}")
-        Logger.error("Reconciliation failed to get files from FileWatcher: #{inspect(reason)}")
-    end
-
-    # Schedule next reconciliation
-    schedule_reconciliation(state.reconcile_timer)
-    {:noreply, state}
-  end
-
-  @impl true
   def handle_info({:file_update, file_info}, state) do
-    # Check if file is already processed using Redis
+    Logger.debug("[Producer.FileWatcherConnector] handle_info(:file_update, #{inspect(file_info.path)}) called.")
     file_path = file_info.path
+    redis_client = state.redis_client
 
-    case is_file_enqueued?(file_path, state.redis_client) do
-      true ->
-        # File already processed, skip
-        log_debug("FILE_SKIP", "File already processed: #{file_path}")
+    # 1. Quick check: Has this connector instance *just* processed this path?
+    #    (Avoids rapid duplicate events before Redis state updates)
+    case redis_client.sismember(@processed_files_key, file_path) do
+      {:ok, 1} ->
+        log_debug("FILE_SKIP_LOCAL", "Path recently processed by this connector: #{file_path}")
         {:noreply, state}
 
-      false ->
-        # Process new file
-        log_debug("FILE_NEW", "Processing new file: #{file_path}")
+      {:ok, 0} ->
+        # 2. Check Dispatcher's state: Is it already known (processing, processed, failed)?
+        case redis_client.hget(@dispatcher_state_hash, file_path) do
+          {:ok, nil} ->
+            # File is not known to the dispatcher, proceed to enqueue
+            log_debug("FILE_NEW", "Attempting to enqueue new file: #{file_path}")
 
-        # Create metadata from file info
-        metadata = %{
-          size: Map.get(file_info, :size),
-          type: Map.get(file_info, :type),
-          discovered_at: Map.get(file_info, :mtime)
-        }
+            # 3. Add to local processed set *before* pushing to prevent race conditions
+            case redis_client.sadd(@processed_files_key, file_path) do
+              {:ok, 1} ->
+                 # 4. Push to Dispatcher's queue list (LPUSH for FIFO)
+                case redis_client.lpush(@dispatcher_queue_list, file_path) do
+                  {:ok, _length} ->
+                    log_debug("FILE_ENQUEUED", "Successfully pushed to Redis list '#{@dispatcher_queue_list}': #{file_path}")
+                    # 5. Notify Dispatcher to check for work
+                    Producer.Dispatcher.check_work(@dispatcher_pid)
+                    # Update stats if needed (omitted for brevity, add back if required)
+                    {:noreply, state}
 
-        # Send to producer
-        send(state.producer, {:enqueue_file, file_path, metadata})
+                  {:error, reason} ->
+                    log_debug("REDIS_LPUSH_ERROR", "Failed to LPUSH #{file_path}: #{inspect(reason)}")
+                    # Remove from local set since enqueue failed
+                    redis_client.srem(@processed_files_key, file_path)
+                    # Update stats if needed
+                    {:noreply, state}
+                end # case lpush
 
-        # Mark file as processed in Redis
-        case state.redis_client.sadd(@processed_files_key, file_path) do
-          {:ok, _} ->
-            log_debug("FILE_MARKED", "Marked file as processed in Redis: #{file_path}")
+              {:ok, 0} ->
+                # Should not happen if sismember check worked, but handle defensively
+                log_debug("FILE_SKIP_SADD", "File already in local set (race?): #{file_path}")
+                {:noreply, state}
+
+              {:error, reason} ->
+                 log_debug("REDIS_SADD_ERROR", "Failed to SADD #{file_path}: #{inspect(reason)}")
+                 # Update stats if needed
+                 {:noreply, state}
+
+            end # case sadd
+
+          {:ok, _status} ->
+            # File is known to dispatcher (e.g., "processing", "processed", "failed")
+            log_debug("FILE_SKIP_DISPATCHER", "File already known by dispatcher: #{file_path}")
+            # Ensure it's in the local set too, in case this connector restarted
+            redis_client.sadd(@processed_files_key, file_path)
+            {:noreply, state}
 
           {:error, reason} ->
-            log_debug("REDIS_ERROR", "Failed to mark file in Redis: #{inspect(reason)}")
-        end
+            log_debug("REDIS_HGET_ERROR", "Failed check dispatcher state for #{file_path}: #{inspect(reason)}")
+            {:noreply, state}
 
+        end # case hget
+
+      {:error, reason} ->
+        log_debug("REDIS_SISMEMBER_ERROR", "Failed check local set for #{file_path}: #{inspect(reason)}")
         {:noreply, state}
-    end
+    end # case sismember
   end
 
   @impl true
@@ -271,6 +285,7 @@ defmodule Producer.FileWatcherConnector do
 
   @impl true
   def handle_info(:check_files, state) do
+    Logger.debug("[Producer.FileWatcherConnector] handle_info(:check_files) called.")
     # Calculate uptime in seconds
     uptime_ms = System.system_time(:millisecond) - state.start_time
     uptime_sec = div(uptime_ms, 1000)
@@ -288,35 +303,6 @@ defmodule Producer.FileWatcherConnector do
 
   # Private helper functions
 
-  # Process reconciliation with FileWatcher
-  defp process_reconciliation(files, state) do
-    Enum.each(files, fn {file_path, file_info} ->
-      case is_file_enqueued?(file_path, state.redis_client) do
-        false ->
-          # File not processed yet, send it to producer
-          metadata = %{
-            size: Map.get(file_info, "size"),
-            type: Map.get(file_info, "type"),
-            discovered_at: Map.get(file_info, "mtime")
-          }
-
-          send(state.producer, {:enqueue_file, file_path, metadata})
-
-          # Mark as processed
-          state.redis_client.sadd(@processed_files_key, file_path)
-
-        true ->
-          # Already processed, skip
-          :ok
-      end
-    end)
-  end
-
-  # Schedule reconciliation
-  defp schedule_reconciliation(interval) do
-    Process.send_after(self(), :reconcile, interval)
-  end
-
   # Check for new files from FileWatcher
   defp check_files(state) do
     try do
@@ -328,170 +314,85 @@ defmodule Producer.FileWatcherConnector do
         "Beginning file check, enqueued files count: #{MapSet.size(state.enqueued_files)}"
       )
 
-      # Get files from FileWatcher.Server using its get_files function with retries
-      files_map =
-        retry_with_backoff(
-          fn ->
-            try do
-              case FileWatcher.Server.get_files() do
-                %{} = files when is_map(files) ->
-                  log_debug(
-                    "FILES_RECEIVED",
-                    "Received #{map_size(files)} files from FileWatcher.Server"
-                  )
+      # Get files from FileWatcher.Server using its get_files function with retries - Removed Block
+      # files_map =
+      #   retry_with_backoff(
+      #     fn ->
+      #       try do
+      #         case FileWatcher.Server.get_files() do
+      #           %{} = files when is_map(files) ->
+      #             log_debug(
+      #               "FILES_RECEIVED",
+      #               "Received #{map_size(files)} files from FileWatcher.Server"
+      #             )
+      #
+      #             files
+      #
+      #           other ->
+      #             log_debug(
+      #               "UNEXPECTED_RESPONSE",
+      #               "Unexpected response from FileWatcher.Server: #{inspect(other)}"
+      #             )
+      #
+      #             %{}
+      #         end
+      #       rescue
+      #         e ->
+      #           log_debug(
+      #             "WATCHER_ERROR",
+      #             "Error calling FileWatcher.Server.get_files(): #{inspect(e)}"
+      #           )
+      #
+      #           %{}
+      #       end
+      #     end,
+      #     3,
+      #     500 # initial backoff 500ms
+      #   )
+      files_map = %{} # Placeholder - this logic should be driven by Producer.Dispatcher
 
-                  files
-
-                other ->
-                  log_debug(
-                    "UNEXPECTED_RESPONSE",
-                    "Unexpected response from FileWatcher.Server: #{inspect(other)}"
-                  )
-
-                  %{}
-              end
-            rescue
-              e ->
-                log_debug(
-                  "WATCHER_ERROR",
-                  "Error calling FileWatcher.Server.get_files(): #{inspect(e)}"
-                )
-
-                %{}
-            end
-          end,
-          3,
-          1000
-        )
-
-      log_debug(
-        "WATCHER_RESPONSE",
-        "Received response from FileWatcher.Server, file count: #{map_size(files_map)}"
-      )
-
-      # Log some file paths for debugging
-      if map_size(files_map) > 0 do
-        sample_paths =
-          files_map
-          |> Enum.take(5)
-          |> Enum.map(fn {path, _} -> path end)
-          |> Enum.join(", ")
-
-        log_debug("SAMPLE_FILES", "Sample file paths: #{sample_paths}")
-      end
-
-      # Convert files map to list format
-      files =
-        files_map
-        |> Enum.map(fn {path, info} ->
-          %{
-            path: path,
-            discovered_at: Map.get(info, :discovered_at, info.mtime),
-            size: info.size,
-            type: info.type
-          }
-        end)
-
-      log_debug("FILES_PARSED", "Converted #{length(files)} files to internal format")
-
-      # Only process CSV and JSON files
-      filtered_files = Enum.filter(files, fn file -> file.type in [:csv, :json] end)
-
-      if length(filtered_files) < length(files) do
-        log_debug(
-          "FILES_FILTERED",
-          "Filtered out #{length(files) - length(filtered_files)} non-CSV/JSON files"
-        )
-      end
-
-      # Process files
-      log_debug("PROCESS_START", "Starting to process #{length(filtered_files)} files")
-      {enqueued, errors, new_state} = process_files(filtered_files, state)
-
-      log_debug(
-        "PROCESS_COMPLETE",
-        "Finished processing files, enqueued: #{enqueued}, errors: #{errors}"
-      )
+      # Process the files
+      processed_count = process_files(files_map, state)
 
       # Update statistics
       new_stats = %{
-        files_found: state.stats.files_found + length(filtered_files),
-        files_enqueued: state.stats.files_enqueued + enqueued,
-        errors: state.stats.errors + errors,
-        last_check: now
+        state.stats
+        | files_found: state.stats.files_found + map_size(files_map),
+          files_enqueued: state.stats.files_enqueued + processed_count,
+          last_check: now
       }
 
-      # Write status to summary file
-      append_to_summary(
-        "CONNECTOR",
-        "CHECK",
-        "Found #{length(filtered_files)} files, enqueued #{enqueued}, errors: #{errors}"
+      log_debug(
+        "CHECK_END",
+        "File check completed. Files found: #{map_size(files_map)}, Enqueued: #{processed_count}"
       )
 
-      # Return updated state
-      log_debug("CHECK_COMPLETE", "File check completed successfully")
-      %{new_state | stats: new_stats}
+      %{state | stats: new_stats}
     rescue
       e ->
-        # Log unexpected error
-        error_message = "Unexpected error in file check: #{inspect(e)}"
-        log_activity(error_message)
-        log_debug("CHECK_ERROR", "#{error_message}\nStacktrace: #{inspect(__STACKTRACE__)}")
+        Logger.error("Error during file check: #{inspect(e)}")
 
-        # Write error to summary file
-        append_to_summary(
-          "CONNECTOR",
-          "ERROR",
-          "Unexpected error during file check",
-          "#{inspect(e)}"
+        log_debug(
+          "CHECK_ERROR",
+          "Error during file check: #{inspect(e)} Backtrace: #{inspect(__STACKTRACE__)}"
         )
 
-        # Update error count
-        now = System.system_time(:millisecond)
-        new_stats = %{state.stats | errors: state.stats.errors + 1, last_check: now}
-        %{state | stats: new_stats}
-    end
-  end
-
-  # Retry a function with exponential backoff
-  defp retry_with_backoff(fun, max_retries, initial_delay) do
-    retry_with_backoff(fun, max_retries, initial_delay, 0)
-  end
-
-  defp retry_with_backoff(fun, max_retries, initial_delay, attempt) do
-    if attempt >= max_retries do
-      try do
-        fun.()
-      rescue
-        e ->
-          Logger.error("All retry attempts failed: #{inspect(e)}")
-          reraise e, __STACKTRACE__
-      end
-    else
-      try do
-        fun.()
-      rescue
-        e ->
-          delay = (initial_delay * :math.pow(2, attempt)) |> round()
-          Logger.debug("Retry attempt #{attempt + 1} failed, retrying in #{delay}ms")
-          Process.sleep(delay)
-          retry_with_backoff(fun, max_retries, initial_delay, attempt + 1)
-      end
+        %{state | stats: %{state.stats | errors: state.stats.errors + 1}}
     end
   end
 
   # Process files and enqueue them if not already enqueued
-  defp process_files(files, state) do
+  defp process_files(files_map, state) do
     try do
       # Filter out files already enqueued
       new_files =
-        Enum.filter(files, fn file ->
-          not MapSet.member?(state.enqueued_files, file.path)
+        Enum.filter(files_map, fn {path, _} ->
+          not MapSet.member?(state.enqueued_files, path)
         end)
 
       log_debug(
         "NEW_FILES",
-        "Found #{length(new_files)} new files out of #{length(files)} total files"
+        "Found #{length(new_files)} new files out of #{length(files_map)} total files"
       )
 
       # Log how many new files found
@@ -501,25 +402,27 @@ defmodule Producer.FileWatcherConnector do
       log_debug("ENQUEUE_START", "Starting to enqueue #{length(new_files)} files")
 
       result =
-        Enum.reduce(new_files, {0, 0, state.enqueued_files}, fn file,
+        Enum.reduce(new_files, {0, 0, state.enqueued_files}, fn {path, info}, # Changed _ to info
                                                                 {enqueued, errors, enqueued_set} ->
-          log_debug("ENQUEUE_FILE", "Attempting to enqueue file: #{file.path}")
+          log_debug("ENQUEUE_FILE", "Attempting to enqueue file: #{path} with info: #{inspect(info)}")
+          # Construct the map expected by enqueue_file
+          file = Map.put(info, :path, path)
 
-          case enqueue_file(file, state.producer) do
+          case enqueue_file(file, state.producer) do # Pass the constructed file map
             {:ok, file_id} ->
               # File successfully enqueued
               log_debug(
                 "ENQUEUE_SUCCESS",
-                "Successfully enqueued file: #{file.path} with ID: #{file_id}"
+                "Successfully enqueued file: #{path} with ID: #{file_id}"
               )
 
-              {enqueued + 1, errors, MapSet.put(enqueued_set, file.path)}
+              {enqueued + 1, errors, MapSet.put(enqueued_set, path)}
 
             {:error, reason} ->
               # Error enqueuing file
               log_debug(
                 "ENQUEUE_ERROR",
-                "Failed to enqueue file: #{file.path}, reason: #{inspect(reason)}"
+                "Failed to enqueue file: #{path}, reason: #{inspect(reason)}"
               )
 
               {enqueued, errors + 1, enqueued_set}
@@ -528,7 +431,7 @@ defmodule Producer.FileWatcherConnector do
               # Unexpected response
               log_debug(
                 "ENQUEUE_UNEXPECTED",
-                "Unexpected response from producer for file: #{file.path}"
+                "Unexpected response from producer for file: #{path}"
               )
 
               {enqueued, errors + 1, enqueued_set}

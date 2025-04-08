@@ -70,10 +70,12 @@ defmodule Pipeline.Tracking.Supervisor do
 
   @impl true
   def init(_init_arg) do
-    # Initialize the metrics system
-    Pipeline.Tracking.Metrics.init()
+    # Removed Metrics.init() call here
 
     children = [
+      # Start the Metrics GenServer first
+      Pipeline.Tracking.Metrics,
+
       # Registry for tracking processes
       Pipeline.Tracking.Registry,
 

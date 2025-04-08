@@ -18,20 +18,18 @@ defmodule Pipeline.Supervisor do
     Logger.info("Starting Pipeline Supervisor")
 
     children = [
-      # Start with the FileWatcher supervisor
-      # This will manage all file watcher related processes
-      {FileWatcher.Supervisor, []},
-
-      # Additional pipeline components will be added here
-      # as they are implemented
-      # {Pipeline.Processor.Supervisor, []},
-      # ...
-
-      # Add our producers supervisor
-      Producer.Supervisor,
-
-      # Add tracking supervisor if not already present
-      Pipeline.Tracking.Supervisor
+      # Supervisors for connection handling, Redis pool, etc.
+      ConnectionHandler.Supervisor,
+      # Start Tracking system BEFORE Dispatcher
+      Pipeline.Tracking.Supervisor,
+      # Producer/Dispatcher system
+      Producer.Dispatcher,
+      # File Watching system
+      FileWatcher.Supervisor,
+      # Processor system (handles parsing)
+      Processor.Supervisor,
+      # Schema Inference system (consumes parsed data)
+      {SchemaInference.Server, name: SchemaInference.Server}
     ]
 
     # Use :one_for_one strategy for pipeline components so that

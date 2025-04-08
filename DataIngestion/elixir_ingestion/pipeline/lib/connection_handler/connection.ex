@@ -90,11 +90,20 @@ defmodule ConnectionHandler.Connection do
   defp connect do
     redis_url = System.get_env("REDIS_URL") || @default_redis_url
     uri = URI.parse(redis_url)
+    host = uri.host
+    port = uri.port
 
-    # Extract connection info from URI
-    host = uri.host || "localhost"
-    port = uri.port || 6379
-    password = uri.userinfo && URI.userinfo_to_string(uri.userinfo)
+    password =
+      case uri.userinfo do
+        nil -> nil
+        userinfo ->
+          case String.split(userinfo, ":", parts: 2) do
+            [_user, pass] -> to_charlist(pass)
+            _ -> nil # No password part found
+          end
+      end
+
+    Logger.info("Attempting to connect to Redis at #{uri.host}:#{uri.port}")
 
     # Build connection options
     opts = [
@@ -108,9 +117,6 @@ defmodule ConnectionHandler.Connection do
 
     # Add password if present
     opts = if password, do: Keyword.put(opts, :password, password), else: opts
-
-    # Log connection attempt
-    Logger.info("Attempting to connect to Redis at #{host}:#{port}")
 
     case Redix.start_link(opts) do
       {:ok, conn} ->

@@ -147,8 +147,9 @@ defmodule Pipeline.Tracking.CleanupManager do
             Logger.debug("Tracker for item #{item_id} already terminated")
         end
 
-      _ ->
-        Logger.warn("Could not retrieve status for item #{item_id} during cleanup")
+      other ->
+        # Log that getting the tracker PID failed unexpectedly
+        Logger.warning("Failed to get tracker PID for item #{item_id}, received: #{inspect(other)}")
     end
   end
 

@@ -307,12 +307,15 @@ defmodule Pipeline.Tracking.ItemTracker do
     end
   end
 
-  # Notify completion manager about completed item
+  # Helper to notify cleanup manager
   defp notify_completion(state) do
-    try do
-      Pipeline.Tracking.CleanupManager.item_completed(state.id)
-    rescue
-      _ -> Logger.warn("Failed to notify cleanup manager about completed item #{state.id}")
+    case Application.get_env(:pipeline, :cleanup_manager, Pipeline.Tracking.CleanupManager) do
+      nil -> :ok # No manager configured
+      manager ->
+        case GenServer.cast(manager, {:item_complete, state.id}) do
+          :ok -> :ok
+          _ -> Logger.warning("Failed to notify cleanup manager about completed item #{state.id}")
+        end
     end
   end
 

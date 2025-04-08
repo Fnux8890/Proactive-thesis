@@ -1,20 +1,16 @@
 # Build stage
-FROM elixir:1.18.2-alpine AS builder
+FROM elixir:1.18.2-slim AS builder
 
 WORKDIR /app
 
-# Install dependencies needed for building
-RUN apk add --no-cache build-base git
-
-# Install hex and rebar
-RUN mix local.hex --force && \
-    mix local.rebar --force
+# Install dependencies needed for building using apt-get
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential git ca-certificates
 
 # Copy the data processing script
 COPY process_data_file.exs .
 
 # Final stage - runtime image
-FROM elixir:1.18.2-alpine
+FROM elixir:1.18.2-slim
 
 WORKDIR /app
 
@@ -27,7 +23,7 @@ COPY --from=builder /app/process_data_file.exs .
 # Set environment variables
 ENV MIX_ENV=prod
 
-# Add a health check
+# No need for specific health check packages, Elixir can handle this
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD elixir -e "System.stop(0)"
 

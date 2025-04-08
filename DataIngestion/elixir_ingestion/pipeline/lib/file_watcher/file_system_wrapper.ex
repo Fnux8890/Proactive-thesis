@@ -45,17 +45,17 @@ defmodule FileWatcher.FileSystemWrapper do
   @doc """
   Stops a file system watcher process.
 
-  Delegates to FileSystem.stop/1.
+  Uses GenServer.stop/1 on the worker process.
 
   ## Parameters
-    * pid - The file system watcher process
+    * pid - The file system watcher process PID
 
   ## Returns
-    * `:ok` - If the process was stopped successfully
-    * `{:error, reason}` - If the process could not be stopped
+    * :ok - If the process was stopped successfully
+    * {:error, reason} - If the process could not be stopped
   """
   @impl FileWatcher.FileSystemBehaviour
-  def stop(pid) do
-    FileSystem.stop(pid)
+  def stop(pid) when is_pid(pid) do
+    GenServer.stop(pid)
   end
 end

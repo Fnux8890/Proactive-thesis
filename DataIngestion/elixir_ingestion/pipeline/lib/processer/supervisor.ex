@@ -12,6 +12,7 @@ defmodule Processor.Supervisor do
 
   @impl true
   def init(_init_arg) do
+    Logger.info("[Processor.Supervisor] Initializing...")
     Logger.info("Starting Processor Supervisor")
     # Restart workers temporarily if they crash, but don't restart indefinitely
     DynamicSupervisor.init(

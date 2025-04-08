@@ -52,17 +52,20 @@ defmodule FileWatcher.StateStore do
 
   @impl GenServer
   def init(_opts) do
+    Logger.info("[FileWatcher.StateStore] Initializing...")
     {:ok, %{}}
   end
 
   @impl GenServer
   def handle_call(:load_state, _from, state) do
+    Logger.debug("[FileWatcher.StateStore] handle_call(:load_state)")
     result = do_load_state()
     {:reply, result, state}
   end
 
   @impl GenServer
   def handle_call({:save_state, files}, _from, state) do
+    Logger.debug("[FileWatcher.StateStore] handle_call(:save_state, #{map_size(files)} files)")
     result = do_save_state(files)
     {:reply, result, state}
   end

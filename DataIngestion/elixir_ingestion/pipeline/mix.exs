@@ -5,7 +5,7 @@ defmodule Pipeline.MixProject do
     [
       app: :pipeline,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.18.3",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [
@@ -35,6 +35,7 @@ defmodule Pipeline.MixProject do
 
       # Processing dependencies
       {:gen_stage, "~> 1.1"},
+      {:nimble_csv, "~> 1.2"},
 
       # File handling dependencies
       {:file_system, "~> 0.2"},

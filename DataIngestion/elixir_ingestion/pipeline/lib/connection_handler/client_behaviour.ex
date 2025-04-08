@@ -180,4 +180,47 @@ defmodule ConnectionHandler.ClientBehaviour do
     * `{:error, reason}` - If setting expiration failed.
   """
   @callback expire(key :: String.t(), seconds :: integer()) :: {:ok, integer()} | {:error, term()}
+
+  @doc """
+  Sets the string value of a hash field.
+
+  ## Parameters
+    * `key` - The key of the hash.
+    * `field` - The field in the hash.
+    * `value` - The value to set.
+
+  ## Returns
+    * `{:ok, 1}` - If field is a new field in the hash and value was set.
+    * `{:ok, 0}` - If field already exists in the hash and the value was updated.
+    * `{:error, reason}` - An error occurred.
+  """
+  @callback hset(key :: String.t(), field :: String.t(), value :: String.t()) ::
+              {:ok, integer()} | {:error, term()}
+
+  @doc """
+  Gets the value of a hash field.
+
+  ## Parameters
+    * `key` - The key of the hash.
+    * `field` - The field in the hash.
+
+  ## Returns
+    * `{:ok, value}` - If the field exists and the value was retrieved.
+    * `{:ok, nil}` - If the field or key does not exist.
+    * `{:error, reason}` - An error occurred.
+  """
+  @callback hget(key :: String.t(), field :: String.t()) :: {:ok, String.t() | nil} | {:error, term()}
+
+  @doc """
+  Removes and returns the last element of a list.
+
+  ## Parameters
+    * `key` - The key of the list.
+
+  ## Returns
+    * `{:ok, value}` - If the list exists and the value was retrieved.
+    * `{:ok, nil}` - If the list does not exist or is empty.
+    * `{:error, reason}` - An error occurred.
+  """
+  @callback rpop(key :: String.t()) :: {:ok, String.t() | nil} | {:error, term()}
 end

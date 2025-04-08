@@ -248,6 +248,31 @@ defmodule ConnectionHandler.Client do
     command(["EXPIRE", key, to_string(seconds)])
   end
 
+  @doc """
+  Sets the string value of a hash field.
+  """
+  @impl true
+  def hset(key, field, value)
+      when is_binary(key) and is_binary(field) and is_binary(value) do
+    command(["HSET", key, field, value])
+  end
+
+  @doc """
+  Gets the value of a hash field.
+  """
+  @impl true
+  def hget(key, field) when is_binary(key) and is_binary(field) do
+    command(["HGET", key, field])
+  end
+
+  @doc """
+  Removes and returns the last element of a list.
+  """
+  @impl true
+  def rpop(key) when is_binary(key) do
+    command(["RPOP", key])
+  end
+
   # Notify the pool supervisor about a connection failure if the function exists
   defp notify_connection_failure(conn) do
     # Check if the handle_connection_failure function exists in the PoolSupervisor module

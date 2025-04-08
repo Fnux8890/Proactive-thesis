@@ -11,18 +11,24 @@ end
 
 # Configure application settings
 config :pipeline,
-  # Default watch directory for file watcher
-  watch_dir: System.get_env("WATCH_DIR", "/app/data"),
+  # Default watch directory, can be overridden by env var
+  watch_dir: System.get_env("PIPELINE_WATCH_DIR", "/app/data"),
 
   # Default connection pool settings
-  redis_host: System.get_env("REDIS_HOST", "localhost"),
+  redis_host: System.get_env("REDIS_HOST", "redis"),
   redis_port: String.to_integer(System.get_env("REDIS_PORT", "6379")),
   redis_password: System.get_env("REDIS_PASSWORD", ""),
-  redis_database: String.to_integer(System.get_env("REDIS_DATABASE", "0")),
-  pool_size: String.to_integer(System.get_env("REDIS_POOL_SIZE", "10")),
+  redis_pool_size: String.to_integer(System.get_env("REDIS_POOL_SIZE", "5")),
+  redis_pool_timeout: String.to_integer(System.get_env("REDIS_POOL_TIMEOUT", "5000")),
 
-  # File processing settings
-  producer_timeout_ms: String.to_integer(System.get_env("PRODUCER_TIMEOUT_MS", "3600000")),
+  # Default concurrency settings for dispatcher
+  dispatcher_concurrency: String.to_integer(System.get_env("DISPATCHER_CONCURRENCY", "4")),
+
+  # Default file processing settings
+  file_encoding: System.get_env("FILE_ENCODING", "utf-8"),
+
+  # Application name (used for logging context)
+  app_name: :pipeline,
 
   # Log directory settings
   log_dir: System.get_env("LOG_DIR", "/app/results"),
