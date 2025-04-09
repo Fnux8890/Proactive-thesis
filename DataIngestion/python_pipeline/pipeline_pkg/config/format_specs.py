@@ -23,19 +23,17 @@ FILE_FORMAT_SPECS: Dict[str, Dict[str, Any]] = {
             "header": [0, 1, 2], # Multi-index header (Names, Sources, Units)
             "quoting": 0, # csv.QUOTE_MINIMAL (default for pandas)
             "decimal": ",",
-            "encoding": "iso-8859-1", # Common Danish encoding, verify
+            "encoding": "iso-8859-1", # Changed from utf-8
             "low_memory": False,
             "skipinitialspace": True,
         },
-        "cleaner": "KnudjepsenMultiHeaderCsvCleaner",
+        "timestamp_handling": "knudjepsen_manual", # Special flag for custom timestamp parsing
+        "cleaner": "KnudjepsenSourceUnitCleaner",
         "timestamp_info": ('', 'dd-mm-yyyy HH:MM:SS'), # First column, specific format
-        # MultiIndex columns need careful mapping after inspection. Placeholder:
-        "value_columns": [
-            ('mål temp afd  Mid', '°C'), ('udetemp', '°C'), ('stråling', 'W/m²'),
-            ('CO2 målt', 'ppm'), ('mål gard 1', '%'), ('mål gard 2', '%'),
-            ('målt status', ''), ('mål FD', 'g/m3'), ('mål rør 1', '°C'),
-            ('mål rør 2', '°C')
-        ],
+        "value_info": { # Define level meanings for the new cleaner
+             'level_map': {0: 'measurement', 1: 'source', 2: 'unit'},
+             'source_location_regex': r"Afd\s*(\d+)", # Regex to extract location number from source string
+        },
         "base_source_id": "knudjepsen",
         "location": "NO3",
         "measurement_group": "LAMPEGRP_1",
@@ -44,8 +42,10 @@ FILE_FORMAT_SPECS: Dict[str, Dict[str, Any]] = {
         "type": "csv",
         "loader_params": {
             "sep": ";", "header": [0, 1, 2], "quoting": 0, "decimal": ",",
-            "encoding": "iso-8859-1", "low_memory": False, "skipinitialspace": True,
+            "encoding": "iso-8859-1", # Changed from utf-8
+            "low_memory": False, "skipinitialspace": True,
         },
+        "timestamp_handling": "knudjepsen_manual", # Special flag for custom timestamp parsing
         "cleaner": "KnudjepsenExtraCsvCleaner", # Special cleaner for Afd 3/4 structure
         "timestamp_info": ('', 'dd-mm-yyyy HH:MM:SS'),
         # Values need special handling due to '[Afd 3]' in header
@@ -57,22 +57,22 @@ FILE_FORMAT_SPECS: Dict[str, Dict[str, Any]] = {
          "location": "NO3NO4",
          "measurement_group": "extra",
     },
-    "Data/knudjepsen/NO4_LAMPEGRP_1.csv": { # Assume similar to NO3_LAMPEGRP_1
+    "Data/knudjepsen/NO4_LAMPEGRP_1.csv": { # Assume similar format to NO3_LAMPEGRP_1
         "type": "csv",
         "loader_params": {
             "sep": ";", "header": [0, 1, 2], "quoting": 0, "decimal": ",",
-            "encoding": "iso-8859-1", "low_memory": False, "skipinitialspace": True,
+            "encoding": "iso-8859-1", # Changed from utf-8
+            "low_memory": False, "skipinitialspace": True,
         },
-        "cleaner": "KnudjepsenMultiHeaderCsvCleaner",
+        "timestamp_handling": "knudjepsen_manual",
+        "cleaner": "KnudjepsenSourceUnitCleaner", # Use new cleaner
         "timestamp_info": ('', 'dd-mm-yyyy HH:MM:SS'),
-        "value_columns": [ # Verify these match the file exactly
-            ('mål temp afd  Mid', '°C'), ('udetemp', '°C'), ('stråling', 'W/m²'),
-            ('CO2 målt', 'ppm'), ('mål gard 1', '%'), ('mål gard 2', '%'),
-            ('målt status', ''), ('mål FD', 'g/m3'), ('mål rør 1', '°C'),
-            ('mål rør 2', '°C')
-        ],
+        "value_info": { # Define level meanings for the new cleaner
+             'level_map': {0: 'measurement', 1: 'source', 2: 'unit'},
+             'source_location_regex': r"Afd\s*(\d+)", # Regex to extract location number from source string
+        },
         "base_source_id": "knudjepsen",
-        "location": "NO4",
+        "location": "NO4", # Base location for the file
         "measurement_group": "LAMPEGRP_1",
     },
     "Data/knudjepsen/NO3-NO4_belysningsgrp.csv": {
@@ -80,8 +80,10 @@ FILE_FORMAT_SPECS: Dict[str, Dict[str, Any]] = {
         "loader_params": {
             "sep": ";", "header": [0, 1], # Names, Sources (Units empty)
              "quoting": 0, "decimal": ",", # Decimal likely not needed but set for consistency
-             "encoding": "iso-8859-1", "low_memory": False, "skipinitialspace": True,
+             "encoding": "iso-8859-1", # Changed from utf-8
+             "low_memory": False, "skipinitialspace": True,
         },
+        "timestamp_handling": "knudjepsen_manual", # Special flag for custom timestamp parsing
         "cleaner": "KnudjepsenBelysningCsvCleaner", # Needs specific logic for LAMPGRP columns
         "timestamp_info": ('', 'dd-mm-yyyy HH:MM:SS'),
          # Special handling for columns like 'målt status [LAMPGRP 1]'
@@ -135,7 +137,7 @@ FILE_FORMAT_SPECS: Dict[str, Dict[str, Any]] = {
         "loader_params": {
             "sep": ";", "header": 0, "quoting": 0, # Headers are quoted, pandas handles this
             "decimal": ",", # Verify decimal separator (meta says quoted, check actual data)
-            "encoding": "iso-8859-1", # Often used with Danish data, verify
+            "encoding": "utf-8", # Often used with Danish data, verify
             "low_memory": False, "skipinitialspace": True,
         },
         "cleaner": "AarslevCelleCsvCleaner",
@@ -148,19 +150,23 @@ FILE_FORMAT_SPECS: Dict[str, Dict[str, Any]] = {
         },
         "unit_map_pattern": { # Map extracted name patterns to units
              r'Celle \d+: Lufttemperatur': 'C',
-             r'Celle \d+: .* varme sætpunkt': 'C', # Verify unit
-             r'Celle \d+: Vent\. position \d': '%', # Verify unit
-             r'Celle \d+: Luftfugtighed RH%': '%RH',
-             r'Celle \d+: Luftfugtighed VPD': 'kPa', # Verify unit (VPD is usually kPa)
-             r'Celle \d+: CO2$': 'ppm',
-             r'Celle \d+: CO2 krav': 'ppm', # Verify unit
-             r'Celle \d+: CO2 dosering': '%', # Verify unit (or volume/time?)
-             # Add patterns for the two empty quoted columns if they contain data
-             r'Celle \d+: Lys intensitet': 'µmol/m²/s', # Common unit, verify (lux?)
-             r'Celle \d+: Gardin \d position': '%', # Verify unit
-             r'Celle \d+: Solindstråling': 'W/m2',
-             r'Celle \d+: Udetemperatur': 'C',
-             r'Celle \d+: Flow temperatur \d': 'C',
+             r'Celle \d+:.*[Ee]ndelig.*[Vv]arme.*': 'C', # More flexible for 'Endelig fælles varme sætpunkt'
+             r'Celle \d+:.*[Vv]arme.*[Ss]ætpunkt': 'C', # Alternative pattern for varme sætpunkt
+             r'Celle \d+:.*[Vv]ent.*position.*\d': '%', # More flexible for ventilation positions
+             r'Celle \d+:.*RH%': '%RH', # Luftfugtighed RH%
+             r'Celle \d+:.*VPD': 'kPa', # Luftfugtighed VPD
+             r'Celle \d+:.*CO2$': 'ppm', # Just CO2
+             r'Celle \d+:.*CO2.*krav': 'ppm', # CO2 krav
+             r'Celle \d+:.*CO2.*dosering': '%', # CO2 dosering
+             r'Celle \d+:.*[Ll]ys.*[Ii]ntensitet': 'µmol/m²/s', # Lys intensitet
+             r'Celle \d+:.*[Gg]ardin.*position': '%', # Gardin position
+             r'Celle \d+:.*[Ss]olindstråling': 'W/m2', # Solindstråling
+             r'Celle \d+:.*[Uu]detemperatur': 'C', # Udetemperatur
+             r'Celle \d+:.*[Ff]low.*[Tt]emperatur': 'C', # Flow temperatur
+             # Catch-all for any temperature-related columns
+             r'Celle \d+:.*[Tt]emp.*': 'C',
+             # Catch-all with cell number, for everything else
+             r'Celle \d+:.*': 'Unknown', # Default unit for anything with Celle prefix
         },
         "source_id_pattern": r"Data/aarslev/(celle\d+)/output-.*\.csv", # Extract 'celleX'
         "base_source_id": "aarslev",

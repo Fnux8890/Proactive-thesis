@@ -43,7 +43,7 @@ services:
       # - ./results:/app/results
     depends_on:
       - redis # If the pipeline needs to interact with Redis
-      - db    # If the pipeline needs to interact with the DB
+      - db # If the pipeline needs to interact with the DB
     environment:
       # Pass the path to the data inside the container
       DATA_SOURCE_PATH: /app/data
@@ -55,11 +55,39 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
       # Ensure Python logs appear immediately
       PYTHONUNBUFFERED: 1
+      # Set the save format to database
+      SAVE_FORMAT: "db"
     deploy:
       resources:
         limits:
-          memory: 2G   # Adjust memory based on expected data size
+          memory: 2G # Adjust memory based on expected data size
           cpus: '1.0' # Adjust CPU based on processing needs
+    networks:
+      - ingestion-net
+
+  rust_pipeline:
+    build:
+      context: ../rust_pipeline # Corrected relative path
+      dockerfile: Dockerfile
+    volumes:
+      # Mount the source data directory (read-only)
+      - ../Data:/app/data:ro
+      # Potentially mount results or cleaned_data later
+    depends_on:
+      - redis # If needed later
+      - db # If needed later
+    environment:
+      # Pass the path to the data inside the container
+      DATA_SOURCE_PATH: /app/data
+      # Pass Redis URL if needed
+      REDIS_URL: redis://redis:6379
+      # Pass Database URL if needed
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+    deploy:
+      resources:
+        limits:
+          memory: 1G # Start with less memory than Python for now
+          cpus: '0.5'
     networks:
       - ingestion-net
 
@@ -93,6 +121,21 @@ services:
     networks:
       - ingestion-net
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@example.com" # Change this!
+      PGADMIN_DEFAULT_PASSWORD: "admin" # Change this!
+      PGADMIN_CONFIG_SERVER_MODE: "False" # Run in Desktop mode
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "5050:80" # Map host port 5050 to container port 80
+    depends_on:
+      - db
+    networks:
+      - ingestion-net
   # elixir_pipeline: # Keep the Elixir definition commented out for reference
   #   build:
   #     context: ../elixir_ingestion/pipeline # Adjust path relative to this docker-compose file if needed
@@ -118,7 +161,9 @@ services:
 
 volumes:
   postgres-data: # Define the named volume for PostgreSQL
-  redis-data:    # Define the named volume for Redis
+  redis-data: # Define the named volume for Redis
+  pgadmin-data:
+    # Define the named volume for pgAdmin
 
 networks:
   ingestion-net:

@@ -4,6 +4,9 @@ SQLAlchemy>=1.4,<3.0
 psycopg2-binary>=2.9,<3.0
 # Required for Parquet output format
 pyarrow>=10.0,<17.0
+# Optional dependencies
+python-dotenv>=1.0.0  # For local development with .env files
+openpyxl>=3.1.2  # For reading Excel files if needed
 # Add other dependencies if needed by specific cleaners or utils
 # openpyxl # Uncomment if Excel reading needed
 # python-dotenv # Useful for local development with .env files

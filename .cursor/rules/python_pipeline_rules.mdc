@@ -3,6 +3,11 @@ description:
 globs: DataIngestion/python_pipeline/**/*.py
 alwaysApply: false
 ---
+---
+description: 
+globs: DataIngestion/python_pipeline/**/*.py
+alwaysApply: false
+---
 <!-- Cursor Rules -->
 <!-- Glob: DataIngestion/python_pipeline/**/*.py -->
 <!-- ↑ The glob above targets all Python files within the python_pipeline directory and its subdirectories -->

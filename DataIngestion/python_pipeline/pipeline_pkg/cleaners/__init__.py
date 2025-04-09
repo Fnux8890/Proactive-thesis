@@ -5,6 +5,7 @@ from .knudjepsen_cleaners import (
     KnudjepsenMultiHeaderCsvCleaner,
     KnudjepsenExtraCsvCleaner,
     KnudjepsenBelysningCsvCleaner,
+    KnudjepsenSourceUnitCleaner
 )
 from .aarslev_cleaners import (
     AarslevMortenCsvCleaner,
@@ -22,6 +23,7 @@ CLEANER_REGISTRY = {
     "KnudjepsenMultiHeaderCsvCleaner": KnudjepsenMultiHeaderCsvCleaner,
     "KnudjepsenExtraCsvCleaner": KnudjepsenExtraCsvCleaner,
     "KnudjepsenBelysningCsvCleaner": KnudjepsenBelysningCsvCleaner,
+    "KnudjepsenSourceUnitCleaner": KnudjepsenSourceUnitCleaner,
     "AarslevMortenCsvCleaner": AarslevMortenCsvCleaner,
     "AarslevSimpleCsvCleaner": AarslevSimpleCsvCleaner,
     "AarslevCelleCsvCleaner": AarslevCelleCsvCleaner,
@@ -43,6 +45,7 @@ __all__ = [
     'KnudjepsenMultiHeaderCsvCleaner',
     'KnudjepsenExtraCsvCleaner',
     'KnudjepsenBelysningCsvCleaner',
+    'KnudjepsenSourceUnitCleaner',
     'AarslevMortenCsvCleaner',
     'AarslevSimpleCsvCleaner',
     'AarslevCelleCsvCleaner',

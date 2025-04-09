@@ -1,24 +1,24 @@
 # Use an official Python runtime as a parent image
-# Use a specific version for reproducibility, e.g., 3.11 or 3.12
 FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Install uv using pip
-RUN pip install uv
-
-# Copy the requirements file into the container at /app
+# Copy the requirements file first
 COPY requirements.txt .
 
-# Install any needed dependencies specified in requirements.txt using uv
-# --system flag installs into the global site-packages, suitable for containers
-# --no-cache prevents caching, reducing image size slightly
-RUN uv pip install --system --no-cache -r requirements.txt
+# Install Python dependencies using uv (mounted temporarily)
+# Use --mount for buildkit cache and temporary uv binary
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=from=ghcr.io/astral-sh/uv:latest,source=/uv,target=/usr/local/bin/uv \
+    uv pip install --system --no-cache -r requirements.txt
 
-# Copy the rest of the application code into the container
+# Copy the rest of the application code
 COPY . .
 
-# Specify the command to run on container start using uv run
-# Execute pipeline.py as a module within the pipeline_pkg package
-CMD ["uv", "run", "-m", "pipeline_pkg.pipeline"] 
+# Run the pipeline module by default (processing all discovered files)
+CMD ["python", "-m", "pipeline_pkg.pipeline"] 

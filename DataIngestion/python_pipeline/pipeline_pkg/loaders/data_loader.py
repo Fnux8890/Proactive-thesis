@@ -44,19 +44,32 @@ class DataLoader:
         try:
             df: Optional[pd.DataFrame] = None
             if file_type == 'csv':
-                # Ensure 'header' is correctly passed if it's a list (for MultiIndex)
-                header_param = loader_params.get('header')
-                if isinstance(header_param, list):
-                     # Pandas expects 0-based index for header rows
-                    read_params = {**loader_params}
-                else:
-                    # Standard single header row
-                    read_params = {**loader_params}
+                read_params = {**loader_params} # Start with a copy
+                
+                # Special handling for Knudjepsen files - force timestamp column as string
+                if format_spec.get("timestamp_handling") == "knudjepsen_manual":
+                    logger.info(f"Using special handling for Knudjepsen file: {file_name}")
+                    # Force the first column (index 0) to be loaded as string
+                    # and disable pandas' automatic date parsing
+                    read_params.setdefault('dtype', {})[0] = str
+                    read_params['parse_dates'] = False
+                    logger.debug(f"Modified CSV loading parameters for Knudjepsen file: {read_params}")
+
+                # Check if header is specified as a list (for MultiIndex)
+                header_spec = loader_params.get('header')
+                if isinstance(header_spec, list):
+                    # Ensure the header parameter is correctly set for MultiIndex
+                    read_params['header'] = header_spec # Make sure the list is passed
+                    logger.debug(f"Using MultiIndex header spec: {header_spec}")
+                # No specific 'else' needed, default header=0 or value from spec works
 
                 # Handle potential DtypeWarning specified in loader_params
                 if 'low_memory' not in read_params:
                      read_params['low_memory'] = False # Default to avoid mixed types if not specified
 
+                # --- Add explicit logging for read_params before calling read_csv ---
+                logger.info(f"Calling pd.read_csv for {file_name} with params: {read_params}")
+                # --- End logging ---
                 df = pd.read_csv(file_path, **read_params)
                 logger.debug(f"Successfully loaded CSV {file_name}. Shape: {df.shape}")
                 logger.debug(f"Columns loaded: {df.columns.tolist()}")

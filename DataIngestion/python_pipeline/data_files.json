@@ -1,0 +1,337 @@
+[
+    {
+        "workspace_path": "Data/knudjepsen/NO3_LAMPEGRP_1.csv",
+        "container_path": "/app/data/knudjepsen/NO3_LAMPEGRP_1.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/knudjepsen/NO3NO4.extra.csv",
+        "container_path": "/app/data/knudjepsen/NO3NO4.extra.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/knudjepsen/NO4_LAMPEGRP_1.csv",
+        "container_path": "/app/data/knudjepsen/NO4_LAMPEGRP_1.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/knudjepsen/NO3-NO4_belysningsgrp.csv",
+        "container_path": "/app/data/knudjepsen/NO3-NO4_belysningsgrp.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_jan_feb_2014.json",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_jan_feb_2014.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/winter2014.csv",
+        "container_path": "/app/data/aarslev/winter2014.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_mar_apr_may_2014.json",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_mar_apr_may_2014.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_jan_feb_2014.json.csv",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_jan_feb_2014.json.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_jun_2014.json",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_jun_2014.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/weather_jan_feb_2014.csv",
+        "container_path": "/app/data/aarslev/weather_jan_feb_2014.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/data_jan_feb_2014.csv",
+        "container_path": "/app/data/aarslev/data_jan_feb_2014.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/april2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/april2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/april2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/april2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/april2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/april2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/august2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/august2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/august2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/august2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/august2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/august2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/december2013/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/december2013/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/december2013/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/december2013/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/december2013/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/december2013/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/februar2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/februar2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/februar2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/februar2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/februar2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/februar2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/januar2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/januar2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/januar2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/januar2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/januar2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/januar2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/juni2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/juni2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/juni2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/juni2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/juni2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/juni2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/maj2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/maj2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/maj2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/maj2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/maj2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/maj2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData1-2.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData1-2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/september2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/september2014/MortenSDUData3.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/september2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/september2014/MortenSDUData2.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/september2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/september2014/MortenSDUData.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-02-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2014-02-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2013-12-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2013-12-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-06-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2014-06-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-01-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2014-01-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-03-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2014-03-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-03-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2014-03-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-02-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2014-02-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-04-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2014-04-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-01-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2014-01-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2013-12-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2013-12-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-05-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle5/output-2014-05-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-06-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2014-06-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-05-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2014-05-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-2014-04-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-2014-04-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-02-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2014-02-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-06-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2014-06-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-04-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2014-04-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2013-12-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2013-12-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-01-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2014-01-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-02-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2014-02-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-03-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2014-03-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-01-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2014-01-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2013-12-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2013-12-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-03-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2014-03-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-05-01-00-00.csv",
+        "container_path": "/app/data/aarslev/celle6/output-2014-05-01-00-00.csv",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-05-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2014-05-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-04-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2014-04-01-00-00.csv.json",
+        "status": "pending"
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-2014-06-01-00-00.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-2014-06-01-00-00.csv.json",
+        "status": "pending"
+    }
+]

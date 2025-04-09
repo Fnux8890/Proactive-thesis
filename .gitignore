@@ -92,3 +92,46 @@ DataIngestion/elixir_ingestion/web_service/_build/*
 DataIngestion/elixir_ingestion/web_service/deps/*
 DataIngestion/elixir_ingestion/all_lib_files.txt
 DataIngestion/elixir_ingestion/all_test_files.txt
+
+# Rust specific
+# Rust specific for the pipeline
+DataIngestion/rust_pipeline/target/
+DataIngestion/rust_pipeline/**/*.rs.bk
+DataIngestion/rust_pipeline/Cargo.lock
+DataIngestion/rust_pipeline/**/*.pdb
+DataIngestion/rust_pipeline/**/*.exe
+DataIngestion/rust_pipeline/**/*.dll
+DataIngestion/rust_pipeline/**/*.so
+DataIngestion/rust_pipeline/**/*.dylib
+DataIngestion/rust_pipeline/**/*.rlib
+# Additional Rust specific ignores
+DataIngestion/rust_pipeline/target/**/*
+DataIngestion/rust_pipeline/target/debug/**/*
+DataIngestion/rust_pipeline/target/release/**/*
+DataIngestion/rust_pipeline/target/rls/**/*
+DataIngestion/rust_pipeline/target/doc/**/*
+DataIngestion/rust_pipeline/target/package/**/*
+DataIngestion/rust_pipeline/target/wasm32-*/**/*
+DataIngestion/rust_pipeline/target/profiling/**/*
+DataIngestion/rust_pipeline/target/bench/**/*
+DataIngestion/rust_pipeline/target/examples/**/*
+DataIngestion/rust_pipeline/target/incremental/**/*
+DataIngestion/rust_pipeline/target/.rustc_info.json
+DataIngestion/rust_pipeline/target/.rustdoc_fingerprint.json
+DataIngestion/rust_pipeline/target/.fingerprint/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/
+DataIngestion/rust_pipeline/data_pipeline/target/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/debug/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/release/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/rls/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/doc/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/package/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/wasm32-*/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/profiling/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/bench/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/examples/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/incremental/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/.rustc_info.json
+DataIngestion/rust_pipeline/data_pipeline/target/.rustdoc_fingerprint.json
+DataIngestion/rust_pipeline/data_pipeline/target/.fingerprint/**/*
+DataIngestion/rust_pipeline/data_pipeline/target/CACHEDIR.TAG

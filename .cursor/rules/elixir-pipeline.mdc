@@ -1,5 +1,10 @@
 ---
 description: 
+globs: pipeline/**/*.ex,pipeline/**/*.exs
+alwaysApply: false
+---
+---
+description: 
 globs: pipeline/**/*.{ex,exs}
 alwaysApply: false
 ---

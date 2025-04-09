@@ -1,0 +1,88 @@
+services:
+  rust_pipeline:
+    build:
+      context: . # Build context is the current directory
+      dockerfile: Dockerfile
+    volumes:
+      # Mount the source data directory (read-only)
+      # Path is relative to this docker-compose.yml file
+      - ../../Data:/app/data:ro # <-- Restore the full data mount
+      # Mount only specific subdirectories for testing
+      # - ../../Data/aarslev/celle5:/app/data/aarslev/celle5:ro
+      # - ../../Data/aarslev/celle6:/app/data/aarslev/celle6:ro
+      # Add depends_on if Rust pipeline needs DB/Redis ready
+    depends_on:
+      - redis
+      - db
+    environment:
+      # Pass the path to the data inside the container
+      DATA_SOURCE_PATH: /app/data
+      # Pass Redis URL if needed (assumes redis is running on ingestion-net)
+      REDIS_URL: redis://redis:6379
+      # Pass Database URL if needed (assumes db is running on ingestion-net)
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    networks:
+      - ingestion-net
+
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    networks:
+      - ingestion-net
+
+  db:
+    # Use the official TimescaleDB image with PostgreSQL 16
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      # Standard PostgreSQL environment variables are used
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres" # Use a strong password in production!
+      # POSTGRES_DB: sensor_data # Optional: Define a specific database name on init
+      # TIMESCALEDB_TELEMETRY: off # Optional: Disable TimescaleDB telemetry
+    volumes:
+      # Persist data using a named volume mapped to the standard PGDATA location
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Keep the standard port mapping
+      - "5432:5432"
+    networks:
+      - ingestion-net
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@example.com" # Change this!
+      PGADMIN_DEFAULT_PASSWORD: "admin" # Change this!
+      PGADMIN_CONFIG_SERVER_MODE: "False" # Run in Desktop mode
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    ports:
+      - "5050:80" # Map host port 5050 to container port 80
+    depends_on:
+      - db
+    networks:
+      - ingestion-net
+
+volumes:
+  postgres-data: # Define the named volume for PostgreSQL
+  redis-data: # Define the named volume for Redis
+  pgadmin-data:
+    # Define the named volume for pgAdmin
+
+networks:
+  ingestion-net:
+    # This file now defines and creates the network
+    name: ingestion-net
+    driver: bridge

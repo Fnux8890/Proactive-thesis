@@ -185,10 +185,12 @@ class DataSaver:
                 df.info(buf=buffer, verbose=True, show_counts=True)
                 logger.debug(buffer.getvalue())
                 # Log head only if DataFrame is not excessively wide
-                if df.shape[1] < 20:
-                     logger.debug(f"DataFrame head (first 5 rows) for {original_stem}:\\n{df.head().to_string()}")
-                else:
-                     logger.debug(f"DataFrame head (first 5 rows, limited cols) for {original_stem}:\\n{df.head().iloc[:, :20].to_string()}")
+                # --- Comment out verbose head logging ---
+                # if df.shape[1] < 20:
+                #      logger.debug(f"DataFrame head (first 5 rows) for {original_stem}:\\n{df.head().to_string()}")
+                # else:
+                #      logger.debug(f"DataFrame head (first 5 rows, limited cols) for {original_stem}:\\n{df.head().iloc[:, :20].to_string()}")
+                # --- End Comment out ---
                 # --- End Debugging ---
 
                 # Now we can always use 'append' because setup ensures table exists
@@ -200,6 +202,9 @@ class DataSaver:
                     chunksize=pipeline_config.DB_CHUNK_SIZE,
                     method='multi'
                 )
+                # --- Add log right after successful to_sql call ---
+                logger.debug(f"df.to_sql call completed for {original_filename_with_ext}. Rows attempted: {len(df)}")
+                # --- End log ---
                 logger.info(f"Successfully saved {len(df)} rows from {original_filename_with_ext} to table '{table_name}' using method 'append'.")
 
             else:

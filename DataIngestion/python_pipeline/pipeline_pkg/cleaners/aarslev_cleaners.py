@@ -22,9 +22,10 @@ class AarslevSimpleCsvCleaner(BaseCleaner):
 
         # 3. Identify value columns
         value_cols_spec = format_spec.get('value_columns', [])
-        # Standardize spec names to match standardized df columns
-        value_cols = [self._standardize_columns(pd.DataFrame(columns=[c]))[c] for c in value_cols_spec]
-        value_cols = [col for col in value_cols if col in df.columns]
+        # Standardize the column names from the spec
+        std_value_cols_spec = [self._standardize_columns(pd.DataFrame(columns=[c])).columns[0] for c in value_cols_spec]
+        # Keep only the standardized spec names that exist in the standardized DataFrame columns
+        value_cols = [col for col in std_value_cols_spec if col in df.columns]
 
         # 4. Convert numeric
         decimal_sep = format_spec.get('loader_params', {}).get('decimal', '.')
@@ -53,16 +54,19 @@ class AarslevMortenCsvCleaner(BaseCleaner):
     """Cleaner for MortenSDUData CSV files."""
     def clean(self, df: pd.DataFrame, format_spec: Dict[str, Any]) -> pd.DataFrame:
         logger.info(f"Starting cleaning for Aarslev Morten CSV: {format_spec.get('full_path')}")
-        # 1. Standardize columns (initial)
-        df = self._standardize_columns(df)
 
-        # 2. Handle timestamp ('start' column)
+        # 1. Handle timestamp ('start' column) - BEFORE standardization
         df = self._handle_timestamp(df, format_spec)
         if 'timestamp' not in df.columns:
             logger.error("Timestamp handling failed.")
             return pd.DataFrame()
 
+        # 2. Standardize columns (now that timestamp is handled and potentially dropped)
+        df = self._standardize_columns(df)
+
         # 3. Extract Measurement and Unit from column names using regex
+        #    (Ensure regex patterns target standardized names if necessary,
+        #     or adjust standardization if it breaks patterns)
         value_info = format_spec.get('value_info', {})
         regex_pattern = value_info.get('regex_pattern')
         name_group = value_info.get('column_name_group', 1)
@@ -216,6 +220,9 @@ class AarslevCelleCsvCleaner(BaseCleaner):
         # 8. Add Units using unit_map_pattern
         unit_map_pattern = format_spec.get('unit_map_pattern', {})
         if unit_map_pattern and 'measurement' in df_long.columns:
+            # Store a mapping of extracted original names directly during initial column processing
+            # and store it as a class attribute
+            
             # We need the original extracted name (before standardization) to match patterns
             # Create a reverse map from standardized name to original extracted name
             reverse_rename_map = {v: k for k, v in rename_map.items() if k not in ('Date', 'Time')}
@@ -223,14 +230,19 @@ class AarslevCelleCsvCleaner(BaseCleaner):
             for std_name, orig_col in reverse_rename_map.items():
                  match = re.match(regex_pattern, str(orig_col).strip())
                  if match:
-                     try: original_extracted_names[std_name] = match.group(name_group).strip()
-                     except IndexError: pass
+                     try: 
+                         extracted = match.group(name_group).strip()
+                         original_extracted_names[std_name] = extracted
+                         logger.debug(f"Mapped standardized '{std_name}' back to extracted '{extracted}'")
+                     except IndexError: 
+                         pass
 
             def get_unit(std_meas_name):
                 orig_extracted = original_extracted_names.get(std_meas_name)
                 if orig_extracted:
                     for pattern, unit in unit_map_pattern.items():
                         if re.match(pattern, orig_extracted):
+                            logger.debug(f"Matched unit '{unit}' for measurement '{std_meas_name}' using pattern '{pattern}'")
                             return unit
                 logger.warning(f"No unit pattern matched for measurement: '{std_meas_name}' (Original: '{orig_extracted}')")
                 return 'Unknown' # Default if no pattern matches
@@ -246,7 +258,10 @@ class AarslevCelleCsvCleaner(BaseCleaner):
                  orig_extracted = original_extracted_names.get(std_meas_name)
                  if orig_extracted:
                      match = re.match(location_pattern, orig_extracted)
-                     if match: return match.group(1).strip().lower()
+                     if match: 
+                         location = match.group(1).strip().lower()
+                         logger.debug(f"Matched location '{location}' for measurement '{std_meas_name}' using pattern '{location_pattern}'")
+                         return location
                  logger.warning(f"No location pattern matched for measurement: '{std_meas_name}' (Original: '{orig_extracted}')")
                  return 'unknown_location'
 
@@ -546,7 +561,7 @@ class AarslevStreamDictJsonCleaner(BaseCleaner):
         # 6. Standardize measurement_path to create 'measurement' column?
         # Example: "/Cell5/air_temperature" -> "cell5_air_temperature"
         df_combined['measurement'] = df_combined['measurement_path'].apply(
-            lambda x: self._standardize_columns(pd.DataFrame(columns=[x.strip('/').replace('/', '_')]))[0]
+            lambda x: self._standardize_columns(pd.DataFrame(columns=[x.strip('/').replace('/', '_')])).columns[0]
         )
         logger.debug("Created standardized 'measurement' column from path.")
 

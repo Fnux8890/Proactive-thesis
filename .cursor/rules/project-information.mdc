@@ -1,85 +1,92 @@
 ---
-description: For detailing how to read markdown files
-globs: Docs/*.md
+description: 
+globs: 
+alwaysApply: true
 ---
-# Documentation Guidelines (`Docs/*.md`)
+# Documentation Guidelines for Data Pipeline Project (`Docs/*.md`)
 
-The Markdown files located directly within the `Docs` directory serve as key resources for the project. These files contain comprehensive software engineering documentation that guides the architecture, design decisions, and overall structure of the project. They are considered authoritative sources and must be referenced for proper implementation and future updates.
+The Markdown files located directly within the `Docs` directory serve as key resources for the project. These files contain comprehensive software engineering documentation that guides the architecture, design decisions, data formats, validation rules, and overall structure of the Rust/Python data pipeline for processing greenhouse sensor data. They are considered authoritative sources and must be referenced for proper implementation and future updates.
 
 ---
 
 ## Purpose
 
-- **Project Guidance:**  
-  The documentation files provide crucial information about the project’s vision, structure, and operational workflows. They describe how various components interact and cumulate into a cohesive system.
+- **Project Guidance:**
+  The documentation files provide crucial information about the project’s data flow, component responsibilities (Rust ingestion, TimescaleDB storage, Python analysis/modeling), and operational workflows. They describe how various components interact and handle heterogeneous sensor data[cite: 1, 5, 4].
 
-- **Design and Architecture:**  
-  These files outline the reasoning behind design decisions, including technical approaches, module responsibilities, and system integrations. They help ensure consistency and predictability across the project.
+- **Design and Architecture:**
+  These files outline the reasoning behind design decisions, including technical approaches (e.g., Rust for parsing performance/safety, TimescaleDB for time-series storage, Python for analysis flexibility), module responsibilities (parsing, validation, insertion, feature extraction), and system integrations (e.g., interaction with external forecasts or control systems mentioned in [cite: 3]). They help ensure consistency and predictability across the pipeline.
 
-- **Standards and Best Practices:**  
-  The documentation incorporates standards and coding practices (e.g., TypeScript conventions, React component structure, Tailwind CSS usage) that conform to our key principles. They clarify how to write concise, technical code following best practices in both front-end and back-end development.
+- **Standards and Best Practices:**
+  The documentation incorporates standards and coding practices relevant to the project's stack (e.g., idiomatic Rust error handling, efficient SQL for TimescaleDB, effective use of Python data science libraries like Pandas/tsfresh [cite: 1, 5]). They clarify how to write robust, maintainable, and performant code for both the Rust data ingestion service and the Python analysis components.
 
 ---
 
 ## Glob Specifier
 
-- **Target Files:**  
-  - The rule applies to all files that have a `.md` extension and are located directly within the `Docs` directory.  
-  - **Specifier:** `Docs/*.md`  
-  - *Note:* If documentation in subdirectories is needed in the future, consider an updated glob (e.g., `Docs/**/*.md`).  
+- **Target Files:**
+  - The rule applies to all files that have a `.md` extension and are located directly within the `Docs` directory.
+  - **Specifier:** `Docs/*.md`
+  - *Note:* If documentation in subdirectories is needed in the future, consider an updated glob (e.g., `Docs/**/*.md`).
 
 ---
 
 ## Guidelines and Rules
 
-1. **Document Scope and Focus**  
-   - All Markdown files in the `Docs` directory must address software engineering topics related to the project.  
-   - They are to be used as a primary reference for understanding product architecture, implementation guidelines, and module interactions.
+1.  **Document Scope and Focus**
+    - All Markdown files in the `Docs` directory must address software engineering topics related to the data pipeline project (Rust ingestion, DB schema, Python analysis, potentially modeling/optimization).
+    - They are to be used as a primary reference for understanding the pipeline architecture, data format specifications, validation logic, database interactions, feature engineering strategies, and component interactions.
 
-2. **Content Structure and Clarity**  
-   - The documents should be well-structured and include clear headings, subheadings, and bullet points to improve readability.  
-   - Organize content into sections like Overview, Guidelines, Examples, and References.
+2.  **Content Structure and Clarity**
+    - The documents should be well-structured and include clear headings, subheadings, code blocks (for Rust, Python, SQL), and bullet points to improve readability.
+    - Organize content into logical sections like Overview, Data Formats, Architecture, Component Details (e.g., Rust Parser, Python Feature Extractor), Database Schema, Deployment, etc.
 
-3. **Technical Accuracy and Detail**  
-   - Ensure that technical content, code examples, and instructions use the correct and up-to-date practices related to Next.js, React, TypeScript, Node.js, Tailwind, Shadcn UI, and other relevant technologies.
-   - Use precise language that is consistent with programming and technical terminology.
+3.  **Technical Accuracy and Detail**
+    - Ensure that technical content, code examples, and instructions use the correct and up-to-date practices related to Rust (including `tokio`, `sqlx`, `serde`, `csv`), TimescaleDB/PostgreSQL, Python (including `pandas`, `psycopg2`/`sqlalchemy`, `tsfresh`, `sktime`), and potentially ANN/optimization libraries.
+    - Define data formats (CSV variations[cite: 1, 5], JSON [cite: 4]), expected fields, units, and timestamp conventions explicitly.
+    - Use precise language consistent with data engineering, database management, and data science terminology.
 
-4. **Reference and Alignment**  
-   - The documentation should be referenced whenever making code changes or introducing features.  
-   - All modifications in code or architecture should be looked up against the documented guidelines to ensure consistency.
+4.  **Reference and Alignment**
+    - The documentation must be referenced whenever making code changes, implementing new features (e.g., handling a new data format), or modifying the pipeline's behavior.
+    - All modifications in code or architecture should be checked against the documented guidelines to ensure consistency with the defined data flow, error handling strategies, and component responsibilities.
 
-5. **Maintenance and Updates**  
-   - As the project evolves, ensure that the documentation is updated in tandem with new design choices and architectural improvements.  
-   - Regular audits may be performed to verify that the documentation remains authoritative and reflective of current practices.
+5.  **Maintenance and Updates**
+    - As the project evolves (e.g., new data sources are added, analysis techniques change), ensure that the documentation is updated in tandem with new design choices and architectural improvements.
+    - Document any changes to data formats, database schemas, or key algorithms.
 
 ---
 
 ## Examples and Use Cases
 
-- **New Feature Development:**  
-  When implementing a new component or updating existing functionality, developers must review the relevant sections in the documentation. For example, if adding a new React component, check the component structure and styling conventions detailed in the documentation.
+- **Implementing a New Parser (Rust):**
+  When adding support for a new sensor data format, developers must review the documentation on existing parsing logic, error handling standards, validation requirements, and how to configure the parser for the new format.
 
-- **Design Review:**  
-  Prior to code merging, conduct a design review that includes consultation of the documentation. This ensures that any changes comply with established architectural guidelines and industry best practices.
+- **Modifying Database Schema (TimescaleDB):**
+  Before altering tables, hypertables, indexes, or compression settings, consult the documentation detailing the current schema design, rationale, and potential impacts on Rust insertion logic and Python query performance.
 
-- **Onboarding New Developers:**  
-  New team members should begin by reading through these Markdown files. They act as an induction guide, providing an overview of the project’s technical stack, key design patterns, and coding standards such as modularization, functional programming, and declarative JSX.
+- **Adding Feature Extraction (Python):**
+  When implementing new feature extraction steps (e.g., using `tsfresh` or calculating domain-specific metrics like DLI [cite: 3]), check the documentation for guidelines on data querying, expected DataFrame structures, coding standards for analysis scripts, and integration with the existing feature set.
 
-- **Alignment with Standards:**  
-  Developers can use these docs to verify that the project’s code adheres to principles such as those outlined in Next.js, React, and TypeScript best practices, including functional components and strict typing.
+- **Onboarding New Developers:**
+  New team members should begin by reading through these Markdown files to understand the end-to-end data pipeline, the technology stack (Rust, TimescaleDB, Python), key architectural patterns, data handling conventions, and coding standards.
+
+- **Ensuring Consistency:**
+  Developers can use these docs to verify that the project’s code adheres to principles such as Rust's safety and error handling philosophy, efficient TimescaleDB usage, and best practices for Python data manipulation and modeling.
 
 ---
 
 ## Additional Reference Information
 
-- **Key Principles:**  
-  - Write concise, technical code with accurate examples, following a declarative style.
-  - Prioritize functional programming patterns and best practices over duplication.
-  - Emphasize descriptive naming conventions and modular file structures.
-  - Ensure compliance with performance optimization and best practices for both server and client components.
+- **Key Principles:**
+  - Prioritize data integrity and type safety throughout the pipeline.
+  - Write performant and robust Rust code for ingestion, leveraging `async` and proper error handling.
+  - Design efficient TimescaleDB schemas and queries for time-series data.
+  - Write clear, maintainable, and efficient Python code for analysis and modeling.
+  - Emphasize descriptive naming conventions and modular code structure in both Rust and Python.
+  - Ensure compliance with performance optimization best practices relevant to each stage (e.g., batch inserts in Rust, vectorized operations in Python).
 
-- **Broader Context:**  
-  The guidelines outlined here are part of a larger schema that includes rules for commit messages, development standards, coding style, and custom slash commands. Each documentation file in `Docs/*.md` should harmonize with these overarching project conventions.
+- **Broader Context:**
+  The guidelines outlined here are part of a larger project context that includes rules for specific Rust implementation details, Python analysis techniques, commit messages, development standards, and potentially custom slash commands. Each documentation file in `Docs/*.md` should harmonize with these overarching project conventions.
 
-- **Collaboration and Version Control:**  
-  Changes to these documentation files should be tracked under version control. Any modifications should be accompanied by clear commit messages referencing the documentation update, following the conventional commits style guidelines detailed in the project documentation.
+- **Collaboration and Version Control:**
+  Changes to these documentation files must be tracked under version control (Git). Modifications should be accompanied by clear commit messages referencing the documentation update, ideally following conventional commits style guidelines if adopted by the project.

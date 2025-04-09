@@ -1,0 +1,213 @@
+---
+description: 
+globs: DataIngestion/rust_pipeline/**/*.rs
+alwaysApply: false
+---
+# Cursor Rules for Rust Greenhouse Data Ingestion Project
+
+## Overall Goal
+
+Develop a robust and efficient Rust service to ingest heterogeneous sensor data (CSV variations, potentially JSON), validate it, and insert it into a TimescaleDB database using `sqlx` and `tokio`. Emphasize type safety, error handling, and performance.
+
+## Rust Philosophy & Idiomatic Code Guidelines
+
+* **Embrace Safety & Ownership:**
+    * Always prioritize memory safety. Leverage the borrow checker; avoid unnecessary `unsafe` blocks.
+    * Think carefully about data ownership (`String` vs `&str`, `Vec<T>` vs `&[T]`) and lifetimes. Use clones (`.clone()`) judiciously; prefer borrowing where possible.
+    * Utilize standard library smart pointers (`Box`, `Rc`, `Arc`, `Mutex`, `RwLock`) appropriately when ownership needs to be shared or managed across threads.
+
+* **Idiomatic Error Handling:**
+    * Use `Result<T, E>` for functions that can fail. Avoid panicking (`panic!`) in library code or recoverable error scenarios.
+    * Avoid `.unwrap()` and `.expect()` in production logic; handle errors explicitly using `match`, `if let Ok/Err`, `map_err`, or the `?` operator.
+    * Define custom error types using `thiserror` (preferred) or `anyhow` to provide clear context for failures, wrapping underlying errors.
+
+* **Leverage the Type System:**
+    * Use strong typing to represent domain concepts accurately (e.g., specific structs for different sensor readings, configuration). Use enums to represent states or variants clearly.
+    * Utilize generics (`<T>`) and traits to write reusable, polymorphic code. Define clear trait bounds.
+
+* **Functional Patterns & Iterators:**
+    * Prefer using iterators (`.iter()`, `.into_iter()`, `.iter_mut()`) and their adapter methods (`.map()`, `.filter()`, `.fold()`, etc.) over manual loops where it enhances clarity and conciseness.
+    * Use `Option<T>` to represent optional values and its methods (`.map()`, `.and_then()`, `.unwrap_or()`, etc.) for safe handling.
+
+* **Clarity and Explicitness:**
+    * Write code that is easy to read and understand. Prefer explicit type annotations where ambiguity might arise.
+    * Name variables, functions, types, and modules clearly and consistently. Follow Rust naming conventions (e.g., `snake_case` for variables/functions, `PascalCase` for types/traits/enums).
+    * Keep functions relatively small and focused on a single responsibility.
+
+* **Standard Practices:**
+    * Adhere strictly to `rustfmt` for code formatting.
+    * Address all relevant `clippy` lints (`cargo clippy -- -D warnings`).
+
+## Architectural Guidelines
+
+* **Modularity & Separation of Concerns:**
+    * Organize code into logical modules (`mod`) with clear responsibilities (e.g., `config`, `parser`, `validation`, `db`, `errors`).
+    * Define clear public APIs for each module using `pub`. Keep internal implementation details private.
+    * If the application grows, consider splitting functionality into separate crates within a workspace.
+
+* **Data Flow:**
+    * Ensure a clear and logical flow of data through the application (e.g., `main` orchestrates -> `parser` reads/deserializes -> `validator` checks -> `db_inserter` batches/writes).
+    * Avoid tight coupling between modules. Use traits or simple data structures for interfaces where appropriate.
+
+* **Asynchronous Design:**
+    * Use `async/.await` and the `tokio` runtime for all I/O-bound operations (file reading, database interactions).
+    * Be mindful of `.await` points and avoid holding locks across them if possible.
+    * Use asynchronous channels (`tokio::sync::mpsc` or `flume`) for communication between tasks if needed.
+
+* **Configuration Management:**
+    * Load configuration (database URLs, file paths, parsing settings, batch sizes) from external sources (e.g., environment variables via `dotenv`, TOML/YAML files via `config` crate). Do not hardcode configuration values.
+    * Define a configuration struct (`struct Config`) to hold these values.
+
+* **Testability:**
+    * Design components with testability in mind. Use dependency injection where practical (e.g., passing a database pool or validator object instead of using global statics).
+    * Use traits to define interfaces for components like database access or external services, allowing for mock implementations in tests.
+
+* **Database Interaction:**
+    * Centralize database interaction logic within a specific module (e.g., `db_inserter.rs`).
+    * Use the connection pool efficiently; acquire connections just before needed and release them promptly (often handled automatically by `sqlx` pool methods).
+    * Construct SQL queries carefully, using parameters (`$1`, `$2`) to prevent SQL injection vulnerabilities (handled by `sqlx` query macros/functions).
+
+## Development Environment (Docker Compose)
+
+This project utilizes Docker Compose to define and run the multi-container development environment, ensuring consistency and simplifying setup. The configuration is defined in `docker-compose.yml`.
+
+* **Services Overview:**
+    * `rust_pipeline`: The main Rust application container, built using the project's `Dockerfile`. It handles data ingestion, parsing, validation, and insertion.
+    * `db`: A TimescaleDB container (based on PostgreSQL 16) serving as the primary database.
+    * `redis`: A Redis container, potentially used for caching, queueing, or state management (if required by the Rust service).
+    * `pgadmin`: A pgAdmin 4 container for database administration and inspection.
+
+* **Running the Environment:**
+    * Use `docker-compose up -d` to start all services in detached mode.
+    * Use `docker-compose down` to stop and remove containers.
+    * Use `docker-compose logs -f <service_name>` (e.g., `docker-compose logs -f rust_pipeline`) to view logs.
+    * Use `docker-compose build rust_pipeline` to rebuild the Rust service image after code changes.
+
+* **Key Configurations & Interactions:**
+    * **Networking:** All services are connected via the `ingestion-net` bridge network, allowing them to communicate using service names (e.g., `db`, `redis`).
+    * **Database Connection:** The Rust service should connect to TimescaleDB using the `DATABASE_URL` environment variable, which points to `postgresql://postgres:postgres@db:5432/postgres`. Ensure the Rust code loads this URL from the environment (using `dotenv` or `config` crate).
+    * **Redis Connection:** If Redis is used, the Rust service should connect using the `REDIS_URL` environment variable (`redis://redis:6379`).
+    * **Data Volume Mount:** The host's `../../Data` directory (relative to the `docker-compose.yml` file's location) is mounted read-only into the `rust_pipeline` container at `/app/data`. The Rust service should read input files from the path specified by the `DATA_SOURCE_PATH` environment variable (`/app/data`).
+    * **Persistent Data:** Database data (`postgres-data`), Redis data (`redis-data`), and pgAdmin data (`pgadmin-data`) are persisted using named Docker volumes.
+    * **Environment Variables:** Critical configuration like database URLs, Redis URLs, and data paths are passed to the `rust_pipeline` service via environment variables defined in `docker-compose.yml`. The Rust application **must** read these variables at runtime.
+    * **Dependencies:** The `rust_pipeline` service `depends_on` `db` and `redis`, ensuring the database and Redis start before the Rust application attempts to connect.
+    * **Resource Limits:** Basic resource limits (1G memory, 0.5 CPU) are suggested for the Rust service; adjust as needed based on performance.
+
+* **AI Guidance:**
+    * When generating Rust code for database or Redis connections, use the environment variables (`DATABASE_URL`, `REDIS_URL`) specified in `docker-compose.yml`.
+    * When dealing with file paths for input data within the Rust code, use the path provided by the `DATA_SOURCE_PATH` environment variable.
+    * Assume services communicate using their service names as hostnames within the `ingestion-net` network.
+    * Refer to this section when needing context about how the application is run or configured during development.
+
+
+## Report 1: Data Ingestion (Rust)
+
+### 1.1 Story Point: Setup Rust Ingestion Environment
+
+* **Action:** Initialize a new Rust project using `cargo new`.
+* **Dependencies:** Ensure `Cargo.toml` includes the following core dependencies with appropriate features:
+    * `csv = "1"`
+    * `serde = { version = "1", features = ["derive"] }`
+    * `tokio = { version = "1", features = ["full"] }` (Use "full" or specific features like "rt-multi-thread", "macros")
+    * `sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "chrono", "decimal"] }` (Adjust version and features as needed; consider `decimal` if needed, `rustls` or `native-tls`)
+    * `chrono = { version = "0.4", features = ["serde"] }` (For timestamp handling)
+    * `tracing` / `tracing-subscriber` (For logging, preferred over `println!`)
+    * `config` or `dotenv` (For configuration management)
+* **Project Structure:** Set up a logical module structure, e.g.:
+    * `src/main.rs` (Entry point, setup, orchestration)
+    * `src/parser.rs` (Parsing logic for different formats)
+    * `src/validation.rs` (Data validation rules)
+    * `src/db_inserter.rs` (Database interaction logic)
+    * `src/config.rs` (Configuration loading)
+    * `src/errors.rs` (Custom error types)
+* **Documentation:** Generate initial README.md documenting setup, dependencies, and build instructions. Add module-level documentation comments (`//!`) and function/struct comments (`///`).
+
+### 1.2 Story Point: Implement Robust CSV Parsing
+
+* **Tooling:** Use the `csv` crate.
+* **Configuration:** Utilize `csv::ReaderBuilder` for flexibility.
+    * Configure delimiters dynamically based on detected/configured format (handle `;` and `,`).
+    * Handle headers: Allow skipping multiple header lines or no headers. Use `has_headers()` appropriately.
+    * Handle flexible record lengths (`flexible(true)`) ONLY if absolutely necessary, and ensure strict validation follows. Prefer fixed lengths if possible.
+    * Configure quoting (`quoting()`) and trimming (`trim()`) as needed.
+* **Deserialization:** Define Rust structs for expected data records using `#[derive(Deserialize)]`. Match struct fields to potential header names using `#[serde(rename = "...")]` if needed.
+* **Comma Decimals:** For fields with potential comma decimals (e.g., "20,3"), deserialize them as `String`. Implement logic to replace `,` with `.` *before* parsing to `f64` or `Decimal`. Use `#[serde(deserialize_with = "...")]` for custom deserialization functions. Handle potential parsing errors robustly within the custom function.
+* **Iteration:** Process records using `rdr.deserialize::<YourStruct>()`.
+* **Timestamp Parsing:** Use `chrono` to parse various timestamp formats found in the files (e.g., "DD-MM-YYYY HH:MM:SS", "YYYY-MM-DD HH:MM"). Define helper functions for this.
+* **Error Handling:**
+    * Avoid `.unwrap()` and `.expect()`. Use `match` or `?` operator with `Result`.
+    * Define custom error types in `errors.rs` that wrap underlying errors (CSV, Serde, IO, Parse) for better context.
+    * Log parsing errors clearly using `tracing`.
+    * Implement a strategy for bad records (e.g., skip and log, move to a quarantine area).
+
+### (Implicit) Handling JSON Parsing
+
+* **Tooling:** Use `serde_json` crate along with `serde`.
+* **Logic:** Implement separate parsing logic for JSON files.
+* **Deserialization:** Define Rust structs matching the JSON structure (e.g., for `uuid` and `Readings` containing timestamp-value pairs). Use `serde` attributes as needed.
+* **Timestamp Handling:** Parse the millisecond epoch timestamps into `chrono::DateTime<Utc>`.
+* **Error Handling:** Apply the same robust error handling principles as for CSV.
+
+### 1.3 Story Point: Implement Initial Data Validation in Rust
+
+* **Location:** Perform validation immediately after successful deserialization in Rust, before database insertion.
+* **Type Safety:** Leverage `serde`'s deserialization into Rust types as the first line of validation.
+* **Custom Rules:** Implement checks in `validation.rs`:
+    * **Range Checks:** Define acceptable min/max values for sensor readings (temperature, humidity, CO2, etc.). Log or flag violations.
+    * **Timestamp Validity:** Ensure timestamps are within a reasonable range or fall after the previous record's timestamp (for ordered data).
+    * **Required Fields:** Check that non-optional fields actually contain data.
+    * **Consistency Checks:** If possible, check for basic consistency between related fields.
+* **Error Handling:** Return `Result` from validation functions. Integrate validation failures into the overall error handling strategy (logging, quarantining).
+* **UTF-8:** Ensure text fields are valid UTF-8 (usually handled by reading into `String`).
+
+### 1.4 Story Point: Develop Proactive Schema/Format Handling
+
+* **Strategy:** Implement a configuration-driven approach. Use a config file (e.g., `config.toml`) to define expected formats (CSV delimiter, header rows, timestamp format, decimal format, JSON structure) per data source or file pattern.
+* **Detection (Optional):** Minimal sniffing (e.g., detecting initial `[` for JSON, checking common delimiters on the first few lines) can be a fallback but prefer explicit configuration.
+* **Implementation:**
+    * Load format configuration at startup.
+    * Select the appropriate parsing logic based on the configuration for the current file/source.
+    * Log the format configuration being used for each file processed.
+* **Alerting:** Log errors clearly when a file doesn't match its expected format configuration. Consider mechanisms to alert operators if format mismatches or high parsing error rates occur.
+
+## Report 2: Data Storage (TimescaleDB)
+
+*(Instructions for database setup itself are external, these rules guide the Rust code interacting with it)*
+
+### 2.2 Story Point: Implement Rust-TimescaleDB Connection Pooling
+
+* **Tooling:** Use `sqlx` with `sqlx::postgres::PgPoolOptions`.
+* **Configuration:**
+    * Set pool size (`max_connections`) appropriately based on expected load and DB limits.
+    * Configure timeouts (connect, idle).
+* **Credentials:** Load database connection URL/credentials securely from environment variables or a configuration file (using `config` or `dotenv` crates). **Do not hardcode credentials.**
+* **Initialization:** Create the pool once asynchronously during application startup and share it (e.g., using `Arc` or manage through an application state struct).
+
+### 2.3 Story Point: Implement Efficient Batch Inserts from Rust
+
+* **Primary Method:** Implement batch inserts using the `sqlx` **UNNEST** approach.
+    * Collect batches of validated Rust data structs.
+    * Restructure data into separate `Vec<T>` for each database column.
+    * Construct the `INSERT INTO table (...) SELECT * FROM UNNEST($1::TYPE, $2::TYPE, ...)` query string dynamically or using macros. **Ensure explicit type casts in the SQL query matching the TimescaleDB column types (e.g., `$1::TIMESTAMPTZ`, `$2::FLOAT8`).**
+    * Use `sqlx::query()` (or `query_as!`, `query_scalar!`) and bind the column vectors using `bind()`.
+* **Transactions:** Wrap each batch insert within a database transaction (`pool.begin().await?`, `tx.commit().await?`) for atomicity. Implement retry logic for transient transaction errors if necessary.
+* **Batch Size:** Make the batch size configurable. Start with a reasonable default (e.g., 1000 rows) and tune based on performance testing.
+* **Parallelism:** Use `tokio::spawn` and potentially `futures::stream::StreamExt::buffer_unordered` to manage multiple concurrent batch insert tasks if needed for high throughput, ensuring the connection pool size can handle the concurrency.
+* **Alternative (COPY):** If benchmarking shows UNNEST is insufficient for *very* large bulk loads, investigate `COPY FROM STDIN`. This might require more complex handling within `sqlx` or using a lower-level interface. Prefer UNNEST unless proven necessary.
+* **Avoid:** Strictly avoid inserting rows one by one in a loop.
+
+## General Rust Practices
+
+* **Formatting:** Use `rustfmt` consistently. Configure via `rustfmt.toml` if needed.
+* **Linting:** Use `clippy` (`cargo clippy`) regularly and address warnings. Configure via `clippy.toml` if needed.
+* **Error Handling:** Use `thiserror` or `anyhow` for ergonomic error handling and defining custom error types. Propagate errors using `Result` and `?`.
+* **Asynchronous Code:** Use `async/.await` correctly within the `tokio` runtime. Avoid blocking operations on async tasks.
+* **Testing:** Write unit tests (`#[test]`) for parsing logic, validation rules, and utility functions. Write integration tests that interact with a test database instance.
+* **Logging:** Use the `tracing` crate for structured logging. Configure levels and output formats using `tracing_subscriber`.
+* **Comments:** Write clear `///` documentation comments for public functions, structs, and modules. Use `//` for implementation details.
+* **Dependencies:** Keep dependencies updated (`cargo update`). Review dependencies for security and maintenance status.
+* **Modularity:** Keep modules focused on specific responsibilities.
+
+---
+
+Remember to adapt and refine these rules based on the specific evolution of your project and any team-specific coding standards.
