@@ -1,6 +1,6 @@
 ---
 description: 
-globs: DataIngestion/rust_pipeline/**/*.rs
+globs: DataIngestion/rust_pipeline/**/*.rs,DataIngestion/rust_pipeline/data_pipeline/**/*.rs
 alwaysApply: false
 ---
 # Cursor Rules for Rust Greenhouse Data Ingestion Project

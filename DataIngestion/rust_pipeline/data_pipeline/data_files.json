@@ -1,0 +1,1931 @@
+[
+    {
+        "workspace_path": "Data/knudjepsen/NO3_LAMPEGRP_1.csv",
+        "container_path": "/app/data/knudjepsen/NO3_LAMPEGRP_1.csv",
+        "status": "pending",
+        "format_type": "KnudJepsenNO3Lamp",
+        "source_system": "KnudJepsen",
+        "delimiter": ";",
+        "quoting": true,
+        "header_rows": 3,
+        "timestamp_info": {
+            "datetime_col": 0,
+            "format": "%d-%m-%Y %H:%M:%S"
+        },
+        "column_map": [
+            {
+                "source_column": "1",
+                "target_field": "air_temp_middle_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "2",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "3",
+                "target_field": "radiation_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "4",
+                "target_field": "co2_measured_ppm",
+                "data_type": "int"
+            },
+            {
+                "source_column": "5",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "6",
+                "target_field": "curtain_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "7",
+                "target_field": "measured_status_bool",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "8",
+                "target_field": "humidity_deficit_g_m3",
+                "data_type": "float"
+            },
+            {
+                "source_column": "9",
+                "target_field": "pipe_temp_1_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "10",
+                "target_field": "pipe_temp_2_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            "",
+            "#NUM!"
+        ]
+    },
+    {
+        "workspace_path": "Data/knudjepsen/NO3NO4.extra.csv",
+        "container_path": "/app/data/knudjepsen/NO3NO4.extra.csv",
+        "status": "pending",
+        "format_type": "KnudjepsenNO3NO4Extra",
+        "source_system": "KnudJepsen",
+        "delimiter": ";",
+        "quoting": true,
+        "header_rows": 3,
+        "timestamp_info": {
+            "datetime_col": 0,
+            "format": "%d-%m-%Y %H:%M:%S"
+        },
+        "column_map": [
+            {
+                "source_column": "1",
+                "target_field": "humidity_deficit_afd3_g_m3",
+                "data_type": "float"
+            },
+            {
+                "source_column": "2",
+                "target_field": "relative_humidity_afd3_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "3",
+                "target_field": "vent_lee_afd3_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "4",
+                "target_field": "vent_wind_afd3_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "5",
+                "target_field": "humidity_deficit_afd4_g_m3",
+                "data_type": "float"
+            },
+            {
+                "source_column": "6",
+                "target_field": "relative_humidity_afd4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "7",
+                "target_field": "vent_lee_afd4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "8",
+                "target_field": "vent_wind_afd4_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            "",
+            "#NUM!"
+        ]
+    },
+    {
+        "workspace_path": "Data/knudjepsen/NO4_LAMPEGRP_1.csv",
+        "container_path": "/app/data/knudjepsen/NO4_LAMPEGRP_1.csv",
+        "status": "pending",
+        "format_type": "KnudJepsenNO4Lamp",
+        "source_system": "KnudJepsen",
+        "delimiter": ";",
+        "quoting": true,
+        "header_rows": 3,
+        "timestamp_info": {
+            "datetime_col": 0,
+            "format": "%d-%m-%Y %H:%M:%S"
+        },
+        "column_map": [
+            {
+                "source_column": "1",
+                "target_field": "air_temp_middle_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "2",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "3",
+                "target_field": "radiation_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "4",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "5",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "6",
+                "target_field": "curtain_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "7",
+                "target_field": "measured_status_bool",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "8",
+                "target_field": "humidity_deficit_g_m3",
+                "data_type": "float"
+            },
+            {
+                "source_column": "9",
+                "target_field": "pipe_temp_1_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "10",
+                "target_field": "pipe_temp_2_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            "",
+            "#NUM!"
+        ]
+    },
+    {
+        "workspace_path": "Data/knudjepsen/NO3-NO4_belysningsgrp.csv",
+        "container_path": "/app/data/knudjepsen/NO3-NO4_belysningsgrp.csv",
+        "status": "pending",
+        "format_type": "KnudJepsenLighting",
+        "source_system": "KnudJepsen",
+        "delimiter": ";",
+        "quoting": true,
+        "header_rows": 3,
+        "timestamp_info": {
+            "datetime_col": 0,
+            "format": "%d-%m-%Y %H:%M:%S"
+        },
+        "column_map": [
+            {
+                "source_column": "1",
+                "target_field": "lamp_grp1_no3_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "2",
+                "target_field": "lamp_grp2_no3_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "3",
+                "target_field": "lamp_grp3_no3_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "4",
+                "target_field": "lamp_grp4_no3_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "5",
+                "target_field": "lamp_grp1_no4_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "6",
+                "target_field": "lamp_grp2_no4_status",
+                "data_type": "boolean"
+            }
+        ],
+        "null_markers": [
+            "",
+            "#NUM!"
+        ]
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_jan_feb_2014.json",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_jan_feb_2014.json",
+        "status": "pending",
+        "format_type": "AarslevStreamJSON",
+        "source_system": "Aarslev",
+        "timestamp_info": {
+            "timestamp_key": "Readings",
+            "value_key": "Readings",
+            "timestamp_index": 0,
+            "value_index": 1,
+            "is_unix_ms": true
+        },
+        "stream_map": {
+            "be3ddbb8-5210-3be3-84d8-904df2da1754": {
+                "target": "temperature_c",
+                "type": "float"
+            },
+            "5f893ebd-002c-3708-8e76-bb519336f210": {
+                "target": "sun_radiation_w_m2",
+                "type": "float"
+            }
+        },
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/winter2014.csv",
+        "container_path": "/app/data/aarslev/winter2014.csv",
+        "status": "pending",
+        "format_type": "AarslevDataForecast",
+        "source_system": "Aarslev",
+        "delimiter": ";",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "unix_ms_col_name": "timestamp"
+        },
+        "column_map": [
+            {
+                "source_column": "temperature",
+                "target_field": "temperature_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "sun_radiation",
+                "target_field": "sun_radiation_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "actual_temperature",
+                "target_field": "temperature_forecast_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "actual_radiation",
+                "target_field": "sun_radiation_forecast_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_mar_apr_may_2014.json",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_mar_apr_may_2014.json",
+        "status": "pending",
+        "format_type": "AarslevStreamJSON",
+        "source_system": "Aarslev",
+        "timestamp_info": {
+            "timestamp_key": "Readings",
+            "value_key": "Readings",
+            "timestamp_index": 0,
+            "value_index": 1,
+            "is_unix_ms": true
+        },
+        "stream_map": {
+            "be3ddbb8-5210-3be3-84d8-904df2da1754": {
+                "target": "temperature_c",
+                "type": "float"
+            },
+            "5f893ebd-002c-3708-8e76-bb519336f210": {
+                "target": "sun_radiation_w_m2",
+                "type": "float"
+            }
+        },
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_jan_feb_2014.json.csv",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_jan_feb_2014.json.csv",
+        "status": "pending",
+        "format_type": "AarslevUUIDJsonCSV",
+        "source_system": "Aarslev",
+        "delimiter": ";",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "unix_ms_col_name": "timestamp"
+        },
+        "column_map": [
+            {
+                "source_column": "5f893ebd-002c-3708-8e76-bb519336f210",
+                "target_field": "sun_radiation_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "be3ddbb8-5210-3be3-84d8-904df2da1754",
+                "target_field": "temperature_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/temperature_sunradiation_jun_2014.json",
+        "container_path": "/app/data/aarslev/temperature_sunradiation_jun_2014.json",
+        "status": "pending",
+        "format_type": "AarslevStreamJSON",
+        "source_system": "Aarslev",
+        "timestamp_info": {
+            "timestamp_key": "Readings",
+            "value_key": "Readings",
+            "timestamp_index": 0,
+            "value_index": 1,
+            "is_unix_ms": true
+        },
+        "stream_map": {
+            "be3ddbb8-5210-3be3-84d8-904df2da1754": {
+                "target": "temperature_c",
+                "type": "float"
+            },
+            "5f893ebd-002c-3708-8e76-bb519336f210": {
+                "target": "sun_radiation_w_m2",
+                "type": "float"
+            }
+        },
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/weather_jan_feb_2014.csv",
+        "container_path": "/app/data/aarslev/weather_jan_feb_2014.csv",
+        "status": "pending",
+        "format_type": "AarslevWeather",
+        "source_system": "Aarslev",
+        "delimiter": ";",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "unix_ms_col_name": "timestamp"
+        },
+        "column_map": [
+            {
+                "source_column": "temperature",
+                "target_field": "temperature_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "sun_radiation",
+                "target_field": "sun_radiation_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/data_jan_feb_2014.csv",
+        "container_path": "/app/data/aarslev/data_jan_feb_2014.csv",
+        "status": "pending",
+        "format_type": "AarslevDataForecast",
+        "source_system": "Aarslev",
+        "delimiter": ";",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "unix_ms_col_name": "timestamp"
+        },
+        "column_map": [
+            {
+                "source_column": "temperature_forecast",
+                "target_field": "temperature_forecast_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "sun_radiation_forecast",
+                "target_field": "sun_radiation_forecast_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "sun_radiation",
+                "target_field": "sun_radiation_actual_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "temperature",
+                "target_field": "temperature_actual_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/april2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/april2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/april2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/april2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/april2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/april2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/august2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/august2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/august2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/august2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/august2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/august2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/december2013/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/december2013/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/december2013/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/december2013/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/december2013/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/december2013/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/februar2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/februar2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/februar2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/februar2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/februar2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/februar2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/januar2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/januar2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/januar2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/januar2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/januar2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/januar2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/juni2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/juni2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/juni2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/juni2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/juni2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/juni2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/maj2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/maj2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/maj2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/maj2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/maj2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/maj2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData1-2.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData1-2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/marts2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/marts2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/september2014/MortenSDUData3.csv",
+        "container_path": "/app/data/aarslev/september2014/MortenSDUData3.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU3",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Gardin4 (Celle 6) [%]",
+                "target_field": "curtain_4_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Lys (Celle 6) [μmol]",
+                "target_field": "light_intensity_umol",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Regn (Celle 6) []",
+                "target_field": "rain_status",
+                "data_type": "boolean"
+            },
+            {
+                "source_column": "Celle 6.Udetemp (Celle 6) [°C]",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Udelys (Celle 6) [W/m2]",
+                "target_field": "outside_light_w_m2",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/september2014/MortenSDUData2.csv",
+        "container_path": "/app/data/aarslev/september2014/MortenSDUData2.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU2",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.Flow2 (Celle 6) [°C]",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue1 (Celle 6) [%]",
+                "target_field": "window_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Vindue2 (Celle 6) [%]",
+                "target_field": "window_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin1 (Celle 6) [%]",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Gardin3 (Celle 6) [%]",
+                "target_field": "curtain_3_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/september2014/MortenSDUData.csv",
+        "container_path": "/app/data/aarslev/september2014/MortenSDUData.csv",
+        "status": "pending",
+        "format_type": "AarslevMortenSDU1",
+        "source_system": "Aarslev",
+        "delimiter": ",",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "start_col_name": "Start",
+            "end_col_name": "End",
+            "format": "%Y-%m-%d %H:%M"
+        },
+        "column_map": [
+            {
+                "source_column": "Celle 6.RH Zone1 (Celle 6) [RH%]",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 (Celle 6) [ppm]",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.CO2 status (Celle 6) []",
+                "target_field": "co2_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Luft temp (Celle 6) [°C]",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6.Flow1 (Celle 6) [°C]",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": []
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-*.csv",
+        "container_path": "/app/data/aarslev/celle5/output-*.csv",
+        "status": "pending",
+        "format_type": "CSV",
+        "source_system": "AarslevCelleCSV",
+        "delimiter": ";",
+        "quoting": true,
+        "header_rows": 1,
+        "timestamp_info": {
+            "timestamp_columns": [
+                "Date",
+                "Time"
+            ],
+            "timestamp_format": "%d-%m-%Y %H:%M:%S",
+            "timezone": "UTC"
+        },
+        "column_map": [
+            {
+                "source_column": "Date",
+                "target_field": "timestamp_utc",
+                "data_type": "datetime_partial"
+            },
+            {
+                "source_column": "Time",
+                "target_field": "timestamp_utc",
+                "data_type": "datetime_partial"
+            },
+            {
+                "source_column": "Celle 5: Lufttemperatur",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Endelig fælles varme sætpunkt",
+                "target_field": "heating_setpoint_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Vent. position 1",
+                "target_field": "vent_pos_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Vent. position 2",
+                "target_field": "vent_pos_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Luftfugtighed RH%",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Luftfugtighed VPD",
+                "target_field": "vpd_hpa",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: CO2",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: CO2 krav",
+                "target_field": "co2_required_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: CO2 dosering",
+                "target_field": "co2_dosing_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Lys intensitet",
+                "target_field": "light_intensity_lux",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Gardin 1 position",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Solindstråling",
+                "target_field": "radiation_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Udetemperatur",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Flow temperatur 1",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 5: Flow temperatur 2",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            "null",
+            ""
+        ]
+    },
+    {
+        "workspace_path": "Data/aarslev/celle5/output-*.csv.json",
+        "container_path": "/app/data/aarslev/celle5/output-*.csv.json",
+        "status": "pending",
+        "format_type": "JSON",
+        "source_system": "AarslevCelleJSON",
+        "timestamp_info": {
+            "timestamp_columns": [
+                "ts"
+            ],
+            "timestamp_format": "%Y-%m-%dT%H:%M:%S%.f%z",
+            "timezone": "UTC"
+        },
+        "column_map": [
+            {
+                "source_column": "ts",
+                "target_field": "timestamp_utc",
+                "data_type": "datetime"
+            },
+            {
+                "source_column": "status",
+                "target_field": "value",
+                "data_type": "int"
+            }
+        ],
+        "null_markers": [
+            "null"
+        ]
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-*.csv",
+        "container_path": "/app/data/aarslev/celle6/output-*.csv",
+        "status": "pending",
+        "format_type": "CSV",
+        "source_system": "AarslevCelleCSV",
+        "delimiter": ";",
+        "quoting": true,
+        "header_rows": 1,
+        "timestamp_info": {
+            "timestamp_columns": [
+                "Date",
+                "Time"
+            ],
+            "timestamp_format": "%d-%m-%Y %H:%M:%S",
+            "timezone": "UTC"
+        },
+        "column_map": [
+            {
+                "source_column": "Date",
+                "target_field": "timestamp_utc",
+                "data_type": "datetime_partial"
+            },
+            {
+                "source_column": "Time",
+                "target_field": "timestamp_utc",
+                "data_type": "datetime_partial"
+            },
+            {
+                "source_column": "Celle 6: Lufttemperatur",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Endelig fælles varme sætpunkt",
+                "target_field": "heating_setpoint_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Vent. position 1",
+                "target_field": "vent_pos_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Vent. position 2",
+                "target_field": "vent_pos_2_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Luftfugtighed RH%",
+                "target_field": "relative_humidity_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Luftfugtighed VPD",
+                "target_field": "vpd_hpa",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: CO2",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: CO2 krav",
+                "target_field": "co2_required_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: CO2 dosering",
+                "target_field": "co2_dosing_status",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Lys intensitet",
+                "target_field": "light_intensity_lux",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Gardin 1 position",
+                "target_field": "curtain_1_percent",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Solindstråling",
+                "target_field": "radiation_w_m2",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Udetemperatur",
+                "target_field": "outside_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Flow temperatur 1",
+                "target_field": "flow_temp_1_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Celle 6: Flow temperatur 2",
+                "target_field": "flow_temp_2_c",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            "null",
+            ""
+        ]
+    },
+    {
+        "workspace_path": "Data/aarslev/celle6/output-*.csv.json",
+        "container_path": "/app/data/aarslev/celle6/output-*.csv.json",
+        "status": "pending",
+        "format_type": "JSON",
+        "source_system": "AarslevCelleJSON",
+        "timestamp_info": {
+            "timestamp_columns": [
+                "ts"
+            ],
+            "timestamp_format": "%Y-%m-%dT%H:%M:%S%.f%z",
+            "timezone": "UTC"
+        },
+        "column_map": [
+            {
+                "source_column": "ts",
+                "target_field": "timestamp_utc",
+                "data_type": "datetime"
+            },
+            {
+                "source_column": "status",
+                "target_field": "value",
+                "data_type": "int"
+            }
+        ],
+        "null_markers": [
+            "null"
+        ]
+    }
+]

@@ -24,6 +24,7 @@
   - [x] Basic error handling per file is functional.
   - [ ] Refine error handling strategy (implement custom errors in `src/errors.rs` using `thiserror`, integrate `tracing` for logging, define bad record strategy - skip/log/quarantine).
   - [ ] Implement timestamp parsing for various formats using `chrono`.
+  - [ ] Investigate and fix premature container exit (exit code 0) when processing full dataset. (Deferred until core features like timestamp parsing are complete).
 
 - [ ] **1.3. Implement Initial Data Validation in Rust** *(Not Started)*
   - [ ] Create `src/validation.rs` module.
@@ -32,18 +33,19 @@
 
 - [ ] **1.4. Develop Proactive Schema/Format Handling** *(Partially Done)*
   - [x] Parse `aarslev/celle*/*.csv.json` config files into `AarslevCelleJsonConfig` struct.
-  - [ ] **(NEXT PRIORITY)** Utilize parsed `AarslevCelleJsonConfig` during CSV parsing for `aarslev/celle*` files:
-    - [ ] Store parsed configs effectively (e.g., `HashMap<PathBuf, AarslevCelleJsonConfig>`).
-    - [ ] Lookup the relevant config when processing a `celle` CSV file path.
-    - [ ] Use the `delimiter` field from the loaded config in `csv::ReaderBuilder`.
-    - [ ] *Future Use:* Plan integration for `date_format`, `time_format`, `Variables` from config.
-  - [ ] Develop a broader configuration-driven strategy (e.g., using `config` crate with `config.toml`) to define formats for *all* data sources, replacing hardcoded path checks.
+  - [x] **(NEXT PRIORITY)** Utilize parsed `AarslevCelleJsonConfig` during CSV parsing for `aarslev/celle*` files:
+    - [x] Store parsed configs effectively (e.g., `HashMap<PathBuf, AarslevCelleJsonConfig>`).
+    - [x] Lookup the relevant config when processing a `celle` CSV file path.
+    - [x] Use the `delimiter` field from the loaded config in `csv::ReaderBuilder`.
+    - [x] Integrate `date_format` and `time_format` using `chrono` for timestamp parsing.
+    - [ ] *Future Use:* Plan integration for `Variables` field from config.
+  - [x] Develop a broader configuration-driven strategy (e.g., using `config` crate with `config.toml` or extending data_files.json) to define formats for *all* data sources, replacing hardcoded path checks.
   - [ ] Implement logging of the format configuration being used for each file.
   - [ ] Define alerting strategy for format mismatches or high error rates.
 
 - [ ] **(Implicit) Handling JSON Data Parsing** *(Partially Done - Config JSON Only)*
   - [x] Implemented parsing for `AarslevCelleJsonConfig` JSON files.
-  - [ ] Implement parsing logic for other potential JSON data files if identified (e.g., Knudjepsen JSON format mentioned previously).
+  - [x] Implement parsing logic for other potential JSON data files if identified (e.g., `AarslevStreamJSON`).
 
 ---
 

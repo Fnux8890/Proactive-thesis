@@ -1,0 +1,506 @@
+Metadata Extraction Report - 2025-04-10T18:44:51.436606+00:00
+Scanned Directory: D:\GitKraken\Proactive-thesis\Data
+Subdirectories Scanned: aarslev, knudjepsen
+Total CSV Files Found: 50
+================================================================================
+
+--- File 1 ---
+Path: Data\aarslev\data_jan_feb_2014.csv
+Status: OK
+Data Rows: 528
+Columns: 5
+Headers: timestamp, temperature_forecast, sun_radiation_forecast, sun_radiation, temperature
+Timestamp Column Index: 0
+Min Timestamp: Invalid Timestamp
+Max Timestamp: Invalid Timestamp
+
+--- File 2 ---
+Path: Data\aarslev\temperature_sunradiation_jan_feb_2014.json.csv
+Status: OK
+Data Rows: 2891
+Columns: 3
+Headers: timestamp, 5f893ebd-002c-3708-8e76-bb519336f210, be3ddbb8-5210-3be3-84d8-904df2da1754
+Timestamp Column Index: 0
+Min Timestamp: Invalid Timestamp
+Max Timestamp: Invalid Timestamp
+
+--- File 3 ---
+Path: Data\aarslev\weather_jan_feb_2014.csv
+Status: OK
+Data Rows: 528
+Columns: 3
+Headers: timestamp, temperature, sun_radiation
+Timestamp Column Index: 0
+Min Timestamp: Invalid Timestamp
+Max Timestamp: Invalid Timestamp
+
+--- File 4 ---
+Path: Data\aarslev\winter2014.csv
+Status: OK
+Data Rows: 1752
+Columns: 5
+Headers: timestamp, temperature, sun_radiation, actual_temperature, actual_radiation
+Timestamp Column Index: 0
+Min Timestamp: Invalid Timestamp
+Max Timestamp: Invalid Timestamp
+
+--- File 5 ---
+Path: Data\aarslev\april2014\MortenSDUData.csv
+Status: OK
+Data Rows: 720
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 6 ---
+Path: Data\aarslev\april2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 7 ---
+Path: Data\aarslev\april2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 720
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 8 ---
+Path: Data\aarslev\august2014\MortenSDUData.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 9 ---
+Path: Data\aarslev\august2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 10 ---
+Path: Data\aarslev\august2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 11 ---
+Path: Data\aarslev\celle5\output-2013-12-01-00-00.csv
+Status: OK
+Data Rows: 4464
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 12 ---
+Path: Data\aarslev\celle5\output-2014-01-01-00-00.csv
+Status: OK
+Data Rows: 4464
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 13 ---
+Path: Data\aarslev\celle5\output-2014-02-01-00-00.csv
+Status: OK
+Data Rows: 4032
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 14 ---
+Path: Data\aarslev\celle5\output-2014-03-01-00-00.csv
+Status: OK
+Data Rows: 4458
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 15 ---
+Path: Data\aarslev\celle5\output-2014-04-01-00-00.csv
+Status: OK
+Data Rows: 4320
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 16 ---
+Path: Data\aarslev\celle5\output-2014-05-01-00-00.csv
+Status: OK
+Data Rows: 4464
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 17 ---
+Path: Data\aarslev\celle5\output-2014-06-01-00-00.csv
+Status: OK
+Data Rows: 4320
+Columns: 19
+Headers: Date, Time, Celle 5: Lufttemperatur, Celle 5: Endelig fælles varme sætpunkt, Celle 5: Vent. position 1, Celle 5: Vent. position 2, Celle 5: Luftfugtighed RH%, Celle 5: Luftfugtighed VPD, Celle 5: CO2, Celle 5: CO2 krav, Celle 5: CO2 dosering, Celle 5:, Celle 5:, Celle 5: Lys intensitet, Celle 5: Gardin 1 position, Celle 5: Solindstråling, Celle 5: Udetemperatur, Celle 5: Flow temperatur 1, Celle 5: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 18 ---
+Path: Data\aarslev\celle6\output-2013-12-01-00-00.csv
+Status: OK
+Data Rows: 4464
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 19 ---
+Path: Data\aarslev\celle6\output-2014-01-01-00-00.csv
+Status: OK
+Data Rows: 4464
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 20 ---
+Path: Data\aarslev\celle6\output-2014-02-01-00-00.csv
+Status: OK
+Data Rows: 4032
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 21 ---
+Path: Data\aarslev\celle6\output-2014-03-01-00-00.csv
+Status: OK
+Data Rows: 4458
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 22 ---
+Path: Data\aarslev\celle6\output-2014-04-01-00-00.csv
+Status: OK
+Data Rows: 4320
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 23 ---
+Path: Data\aarslev\celle6\output-2014-05-01-00-00.csv
+Status: OK
+Data Rows: 4464
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 24 ---
+Path: Data\aarslev\celle6\output-2014-06-01-00-00.csv
+Status: OK
+Data Rows: 4320
+Columns: 19
+Headers: Date, Time, Celle 6: Lufttemperatur, Celle 6: Endelig fælles varme sætpunkt, Celle 6: Vent. position 1, Celle 6: Vent. position 2, Celle 6: Luftfugtighed RH%, Celle 6: Luftfugtighed VPD, Celle 6: CO2, Celle 6: CO2 krav, Celle 6: CO2 dosering, Celle 6:, Celle 6:, Celle 6: Lys intensitet, Celle 6: Gardin 1 position, Celle 6: Solindstråling, Celle 6: Udetemperatur, Celle 6: Flow temperatur 1, Celle 6: Flow temperatur 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 25 ---
+Path: Data\aarslev\december2013\MortenSDUData.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 26 ---
+Path: Data\aarslev\december2013\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 27 ---
+Path: Data\aarslev\december2013\MortenSDUData3.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 28 ---
+Path: Data\aarslev\februar2014\MortenSDUData.csv
+Status: OK
+Data Rows: 672
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 29 ---
+Path: Data\aarslev\februar2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 30 ---
+Path: Data\aarslev\februar2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 672
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 31 ---
+Path: Data\aarslev\januar2014\MortenSDUData.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 32 ---
+Path: Data\aarslev\januar2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 33 ---
+Path: Data\aarslev\januar2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 34 ---
+Path: Data\aarslev\juni2014\MortenSDUData.csv
+Status: OK
+Data Rows: 720
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 35 ---
+Path: Data\aarslev\juni2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 36 ---
+Path: Data\aarslev\juni2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 720
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 37 ---
+Path: Data\aarslev\maj2014\MortenSDUData.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 38 ---
+Path: Data\aarslev\maj2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 39 ---
+Path: Data\aarslev\maj2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 40 ---
+Path: Data\aarslev\marts2014\MortenSDUData.csv
+Status: OK
+Data Rows: 384
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 41 ---
+Path: Data\aarslev\marts2014\MortenSDUData1-2.csv
+Status: OK
+Data Rows: 360
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 42 ---
+Path: Data\aarslev\marts2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 43 ---
+Path: Data\aarslev\marts2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 744
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 44 ---
+Path: Data\aarslev\september2014\MortenSDUData.csv
+Status: OK
+Data Rows: 720
+Columns: 1
+Headers: Start,End,Celle 6.RH Zone1 (Celle 6) [RH%],Celle 6.CO2 (Celle 6) [ppm],Celle 6.CO2 status (Celle 6) [],Celle 6.Luft temp (Celle 6) [°C],Celle 6.Flow1 (Celle 6) [°C]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 45 ---
+Path: Data\aarslev\september2014\MortenSDUData2.csv
+Status: OK
+Data Rows: 1
+Columns: 1
+Headers: Start,End,Celle 6.Flow2 (Celle 6) [°C],Celle 6.Vindue1 (Celle 6) [%],Celle 6.Vindue2 (Celle 6) [%],Celle 6.Gardin1 (Celle 6) [%],Celle 6.Gardin3 (Celle 6) [%]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 46 ---
+Path: Data\aarslev\september2014\MortenSDUData3.csv
+Status: OK
+Data Rows: 720
+Columns: 1
+Headers: Start,End,Celle 6.Gardin4 (Celle 6) [%],Celle 6.Lys (Celle 6) [μmol],Celle 6.Regn (Celle 6) [],Celle 6.Udetemp (Celle 6) [°C],Celle 6.Udelys (Celle 6) [W/m2]
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 47 ---
+Path: Data\knudjepsen\NO3-NO4_belysningsgrp.csv
+Status: OK
+Data Rows: 105699
+Columns: 7
+Headers: , målt status, målt status, målt status, målt status, målt status, målt status
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 48 ---
+Path: Data\knudjepsen\NO3NO4.extra.csv
+Status: OK
+Data Rows: 105411
+Columns: 9
+Headers: , mål FD, mål RF, mål læ, mål vind, mål FD, mål RF, mål læ, mål vind
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 49 ---
+Path: Data\knudjepsen\NO3_LAMPEGRP_1.csv
+Status: OK
+Data Rows: 105699
+Columns: 11
+Headers: , mål temp afd  Mid, udetemp, stråling, CO2 målt, mål gard 1, mål gard 2, målt status, mål FD, mål rør 1, mål rør 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+
+--- File 50 ---
+Path: Data\knudjepsen\NO4_LAMPEGRP_1.csv
+Status: OK
+Data Rows: 105699
+Columns: 11
+Headers: , mål temp afd  Mid, udetemp, stråling, CO2 målt, mål gard 1, mål gard 2, målt status, mål FD, mål rør 1, mål rør 2
+Timestamp Column Index: N/A
+Min Timestamp: N/A
+Max Timestamp: N/A
+

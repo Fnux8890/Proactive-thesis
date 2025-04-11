@@ -4,9 +4,10 @@ services:
       context: . # Build context is the current directory
       dockerfile: Dockerfile
     volumes:
-      # Mount the source data directory (read-only)
-      # Path is relative to this docker-compose.yml file
-      - ../../Data:/app/data:ro # <-- Restore the full data mount
+      # REMOVE mount for the config directory, it's now copied into the image
+      # - ./DataIngestion/rust_pipeline:/app/config_files:ro
+      # Mount the data directory from the parent folder (../Data)
+      - ../../Data:/app/data:ro
       # Mount only specific subdirectories for testing
       # - ../../Data/aarslev/celle5:/app/data/aarslev/celle5:ro
       # - ../../Data/aarslev/celle6:/app/data/aarslev/celle6:ro
@@ -21,11 +22,11 @@ services:
       REDIS_URL: redis://redis:6379
       # Pass Database URL if needed (assumes db is running on ingestion-net)
       DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '0.5'
+    # deploy: # Commented out resource limits
+    #   resources:
+    #     limits:
+    #       memory: 1G
+    #       cpus: '0.5'
     networks:
       - ingestion-net
 
