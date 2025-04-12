@@ -54,6 +54,8 @@ services:
     volumes:
       # Persist data using a named volume mapped to the standard PGDATA location
       - postgres-data:/var/lib/postgresql/data
+      # Add the init script mount
+      - ./db_init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       # Keep the standard port mapping
       - "5432:5432"

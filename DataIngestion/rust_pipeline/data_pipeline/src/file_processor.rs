@@ -1,6 +1,6 @@
 use crate::config::FileConfig;
 use crate::data_models::ParsedRecord;
-use crate::errors::{PipelineError/*, ParseError*/};
+use crate::errors::PipelineError;
 use crate::parsers;
 
 /// Processes a single file based on its configuration.
@@ -12,7 +12,7 @@ pub fn process_file(config_entry: &FileConfig) -> Result<Vec<ParsedRecord>, Pipe
     );
 
     // Match on the format_type string to determine the parser
-    match config_entry.format_type.as_str() {
+    let parsed_result = match config_entry.format_type.as_str() {
         // --- CSV Formats ---
         "KnudJepsenNO3Lamp" | 
         "KnudJepsenNO4Lamp" | 
@@ -75,5 +75,7 @@ pub fn process_file(config_entry: &FileConfig) -> Result<Vec<ParsedRecord>, Pipe
                  path: config_entry.container_path.clone(),
             })
         }
-    }
+    };
+
+    parsed_result // Return the result from the parser directly
 } 

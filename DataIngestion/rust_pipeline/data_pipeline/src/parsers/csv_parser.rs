@@ -397,8 +397,8 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                             match cleaned_value.parse::<f64>() {
                                 Ok(val) => set_field!(parsed_record, *target_field, val; f64),
                                 Err(e) => {
-                                    eprintln!("ERROR: Float parse failed for field '{}' ('{}' -> '{}') in {} at row {}: {}", target_field, raw_value, cleaned_value, file_path.display(), file_row_num, e);
-                                    row_has_error = true;
+                                    eprintln!("WARN: Float parse failed for field '{}' ('{}' -> '{}') in {} at row {}: {}. Setting field to None.", target_field, raw_value, cleaned_value, file_path.display(), file_row_num, e);
+                                    // REMOVED: row_has_error = true;
                                 }
                             }
                         }
@@ -412,12 +412,12 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                                              set_field!(parsed_record, *target_field, f_val.round() as i64; i64)
                                          }
                                          Ok(f_val) => { // Parsed as float but wasn't whole number
-                                             eprintln!("ERROR: Integer parse failed (non-integer float: {}) for field '{}' ('{}') in {} at row {}", f_val, target_field, raw_value, file_path.display(), file_row_num);
-                                             row_has_error = true;
+                                             eprintln!("WARN: Integer parse failed (non-integer float: {}) for field '{}' ('{}') in {} at row {}. Setting field to None.", f_val, target_field, raw_value, file_path.display(), file_row_num);
+                                             // REMOVED: row_has_error = true;
                                          }
                                          Err(e) => { // Failed to parse as int or float
-                                              eprintln!("ERROR: Integer parse failed for field '{}' ('{}') in {} at row {}: {}", target_field, raw_value, file_path.display(), file_row_num, e);
-                                              row_has_error = true;
+                                              eprintln!("WARN: Integer parse failed for field '{}' ('{}') in {} at row {}: {}. Setting field to None.", target_field, raw_value, file_path.display(), file_row_num, e);
+                                              // REMOVED: row_has_error = true;
                                          }
                                      }
                                 }
@@ -428,8 +428,8 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                                  "true" | "1" | "yes" | "t" | "y" => set_field!(parsed_record, *target_field, true; bool),
                                  "false" | "0" | "no" | "f" | "n" => set_field!(parsed_record, *target_field, false; bool),
                                  _ => {
-                                     eprintln!("ERROR: Boolean parse failed for field '{}' ('{}') in {} at row {}: Invalid boolean value", target_field, raw_value, file_path.display(), file_row_num);
-                                     row_has_error = true;
+                                     eprintln!("WARN: Boolean parse failed for field '{}' ('{}') in {} at row {}: Invalid boolean value. Setting field to None.", target_field, raw_value, file_path.display(), file_row_num);
+                                     // REMOVED: row_has_error = true;
                                  }
                              }
                          }
@@ -443,18 +443,25 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                         }
                     }
                 }
-                 Ok(None) => { /* Field was empty/whitespace after trimming */ continue; }
+                 Ok(None) => { /* Field was empty/whitespace after trimming - already None */ continue; }
                  Err(_) => { // Error from get_field_by_index (should indicate index out of bounds)
                      eprintln!("ERROR: Missing column at expected index {} for field '{}' in {} at row {}", *source_index, target_field, file_path.display(), file_row_num);
-                     row_has_error = true;
+                     // CRITICAL Error - index mapping is wrong, maybe keep row_has_error?
+                     row_has_error = true; // Keep this one as it indicates a config/file mismatch
                 }
             }
         }
 
+        // Only skip row if a CRITICAL error occurred (like timestamp or index out of bounds)
         if !row_has_error {
-            parsed_records.push(parsed_record);
+            // Check if timestamp is None, only push if we have a valid timestamp
+            if parsed_record.timestamp_utc.is_some() {
+                parsed_records.push(parsed_record);
+            } else {
+                eprintln!("INFO: Skipping row {} in {} due to missing or invalid timestamp.", file_row_num, file_path.display());
+            }
         } else {
-            eprintln!("INFO: Skipping row {} in {} due to parsing errors.", file_row_num, file_path.display());
+            eprintln!("INFO: Skipping row {} in {} due to critical parsing errors (index out of bounds or invalid timestamp).", file_row_num, file_path.display());
         }
     }
 

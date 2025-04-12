@@ -31,7 +31,7 @@
   - [ ] Implement validation logic *after* successful parsing (e.g., range checks for temp/humidity, timestamp validity, required field checks).
   - [ ] Integrate validation failures into the error handling strategy (e.g., specific error variants, logging).
 
-- [ ] **1.4. Develop Proactive Schema/Format Handling** *(Partially Done)*
+- [x] **1.4. Develop Proactive Schema/Format Handling** *(Partially Done)*
   - [x] Parse `aarslev/celle*/*.csv.json` config files into `AarslevCelleJsonConfig` struct.
   - [x] **(NEXT PRIORITY)** Utilize parsed `AarslevCelleJsonConfig` during CSV parsing for `aarslev/celle*` files:
     - [x] Store parsed configs effectively (e.g., `HashMap<PathBuf, AarslevCelleJsonConfig>`).

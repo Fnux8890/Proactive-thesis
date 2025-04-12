@@ -1,0 +1,117 @@
+[
+    {
+        "workspace_path": "/Data/Greenhouse1/CSV_Raw",
+        "container_path": "/app/data/Greenhouse1/CSV_Raw/*.csv",
+        "status": "active",
+        "format_type": "csv",
+        "source_system": "Priva_GH1",
+        "delimiter": ";",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "date_col_name": "Datum",
+            "time_col_name": "Tijd",
+            "format": "%d-%m-%Y %H:%M:%S"
+        },
+        "column_map": [
+            {
+                "source_column": "Datum",
+                "target_field": "ignore",
+                "data_type": "ignore"
+            },
+            {
+                "source_column": "Tijd",
+                "target_field": "ignore",
+                "data_type": "ignore"
+            },
+            {
+                "source_column": "Meetwaarde 1",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Meetwaarde 2",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "Meetwaarde 3",
+                "target_field": "rh_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            "",
+            "NaN",
+            "NULL",
+            "N/A"
+        ]
+    },
+    {
+        "workspace_path": "/Data/Greenhouse2/Raw_SensorNet",
+        "container_path": "/app/data/Greenhouse2/Raw_SensorNet/SensorNet_Data*.csv",
+        "status": "active",
+        "format_type": "csv",
+        "source_system": "SensorNet_GH2",
+        "delimiter": ",",
+        "quoting": true,
+        "header_rows": 0,
+        "timestamp_info": {
+            "datetime_col": 0,
+            "format": "%Y-%m-%d %H:%M:%S"
+        },
+        "column_map": [
+            {
+                "source_column": "0",
+                "target_field": "ignore",
+                "data_type": "ignore"
+            },
+            {
+                "source_column": "1",
+                "target_field": "co2_measured_ppm",
+                "data_type": "float"
+            },
+            {
+                "source_column": "2",
+                "target_field": "air_temp_c",
+                "data_type": "float"
+            },
+            {
+                "source_column": "3",
+                "target_field": "rh_percent",
+                "data_type": "float"
+            }
+        ],
+        "null_markers": [
+            ""
+        ]
+    },
+    {
+        "workspace_path": "/Data/Experimental_Setup/JSON_Streams",
+        "container_path": "/app/data/Experimental_Setup/JSON_Streams/*.jsonl",
+        "status": "active",
+        "format_type": "json_stream",
+        "source_system": "LabFlux_Exp1",
+        "timestamp_info": {
+            "unix_ms_col_name": "timestamp_ms"
+        },
+        "stream_map": {
+            "7e3f1a-CO2": {
+                "target": "co2_measured_ppm",
+                "type": "float"
+            },
+            "9b8d2c-TEMP": {
+                "target": "air_temp_c",
+                "type": "float"
+            },
+            "f4a5e6-RH": {
+                "target": "rh_percent",
+                "type": "float"
+            }
+        },
+        "null_markers": [
+            "null",
+            "NaN"
+        ]
+    }
+]

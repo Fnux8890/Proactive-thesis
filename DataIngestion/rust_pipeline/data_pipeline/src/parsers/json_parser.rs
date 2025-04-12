@@ -71,7 +71,7 @@ pub fn parse_aarslev_stream_json(config: &FileConfig, file_path: &Path) -> Resul
             // Iterate through the readings for this stream
             println!("DEBUG (StreamJSON): Iterating through {} readings for UUID {}", stream_data.readings.len(), uuid);
             for (reading_index, reading) in stream_data.readings.iter().enumerate() {
-                let file_row_num = reading_index + 1; // Use reading index as pseudo row number
+                let _file_row_num = reading_index + 1; // Use reading index as pseudo row number
                 let mut record = ParsedRecord::default();
                 let mut row_has_error = false;
 
@@ -148,7 +148,7 @@ pub fn parse_aarslev_stream_json(config: &FileConfig, file_path: &Path) -> Resul
 // Removed placeholder for parse_aarslev_celle_json as the format is not defined
 
 // Placeholder for AarslevCelleJSON (e.g., celle*/...csv.json)
-pub fn parse_aarslev_celle_json(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedRecord>, ParseError> {
+pub fn parse_aarslev_celle_json(_config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedRecord>, ParseError> {
      println!(
         "WARN: Parser for AarslevCelleJSON format not fully implemented yet. Skipping file: {}",
         file_path.display()

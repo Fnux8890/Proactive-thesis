@@ -67,6 +67,20 @@
         "null_markers": [
             "",
             "#NUM!"
+        ],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_middle_c",
+                "min": 10.0,
+                "max": 35.0
+            },
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
         ]
     },
     {
@@ -127,6 +141,44 @@
         "null_markers": [
             "",
             "#NUM!"
+        ],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_afd3_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "vent_lee_afd3_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "vent_wind_afd3_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_afd4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "vent_lee_afd4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "vent_wind_afd4_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
         ]
     },
     {
@@ -197,6 +249,44 @@
         "null_markers": [
             "",
             "#NUM!"
+        ],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_middle_c",
+                "min": 10.0,
+                "max": 35.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "radiation_w_m2",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
         ]
     },
     {
@@ -272,7 +362,21 @@
                 "type": "float"
             }
         },
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "radiation_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/winter2014.csv",
@@ -308,7 +412,21 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "radiation_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/temperature_sunradiation_mar_apr_may_2014.json",
@@ -333,7 +451,21 @@
                 "type": "float"
             }
         },
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "radiation_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/temperature_sunradiation_jan_feb_2014.json.csv",
@@ -359,7 +491,21 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "radiation_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/temperature_sunradiation_jun_2014.json",
@@ -384,7 +530,21 @@
                 "type": "float"
             }
         },
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "radiation_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/weather_jan_feb_2014.csv",
@@ -410,7 +570,15 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "temperature_c",
+                "min": -50.0,
+                "max": 50.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/data_jan_feb_2014.csv",
@@ -446,7 +614,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "temperature_forecast_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "sun_radiation_forecast_w_m2",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "sun_radiation_actual_w_m2",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "temperature_actual_c",
+                "min": -50.0,
+                "max": 50.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/april2014/MortenSDUData3.csv",
@@ -489,7 +683,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/april2014/MortenSDUData2.csv",
@@ -532,7 +752,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/april2014/MortenSDUData.csv",
@@ -575,7 +827,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/august2014/MortenSDUData3.csv",
@@ -618,7 +896,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/august2014/MortenSDUData2.csv",
@@ -661,7 +965,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/august2014/MortenSDUData.csv",
@@ -704,7 +1040,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/december2013/MortenSDUData3.csv",
@@ -747,7 +1109,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/december2013/MortenSDUData2.csv",
@@ -790,7 +1178,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/december2013/MortenSDUData.csv",
@@ -833,7 +1253,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/februar2014/MortenSDUData3.csv",
@@ -876,7 +1322,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/februar2014/MortenSDUData2.csv",
@@ -919,7 +1391,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/februar2014/MortenSDUData.csv",
@@ -962,7 +1466,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/januar2014/MortenSDUData3.csv",
@@ -1005,7 +1535,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/januar2014/MortenSDUData2.csv",
@@ -1048,7 +1604,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/januar2014/MortenSDUData.csv",
@@ -1091,7 +1679,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/juni2014/MortenSDUData3.csv",
@@ -1134,7 +1748,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/juni2014/MortenSDUData2.csv",
@@ -1177,7 +1817,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/juni2014/MortenSDUData.csv",
@@ -1220,7 +1892,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/maj2014/MortenSDUData3.csv",
@@ -1263,7 +1961,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/maj2014/MortenSDUData2.csv",
@@ -1306,7 +2030,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/maj2014/MortenSDUData.csv",
@@ -1349,7 +2105,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/marts2014/MortenSDUData3.csv",
@@ -1392,7 +2174,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/marts2014/MortenSDUData2.csv",
@@ -1435,7 +2243,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/marts2014/MortenSDUData1-2.csv",
@@ -1478,7 +2318,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/marts2014/MortenSDUData.csv",
@@ -1521,7 +2387,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/september2014/MortenSDUData3.csv",
@@ -1564,7 +2456,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "curtain_4_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "light_intensity_umol",
+                "min": 0.0,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_temp_c",
+                "min": -50.0,
+                "max": 50.0
+            },
+            {
+                "rule_type": "range",
+                "field": "outside_light_w_m2",
+                "min": 0.0,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/september2014/MortenSDUData2.csv",
@@ -1607,7 +2525,39 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "flow_temp_2_c",
+                "min": null,
+                "max": null
+            },
+            {
+                "rule_type": "range",
+                "field": "window_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "window_2_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "curtain_3_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/september2014/MortenSDUData.csv",
@@ -1650,7 +2600,33 @@
                 "data_type": "float"
             }
         ],
-        "null_markers": []
+        "null_markers": [],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "flow_temp_1_c",
+                "min": null,
+                "max": null
+            }
+        ]
     },
     {
         "workspace_path": "Data/aarslev/celle5/output-*.csv",
@@ -1662,12 +2638,9 @@
         "quoting": true,
         "header_rows": 1,
         "timestamp_info": {
-            "timestamp_columns": [
-                "Date",
-                "Time"
-            ],
-            "timestamp_format": "%d-%m-%Y %H:%M:%S",
-            "timezone": "UTC"
+            "date_col_name": "Date",
+            "time_col_name": "Time",
+            "format": "%Y-%m-%d %H:%M:%S"
         },
         "column_map": [
             {
@@ -1800,12 +2773,9 @@
         "quoting": true,
         "header_rows": 1,
         "timestamp_info": {
-            "timestamp_columns": [
-                "Date",
-                "Time"
-            ],
-            "timestamp_format": "%d-%m-%Y %H:%M:%S",
-            "timezone": "UTC"
+            "date_col_name": "Date",
+            "time_col_name": "Time",
+            "format": "%Y-%m-%d %H:%M:%S"
         },
         "column_map": [
             {
@@ -1897,6 +2867,32 @@
         "null_markers": [
             "null",
             ""
+        ],
+        "validation_rules": [
+            {
+                "rule_type": "range",
+                "field": "air_temp_c",
+                "min": 10.0,
+                "max": 45.0
+            },
+            {
+                "rule_type": "range",
+                "field": "relative_humidity_percent",
+                "min": 0.0,
+                "max": 100.0
+            },
+            {
+                "rule_type": "range",
+                "field": "co2_measured_ppm",
+                "min": 200.0,
+                "max": 2500.0
+            },
+            {
+                "rule_type": "range",
+                "field": "vent_pos_1_percent",
+                "min": 0.0,
+                "max": 100.0
+            }
         ]
     },
     {

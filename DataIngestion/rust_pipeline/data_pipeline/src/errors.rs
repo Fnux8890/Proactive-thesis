@@ -24,12 +24,21 @@ pub enum ConfigError {
 #[derive(Error, Debug)]
 pub enum PipelineError {
     #[error("Configuration loading failed: {0}")]
-    Config(#[from] ConfigError),
+    Config(String), // Keep simple string for now for DB URL error
+    #[error("Configuration parsing failed: {0}")]
+    ConfigParse(#[from] ConfigError),
     #[error("Parsing failed for {1}: {0}")]
     Parse(ParseError, PathBuf),
     #[error("Unsupported format type '{format_type}' for file {path}")]
     UnsupportedFormat { format_type: String, path: PathBuf },
-    // Add other pipeline-level errors later (e.g., Database)
+    #[error("Database pool creation error: {0}")]
+    DbPoolError(String), // From db.rs
+    #[error("Database operation failed: {0}")]
+    DbQueryError(#[from] tokio_postgres::Error),
+    #[error("Failed to get database connection from pool: {0}")]
+    DbConnectionError(#[from] deadpool_postgres::PoolError),
+    #[error("Failed to serialize data for database: {0}")]
+    DbSerializationError(String),
 }
 
 #[derive(Error, Debug)]
@@ -79,4 +88,21 @@ pub enum ParseError {
         message: String,
     },
     // Add other specific parsing errors as needed
+}
+
+// --- Validation Error Enum ---
+
+#[derive(Error, Debug)]
+pub enum ValidationError {
+    #[error("Range error in {file} at row {row} for field '{field}': value {value} is {details}")]
+    RangeError {
+        file: String,
+        row: usize,
+        field: String,
+        value: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+        details: String, // e.g., "less than min (0)", "greater than max (100)"
+    },
+    // Add other validation error types here (e.g., RequiredFieldMissing, InvalidTimestampOrder)
 } 

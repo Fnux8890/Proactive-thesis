@@ -1,16 +1,17 @@
 {
     "mcpServers": {
-        "excalidraw": {
+        "github": {
             "command": "docker",
             "args": [
                 "run",
                 "-i",
                 "--rm",
-                "mcp/excalidraw"
+                "-e",
+                "GITHUB_PERSONAL_ACCESS_TOKEN",
+                "ghcr.io/github/github-mcp-server"
             ],
             "env": {
-                "LOG_LEVEL": "info",
-                "DEBUG": "false"
+                "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
             }
         }
     }

@@ -75,8 +75,6 @@ pub struct FileConfig {
     // Added stream_map field for JSON stream formats
     #[serde(default)]
     pub stream_map: Option<HashMap<String, StreamMapTarget>>, // UUID -> Target/Type mapping
-    // Optional validation rules for this file format
-    pub validation_rules: Option<Vec<ValidationRule>>,
 }
 
 // Function to provide a default status if not present in JSON
@@ -110,20 +108,4 @@ pub fn load_config(path_str: &str) -> Result<Vec<FileConfig>, ConfigError> {
     })?;
 
     Ok(configs)
-}
-
-// --- Validation Rule Structures ---
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "rule_type", rename_all = "snake_case")] // Use enum dispatch based on rule_type
-pub enum ValidationRule {
-    Range(RangeRule),
-    // Add other rule types here later (e.g., Required, TimestampOrder)
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RangeRule {
-    pub field: String, // Name of the field in ParsedRecord (e.g., "air_temp_c")
-    pub min: Option<f64>,
-    pub max: Option<f64>,
 } 

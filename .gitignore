@@ -135,3 +135,4 @@ DataIngestion/rust_pipeline/data_pipeline/target/.rustc_info.json
 DataIngestion/rust_pipeline/data_pipeline/target/.rustdoc_fingerprint.json
 DataIngestion/rust_pipeline/data_pipeline/target/.fingerprint/**/*
 DataIngestion/rust_pipeline/data_pipeline/target/CACHEDIR.TAG
+DataIngestion/rust_pipeline/db_checker/target/*
