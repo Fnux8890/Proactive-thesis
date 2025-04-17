@@ -1,6 +1,6 @@
-use thiserror::Error;
 use std::io;
 use std::path::PathBuf;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -39,6 +39,21 @@ pub enum PipelineError {
     DbConnectionError(#[from] deadpool_postgres::PoolError),
     #[error("Failed to serialize data for database: {0}")]
     DbSerializationError(String),
+    #[error("Schema mismatch for table '{table}': Missing columns: {missing:?}, Extra columns: {extra:?}")]
+    SchemaMismatch {
+        table: String,
+        missing: Vec<String>,
+        extra: Vec<String>,
+    },
+    #[error("Data integrity check failed: Type='{check_type}', File='{source_file:?}', Column='{column_name}', Value='{value}'")]
+    DataIntegrityError {
+        check_type: String,
+        source_file: Option<String>,
+        column_name: String,
+        value: String,
+    },
+    #[error("Merge script execution failed: {0}")]
+    MergeScriptError(String),
 }
 
 #[derive(Error, Debug)]
@@ -70,11 +85,8 @@ pub enum ParseError {
         #[source]
         source: serde_json::Error,
     },
-     #[error("Unsupported file format type specified in config for {path}: {format_type}")]
-    UnsupportedFormatType {
-        path: PathBuf,
-        format_type: String,
-    },
+    #[error("Unsupported file format type specified in config for {path}: {format_type}")]
+    UnsupportedFormatType { path: PathBuf, format_type: String },
     #[error("Error reading CSV headers in {path}: {source}")]
     HeaderReadError {
         path: PathBuf,
@@ -105,4 +117,4 @@ pub enum ValidationError {
         details: String, // e.g., "less than min (0)", "greater than max (100)"
     },
     // Add other validation error types here (e.g., RequiredFieldMissing, InvalidTimestampOrder)
-} 
+}

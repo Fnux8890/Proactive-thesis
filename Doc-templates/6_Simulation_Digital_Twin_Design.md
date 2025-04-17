@@ -1,10 +1,10 @@
-# Simulation and Digital Twin Design Document
+# Simulation Model Design Document
 
 ## Document Information
 
-- **Title:** Simulation and Digital Twin Design Document
-- **Project:** Data-Driven Greenhouse Climate Control System
-- **Version:** 1.0
+- **Title:** Simulation Model Design Document
+- **Project:** Simulation-Based Greenhouse Control Optimization
+- **Version:** 1.0 (Based on Facilitation Report)
 - **Last Updated:** [Date]
 
 ---
@@ -13,16 +13,17 @@
 
 ### 1.1 Purpose
 
-This document details the design and implementation of the simulation framework and digital twin technology for the Data-Driven Greenhouse Climate Control System. The design provides guidance on how simulation models and digital twins are developed, integrated, and used to test and validate climate control strategies in a greenhouse environment.
+This document details the design of the plant simulation model used within the Simulation-Based Greenhouse Control Optimization system. It provides guidance on how the simulation model is structured, integrated with historical data, and used to evaluate potential greenhouse control strategies based on simulated plant growth responses.
 
 ### 1.2 Scope
 
 This document encompasses:
 
-- The simulation environment architecture.
-- Digital twin implementation details.
-- Integration strategies with the live greenhouse system.
-- Testing scenarios, validation processes, and performance requirements for both simulation and digital twin components.
+- The simulation model architecture and its role within the optimization workflow.
+- Key components of the simulation model (environmental inputs, plant growth logic).
+- Integration with the Input Preparation and MOEA modules.
+- Testing scenarios and the qualitative validation approach for the simulation model.
+- Performance considerations for running simulations within the MOEA loop.
 
 ---
 
@@ -30,369 +31,205 @@ This document encompasses:
 
 ### 2.1 High-Level Architecture
 
-The simulation framework integrates real-world data with predictive models and control algorithms. The following diagram illustrates the high-level flow:
+The simulation model receives prepared historical data and candidate control strategies to predict plant growth metrics, which are then used by the MOEA.
 
-```
-[Real Greenhouse Data] → [Data Preprocessing] → [Simulation Engine]
-          ↑                       ↓                      ↓
- [Historical Database] ← [Digital Twin Model] ← [Control Algorithms]
+```mermaid
+graph TD
+    A[Input Preparation Module] -- Prepared Data & Config --> B(Simulation Engine);
+    C[MOEA Module] -- Control Strategy Candidate --> B;
+    B -- Simulated Growth Metrics --> C;
+
+    style B fill:#d5f,stroke:#333,stroke-width:2px
 ```
 
 ### 2.2 Core Components
 
-1. **Physics Engine**
-   - Implements heat transfer models.
-   - Simulates air flow dynamics.
-   - Models moisture distribution.
-   - Calculates light penetration.
+1. **Environmental Input Handler:**
+    - Processes structured historical data (temperature, humidity, CO₂, light) provided by the Input Preparation module for specific time steps or periods.
+    - Incorporates parameters from the candidate control strategy (e.g., supplemental lighting schedule).
 
-2. **Environmental Models**
-   - Simulates temperature dynamics.
-   - Captures humidity patterns.
-   - Models CO₂ concentration levels.
-   - Represents light distribution within the greenhouse.
-
-3. **Plant Growth Models**
-   - Estimates photosynthesis rates.
-   - Models plant transpiration.
-   - Simulates growth progression.
-   - Assesses nutrient uptake patterns.
+2. **Plant Growth Model:**
+    - Implements core logic based on established concepts (e.g., photosynthesis-driven growth) adapted from relevant literature (e.g., DynaGrow documentation).
+    - Calculates growth metrics (e.g., biomass accumulation rate) based on the environmental inputs and internal plant state (if any).
+    - Designed for qualitative accuracy rather than quantitative calibration (Ref: NFR-6).
 
 ---
 
-## 3. Digital Twin Framework
+## 3. Simulation Components
 
-### 3.1 Twin Model Structure
+### 3.1 Environmental Simulation Aspects
 
-The digital twin maintains a virtual representation of the greenhouse. A simplified Python class structure is shown below:
+The simulation uses historical environmental data as direct inputs, modified by the control strategy being evaluated.
 
-```typescript
-export class GreenhouseTwin {
-  private zones: string[];
-  private sensors: Map<string, any>;
-  private actuators: Map<string, any>;
-  private environmentalState: Map<string, any>;
-  private historicalData: any[];
+```python
+import pandas as pd
+import numpy as np
+from dataclasses import dataclass
+from typing import List, Dict, Any
 
-  constructor() {
-    this.zones = [];
-    this.sensors = new Map();
-    this.actuators = new Map();
-    this.environmentalState = new Map();
-    this.historicalData = [];
-  }
+# Conceptual representation of input data (could be DataFrame rows or dicts)
+# For performance, using NumPy arrays directly is often better
+@dataclass
+class SimulationTimeStepInput:
+    timestamp: pd.Timestamp # Or similar datetime object
+    temperature: float
+    humidity: float
+    co2: float
+    light_level: float # Potentially adjusted by control strategy
+    # Other relevant environmental factors...
 
-  public updateState(sensorData: any): void {
-    /**
-     * Update the virtual state using real-time sensor data.
-     */
-    // Update logic goes here
-  }
+# Conceptual Python class for the simulation runner
+class PlantSimulator:
+    def __init__(self, params: Dict[str, Any]):
+        # Model parameters loaded from config
+        self.params = params
+        # Internal state if the model is stateful
+        # self.current_state = self._initialize_state()
 
-  public predictNextState(controlActions: any): any {
-    /**
-     * Predict the next environmental state based on provided control actions.
-     */
-    // Prediction logic goes here
-    return null;
-  }
+    def run_simulation(self, inputs: pd.DataFrame) -> 'SimulationOutput': # Or using List[SimulationTimeStepInput], or NumPy arrays
+        """Runs the simulation over a period defined by the input data."""
+        simulated_growth = 0.0
+        # Logic to iterate through inputs (e.g., DataFrame rows or NumPy arrays),
+        # update internal state (if any), and calculate growth based on self.params
+        # Example placeholder:
+        for index, row in inputs.iterrows(): # Note: iterrows is slow, prefer vectorized ops
+            # growth_increment = self._calculate_step_growth(row, self.current_state)
+            # simulated_growth += growth_increment
+            # self.current_state = self._update_state(row, self.current_state)
+            pass # Replace with actual vectorized logic
+        
+        # Placeholder - actual calculation needed
+        simulated_growth = np.random.rand() # Replace with real result
 
-  public validateActions(proposedActions: any): boolean {
-    /**
-     * Validate control actions against safety and system constraints.
-     */
-    // Validation logic goes here
-    return true;
-  }
-}
+        return SimulationOutput(total_simulated_growth=simulated_growth)
+
+    # Placeholder methods for stateful models
+    # def _calculate_step_growth(self, input_row, current_state):
+    #     pass
+    # def _update_state(self, input_row, current_state):
+    #     pass
+    # def _initialize_state(self):
+    #     pass
+
+@dataclass
+class SimulationOutput:
+    total_simulated_growth: float
+    # Other relevant output metrics...
+
+# ControlStrategy could be a simple list/array of parameters
+# Example: control_strategy = [light_intensity, light_duration]
+
 ```
 
-### 3.2 State Synchronization
+*(Note: The specific model equations and state variables will be determined during implementation based on selected established concepts.)*
 
-To maintain alignment with the real system, the digital twin uses:
+### 3.2 Plant Growth Model Component
 
-- **Real-Time Data Integration:** Regularly updates state with live sensor feeds.
-- **State Estimation Algorithms:** Computes current conditions from noisy data.
-- **Drift Correction Mechanisms:** Adjusts the model when deviations occur.
-- **Calibration Procedures:** Periodic recalibration using historical and real-time comparisons.
+- **Objective:** To provide a quantitative estimate of plant growth based on environmental inputs, suitable for use as an objective in the MOEA.
+- **Approach:** Adapt existing models (e.g., focusing on light use efficiency, temperature response curves, CO₂ effects on photosynthesis) rather than developing a novel model.
+- **Inputs:** Time-series environmental data (light, temp, CO₂, etc.) from the Input Preparation module.
+- **Outputs:** A primary growth metric (e.g., relative growth rate, accumulated biomass proxy) passed to the MOEA.
+- **Validation:** Qualitative validation against horticultural principles (NFR-6). Does the model show increased growth with more light (up to saturation)? Does it show reduced growth at extreme temperatures?
 
 ---
 
-## 4. Simulation Components
+## 4. Integration with Other Modules
 
-### 4.1 Environmental Simulation
+### 4.1 Data Flow
 
-The environmental simulator models the greenhouse conditions dynamically:
+- **Input Preparation -> Simulation:** Provides `Vec<SimulationTimeStepInput>` and potentially static `SimulationParameters`.
+- **MOEA -> Simulation:** Provides `ControlStrategy` (or its effects are already baked into the inputs by Input Prep). The MOEA *calls* the simulation execution function.
+- **Simulation -> MOEA:** Returns `SimulationOutput` containing the growth metric(s).
 
-```typescript
-export class EnvironmentalSimulator {
-  private temperatureModel: any;
-  private humidityModel: any;
-  private co2Model: any;
-  private lightModel: any;
+### 4.2 Simulation Execution Protocol
 
-  constructor() {
-    this.temperatureModel = null;
-    this.humidityModel = null;
-    this.co2Model = null;
-    this.lightModel = null;
-  }
-
-  public simulateStep(currentState: any, actions: any): void {
-    /**
-     * Simulate one time-step given the current state and control actions.
-     */
-    // Simulation calculations go here
-    pass
-  }
-
-  public applyExternalConditions(weatherData: any): void {
-    /**
-     * Adjust simulation parameters based on external weather data.
-     */
-    // External condition application logic here
-    pass
-  }
-}
-```
-
-### 4.2 Control System Simulation
-
-The control simulation component mimics the behavior of the actuators and sensors under control algorithms:
-
-```typescript
-export class ControlSimulator {
-  private actuatorModels: Map<string, any>;
-  private sensorModels: Map<string, any>;
-  private controlAlgorithms: Map<string, any>;
-
-  constructor() {
-    this.actuatorModels = new Map();
-    this.sensorModels = new Map();
-    this.controlAlgorithms = new Map();
-  }
-
-  public executeControlCycle(): void {
-    /**
-     * Run a full cycle of control decision execution and feedback.
-     */
-    // Control cycle logic goes here
-    pass
-  }
-
-  public evaluatePerformance(): any {
-    /**
-     * Assess the effectiveness and response of the control loop.
-     */
-    // Performance evaluation logic goes here
-    return null;
-  }
-}
-```
+- The MOEA module invokes the simulation model's primary execution function (e.g., `run_simulation`) for each candidate control strategy it needs to evaluate.
+- The simulation runs for a defined historical period using the corresponding prepared input data.
+- The resulting growth metric is returned synchronously to the MOEA.
 
 ---
 
-## 5. Integration with Real System
+## 5. Test Scenarios
 
-### 5.1 Data Flow
+### 5.1 Basic Scenarios
 
-The integration process merges live data with simulation outputs. The data flow is defined as:
+1. **Baseline Historical Data:** Run simulation with unmodified historical environmental data to establish baseline growth.
+2. **Varying Control Strategies:** Run simulation with different lighting schedules (as defined by `ControlStrategy` candidates) applied to the same historical data period to observe impact on simulated growth.
+3. **Parameter Sensitivity:** Test the simulation's response to changes in key `SimulationParameters` (if configurable).
 
-```
-[Real Sensors] → [Data Collection] → [State Estimation]
-         ↓                            ↓                      ↓
- [Digital Twin] ← [State Synchronization] ← [Simulation Engine]
-```
+### 5.2 Edge Cases / Robustness Checks
 
-### 5.2 Synchronization Protocol
-
-The protocol below outlines how the digital twin synchronizes with live data:
-
-```json
-{
-  "sync_message": {
-    "timestamp": "ISO8601",
-    "real_state": {
-      "sensors": { "data": "object" },
-      "actuators": { "data": "object" }
-    },
-    "simulated_state": {
-      "predicted": { "data": "object" },
-      "actual": { "data": "object" }
-    }
-  }
-}
-```
+1. **Extreme Environmental Inputs:** Test simulation behavior with historical data periods containing unusually high/low temperatures, light levels, etc. (Ensure numerical stability).
+2. **Missing/Interpolated Data:** Evaluate impact if the Input Preparation module provides interpolated data points.
 
 ---
 
-## 6. Test Scenarios
+## 6. Validation Framework
 
-### 6.1 Basic Scenarios
+### 6.1 Validation Approach (Qualitative - NFR-6)
 
-1. **Normal Operation**
-   - Simulation of standard day/night cycles.
-   - Execution under typical weather patterns.
-   - Regular plant growth modeling and control.
+- Focus on verifying that the simulation model exhibits behavior consistent with general horticultural knowledge and the principles underlying the chosen model concepts.
+- **Method:**
+  - Run simulations under controlled, varying input conditions (e.g., step changes in light, temperature ramps).
+  - Plot simulated growth response against the varying input.
+  - Compare the shape and direction of the response curve to expected behavior based on literature (e.g., light saturation curve, temperature optimum curve).
+  - Document findings and model limitations clearly.
 
-2. **Edge Cases**
-   - Simulation under extreme weather conditions.
-   - Testing of equipment or sensor failures.
-   - Handling of power outages or network disconnections.
+### 6.2 Validation Metrics (Qualitative Assessment)
 
-### 6.2 Advanced Scenarios
-
-1. **Multi-zone Optimization**
-   - Evaluate inter-zone interactions.
-   - Resource allocation and air circulation effects.
-   - Energy usage optimization across multiple zones.
-
-2. **Predictive Control**
-   - Integration with weather forecast data.
-   - Energy price optimization modeling.
-   - Crop yield prediction under varied conditions.
+- **Consistency with Principles:** Does the model adhere to expected biological/physical responses? (Yes/No/Partially, with justification).
+- **Sensitivity Analysis:** Does the output change reasonably with input variations?
+- **Stability:** Does the simulation run without numerical errors across expected input ranges?
 
 ---
 
-## 7. Validation Framework
+## 7. Performance Requirements
 
-### 7.1 Validation Metrics
+### 7.1 Simulation Performance
 
-A dedicated class calculates the accuracy and efficiency of the simulation and digital twin operations:
-
-```typescript
-export class ValidationMetrics {
-  private temperatureAccuracy: number;
-  private humidityAccuracy: number;
-  private energyEfficiency: number;
-  private controlStability: number;
-
-  constructor() {
-    this.temperatureAccuracy = 0.0;
-    this.humidityAccuracy = 0.0;
-    this.energyEfficiency = 0.0;
-    this.controlStability = 0.0;
-  }
-
-  public calculateMetrics(realData: any, simulatedData: any): void {
-    /**
-     * Compute metrics comparing real system data and simulation outputs.
-     */
-    // Calculation logic
-    pass
-  }
-
-  public generateReport(): any {
-    /**
-     * Produce a validation report summarizing the computed metrics.
-     */
-    // Report generation logic
-    return null;
-  }
-}
-```
-
-### 7.2 Validation Procedures
-
-The validation framework includes:
-
-1. **Model Validation**
-   - Verification of physical model accuracy.
-   - Testing control response with known inputs.
-   - Comparing predictions with real outcomes.
-
-2. **System Validation**
-   - End-to-end testing of the integrated simulation environment.
-   - Performance benchmarking and safety verifications.
-   - Stress testing under simulated fault conditions.
+- **Execution Speed:** Individual simulation runs (for one candidate strategy over the evaluation period) using the Python implementation must be fast enough to meet NFR-1.1 (e.g., allowing thousands of simulations within the MOEA loop to complete in under 5 minutes total). Performance will be profiled. If the Python implementation proves insufficient, the core logic may be rewritten in Rust/FFI. Target execution time per *individual* run TBD based on MOEA needs and model complexity.
+- **Resource Utilization:** Must operate within typical CPU and memory constraints of a standard development machine.
 
 ---
 
-## 8. Performance Requirements
+## 8. Implementation Guidelines
 
-### 8.1 Simulation Performance
+### 8.1 Technology Stack
 
-- **Real-Time Capability:** Must function with near real-time accuracy.
-- **Simulation Step Size:** Maximum step duration of 1 second.
-- **Accuracy Requirement:** Minimum of 95% accuracy across key models.
-- **Resource Utilization:** Must operate within defined CPU and memory constraints.
+- **Primary Language:** Python.
+- **Libraries:** Standard Python library, `numpy` for numerical operations, potentially `pandas` for data structures (though NumPy arrays might be faster for core loops). No external physics engines. Rust/FFI (`pyo3`) is a fallback for performance if needed.
 
-### 8.2 Digital Twin Performance
+### 8.2 Development Workflow
 
-- **State Synchronization Delay:** Less than 100 milliseconds.
-- **Prediction Horizon:** Capable of forecasting up to 24 hours ahead.
-- **Update Frequency:** Digital twin state updates occur every 1 minute.
-- **Memory Footprint:** Should not exceed 4GB in operational environments.
-
----
-
-## 9. Implementation Guidelines
-
-### 9.1 Technology Stack
-
-- **Simulation Engine:** Implemented in Python and/or C++.
-- **Physics Engine:** Custom implementation or leveraging OpenFOAM.
-- **Machine Learning Framework:** TensorFlow for predictive modeling.
-- **Visualization Tools:** Three.js for 3D visualization of simulation outputs.
-
-### 9.2 Development Workflow
-
-1. **Model Development:** Creation of simulation and twin models.
-2. **Unit Testing:** Ensure individual modules meet design specifications.
-3. **Integration Testing:** Validate interface interactions and state synchronization.
-4. **Validation:** Comprehensive testing against real-world data.
-5. **Deployment:** Roll out into a staging environment before production.
+1. **Model Selection/Adaptation:** Choose and adapt established model equations.
+2. **Implementation:** Code the core simulation logic in Python, prioritizing vectorized operations with `numpy` where possible for performance.
+3. **Unit Testing:** Test individual calculation functions and model components using `pytest`.
+4. **Integration Testing:** Test the `run_simulation` method with sample inputs (e.g., DataFrames or NumPy arrays) and expected outputs.
+5. **Qualitative Validation:** Perform validation tests as described in Section 6.
+6. **Profiling:** Measure the performance of the Python simulation within the MOEA loop. Decide if Rust/FFI optimization is required based on NFR-1.1.
+7. **Integration with MOEA:** Ensure the Python simulation class/method can be called correctly by the Python MOEA module (`pymoo`).
 
 ---
 
-## 10. Monitoring and Analysis
+## 9. Monitoring and Analysis (During Development/Experimentation)
 
-### 10.1 Monitoring Metrics
+### 9.1 Monitoring Metrics
 
-Monitoring includes capturing key metrics from both simulation and digital twin components:
+- **Simulation Execution Time:** Track time taken per `run_simulation` call.
+- **Input/Output Values:** Log key inputs and resulting growth metrics for debugging and analysis.
+- **Parameter Values:** Record configuration parameters used for each run.
 
-```json
-{
-  "simulation_metrics": {
-    "execution_time": "float",
-    "accuracy": "float",
-    "resource_usage": "object"
-  },
-  "twin_metrics": {
-    "sync_delay": "float",
-    "prediction_accuracy": "float",
-    "drift_metrics": "object"
-  }
-}
-```
+### 9.2 Analysis Tools
 
-### 10.2 Analysis Tools
-
-- **Real-Time Visualization:** Live dashboards demonstrating system state.
-- **Performance Analytics:** Tools for in-depth performance analysis.
-- **Error Analysis:** Modules to track and diagnose simulation discrepancies.
-- **Optimization Tools:** Software-assisted optimization for improving control strategies.
+- **Plotting:** Use external tools (Python scripts with Matplotlib/Seaborn, Gnuplot, etc.) to visualize simulation outputs for validation and analysis of results from MOEA runs.
+- **Logging:** Utilize Rust logging crates (`tracing`, `log`) to capture execution flow and potential errors.
 
 ---
 
 ## Appendices
 
-### Appendix A: Model Documentation
+*(Appendices will be developed during the project)*
 
-Detailed descriptions and theoretical documentation of the simulation and digital twin models.
-
-### Appendix B: Validation Results
-
-Compilation of test results, including metric scores and validation reports.
-
-### Appendix C: Performance Benchmarks
-
-Historical performance benchmarks for simulation accuracy and resource consumption.
-
-### Appendix D: Integration Guides
-
-Instructions and reference materials for integrating the simulation and digital twin components with the overall greenhouse control system.
-
----
-
-This document serves as the comprehensive design guide for the simulation framework and digital twin technology, detailing the methodology, integration points, and performance expectations necessary for effective validation and testing of the Data-Driven Greenhouse Climate Control System.
+- **Appendix A:** Detailed Simulation Model Equations (References and adaptations)
+- **Appendix B:** Qualitative Validation Test Results
+- **Appendix C:** Performance Benchmarks (Execution time measurements)

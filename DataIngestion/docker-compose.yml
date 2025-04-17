@@ -1,245 +1,185 @@
-# Modern Docker Compose file (no version needed)
-name: data-ingestion # Explicitly name the project
+# Combined Docker Compose for DataIngestion (Rust + Python Pipelines)
+# Located in DataIngestion/docker-compose.yml
 
 services:
-  timescaledb:
-    image: timescale/timescaledb-ha:pg12
-    env_file: .env
+  # --- Rust Pipeline Services ---
+  rust_pipeline:
+    build:
+      context: ./rust_pipeline # Adjusted build context
+      dockerfile: Dockerfile
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
     volumes:
-      - timescaledb_data:/home/postgres/pgdata/data
-      # Mount all migration scripts to the container's initialization directory
-      - ./database_migrations:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      # Ensure PostGIS extension is available
-      TIMESCALEDB_EXTRA_EXTENSIONS: "postgis,uuid-ossp"
-    networks:
-      - ingestion-net
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
+      # Mount the data directory relative to DataIngestion parent
+      - ../Data:/app/data:ro
+      - ./rust_pipeline/pipeline_logs:/app/logs:rw # Adjusted path
     depends_on:
-      timescaledb:
+      redis:
+        condition: service_started
+      db:
         condition: service_healthy
+    environment:
+      DATA_SOURCE_PATH: /app/data
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
     networks:
       - ingestion-net
 
   redis:
     image: redis:alpine
+    restart: always
     ports:
       - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - redis-data:/data
+    networks:
+      - ingestion-net
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Single Database Service (from rust_pipeline definition)
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+    volumes:
+      # Mount main init script first (for sensor_data table)
+      - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro # Adjusted path
+      # Mount script to create extra DBs needed by Python pipeline services
+      - ./simulation_data_prep/create_extra_dbs.sql:/docker-entrypoint-initdb.d/01_create_extra_dbs.sql:ro # Adjusted path
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Map container port 5432 to host port 5433 (from previous fix)
+      - "5433:5432"
     networks:
       - ingestion-net
-
-  # Elixir-based data ingestion service (new)
-  elixir_ingestion:
-    build:
-      context: ./elixir_ingestion
-      dockerfile: Dockerfile
-    volumes:
-      - ../Data:/app/data:ro
-      - ./verification:/app/verification:rw  # Mount for verification output files
-    ports:
-      - "4000:4000" # Phoenix API port
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: ${PROCESSING_DB_URL}
-      REDIS_URL: ${REDIS_URL}
-      MIX_ENV: prod
-      PYTHON_PROCESSING_SERVICE: ${PROCESSING_SERVICE_URL}
-      DATA_SOURCE_PATH: /app/data
-      SECRET_KEY_BASE: ${ELIXIR_SECRET_KEY}
-      VERIFICATION_DIR: /app/verification  # Add verification directory environment variable
     healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "4000" ]
-      interval: 30s
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1" ]
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
-    networks:
-      - ingestion-net
-
-  metadata-catalog:
-    build:
-      context: ./metadata_catalog
-      dockerfile: Dockerfile
-    volumes:
-      - ./metadata_catalog:/app
-      - metadata_catalog_data:/app/data
-    ports:
-      - "5000:5000"
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      PROCESSING_DB_URL: ${PROCESSING_DB_URL}
-      REDIS_URL: ${REDIS_URL}
-    networks:
-      - ingestion-net
-
-  airflow-init:
-    image: apache/airflow:2.3.0
-    env_file: .env
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    command: db init
-    networks:
-      - ingestion-net
-
-  airflow-webserver:
-    image: apache/airflow:2.3.0
-    env_file: .env
-    volumes:
-      - ./airflow_dags:/opt/airflow/dags:ro
-    ports:
-      - "8080:8080"
-    depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-    command: webserver
-    healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
-      interval: 30s
-      timeout: 10s
       retries: 5
-      start_period: 30s
-    networks:
-      - ingestion-net
 
-  airflow-scheduler:
-    image: apache/airflow:2.3.0
-    env_file: .env
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@example.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_SETUP_EMAIL: "admin@example.com"
+      PGADMIN_SETUP_PASSWORD: "admin"
     volumes:
-      - ./airflow_dags:/opt/airflow/dags:ro
-    depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-      airflow-webserver:
-        condition: service_healthy
-    restart: unless-stopped
-    command: scheduler
-    healthcheck:
-      test: [ "CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - ingestion-net
-
-  # Python-based data processing service with API endpoint
-  data_processing:
-    build:
-      context: ./data_processing
-      dockerfile: Dockerfile
-    volumes:
-      - ./data_processing:/app
-      - data_processing_data:/app/processed
+      - pgadmin-data:/var/lib/pgadmin
+      - ./rust_pipeline/servers.json:/pgadmin4/servers.json:ro # Adjusted path
     ports:
-      - "8000:8000" # FastAPI port
+      - "5050:80"
     depends_on:
-      timescaledb:
+      db:
         condition: service_healthy
-      metadata-catalog:
-        condition: service_started
-    environment:
-      - PYTHONUNBUFFERED=1
-      - METADATA_SERVICE_URL=http://metadata-catalog:5000
-      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
-      - REDIS_URL=${REDIS_URL}
     networks:
       - ingestion-net
 
-  # Separate service for feature extraction
-  feature_extraction:
+  # --- Python Pipeline Services ---
+  data-prep:
     build:
-      context: ./data_processing
+      context: ./simulation_data_prep # Adjusted build context
       dockerfile: Dockerfile
-    volumes:
-      - ./data_processing:/app
-      - feature_extraction_data:/app/features
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      metadata-catalog:
-        condition: service_started
-      data_processing:
-        condition: service_started
+    env_file:
+      - ./simulation_data_prep/.env # Adjusted path
+    command: [ "prefect", "worker", "start", "-q", "default" ]
     environment:
-      - PYTHONUNBUFFERED=1
-      - METADATA_SERVICE_URL=http://metadata-catalog:5000
-      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
-      - FEATURE_EXTRACTION_CONFIG=/app/config/feature_extraction.yaml
+      - PREFECT_API_URL=http://orion:4200/api
+      # DATABASE_URL is loaded from .env file
+    volumes:
+      - ./simulation_data_prep/src:/app/src
+      - ./simulation_data_prep/output:/app/output
+      - ./simulation_data_prep/plant_config.json:/app/plant_config.json
+      - ./simulation_data_prep/feast_repo:/app/feast_repo
+      - ./simulation_data_prep/great_expectations:/app/great_expectations
+      - prefect_data:/root/.prefect
+    depends_on:
+      db:
+        # Depends on the single DB service
+        condition: service_healthy
+      orion:
+        condition: service_started
+      mlflow-server:
+        condition: service_started
     networks:
       - ingestion-net
 
-  # Quality monitoring and feedback service
-  quality_monitor:
+  orion:
     build:
-      context: ./quality_monitor
-      dockerfile: Dockerfile
-    volumes:
-      - ./quality_monitor:/app
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      data_processing:
-        condition: service_started
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: orion.Dockerfile # Relative path from context
+    command: prefect server start
+    ports:
+      - "4200:4200"
     environment:
-      - PYTHONUNBUFFERED=1
-      - METADATA_SERVICE_URL=http://metadata-catalog:5000
-      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
-      - REDIS_URL=${REDIS_URL}
+      - PREFECT_UI_API_URL=http://orion:4200/api
+      # Use asyncpg dialect, points to single 'db' service
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@db:5432/prefect
+    volumes:
+      - prefect_db:/root/.prefect/
+    depends_on:
+      db:
+        # Depends on the single DB service
+        condition: service_healthy
     networks:
       - ingestion-net
 
+  mlflow-server:
+    build:
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: mlflow.Dockerfile # Relative path from context
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5001:5000"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - mlflow_data:/mlflow/artifacts
+    depends_on:
+      db:
+        # Depends on the single DB service
+        condition: service_healthy
+    networks:
+      - ingestion-net
+
+  # Test service for Python pipeline unit tests
+  test:
+    build:
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: Dockerfile
+    env_file:
+      - ./simulation_data_prep/.env # Adjusted path
+    # Requires DB for config loading which might use DB implicitly? Keep depends_on for safety.
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: [ "pytest", "src/tests", "--maxfail=1", "--disable-warnings", "-q" ]
+    networks:
+      - ingestion-net
+
+# --- Volumes ---
 volumes:
-  timescaledb_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_timescaledb_data
-  data_processing_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_processing_data
-  redis_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_redis_data
-  metadata_catalog_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_metadata_data
-  feature_extraction_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_feature_data
+  postgres-data:
+  redis-data:
+  pgadmin-data:
+  prefect_data:
+  prefect_db:
+  mlflow_data:
 
+    # --- Network ---
 networks:
   ingestion-net:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_network
+    name: ingestion-net
     driver: bridge

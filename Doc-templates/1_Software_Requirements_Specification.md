@@ -1,8 +1,8 @@
 # Software Requirements Specification (SRS)
 
-**Project Title:** Data-Driven Greenhouse Climate Control System  
-**Document Version:** 1.0  
-**Last Updated:** [Date]
+**Project Title:** Simulation-Based Greenhouse Climate Control Optimization System
+**Document Version:** 1.0
+**Last Updated:** April 12, 2025
 
 ---
 
@@ -10,34 +10,36 @@
 
 ### 1.1 Purpose
 
-This SRS document provides a complete description of the requirements for the Data-Driven Greenhouse Climate Control System. The purpose of the system is to optimize plant health and energy efficiency in greenhouses by integrating real-time sensor data, historical trends, and predictive modeling with artificial intelligence techniques such as genetic algorithms and machine learning. This document is intended to outline the functional and non-functional requirements, system constraints, assumptions, and dependencies to ensure clarity among all stakeholders including developers, engineers, researchers, and greenhouse operators.
+This SRS document provides a complete description of the requirements for the Simulation-Based Greenhouse Climate Control Optimization System. The purpose of the system is to explore strategies for balancing energy efficiency and simulated plant growth in greenhouses, building upon concepts from the DynaGrow project. It leverages ingested historical environmental data and uses plant growth simulation coupled with multi-objective optimization algorithms to determine potentially cost-effective control strategies. This document outlines the functional and non-functional requirements for this Master's thesis project, intended for the student developer and supervisor (Jan Corfixen Sørensen).
 
 ### 1.2 Scope
 
-The Data-Driven Greenhouse Climate Control System is designed to replace or augment traditional reactive climate control systems with a proactive, predictive solution that:
+The system will focus on demonstrating the feasibility of optimizing simulated greenhouse control based on historical data. The scope includes:
 
-- **Collects and integrates sensor data:** Reads real-time environmental parameters (temperature, humidity, CO₂, lighting, etc.) from IoT devices deployed in the greenhouse.
-- **Applies predictive modeling and optimization:** Uses historical data, weather forecasts, genetic algorithms, and machine learning models to predict future climate conditions for optimal control.
-- **Controls greenhouse actuators:** Adjusts heating, ventilation, supplemental lighting, and other climate control mechanisms proactively to improve plant growth while minimizing energy consumption.
-- **Simulates environmental scenarios:** Employs a simulation framework (along with digital twin technology) to validate control strategies before deployment.
-- **Integrates with external systems:** Communicates with existing greenhouse management platforms and external services such as weather forecasting and demand-response energy systems.
+- **Accessing and preparing ingested data:** Utilizing previously loaded historical greenhouse data (temperature, humidity, CO2) stored in a TimescaleDB database. Calculating derived features necessary for simulation and optimization objectives.
+- **Simulating plant growth:** Implementing and configuring a plant growth simulation model (e.g., based on photosynthesis principles relevant to DynaGrow) to estimate growth potential based on environmental inputs.
+- **Applying multi-objective optimization:** Implementing a Multi-Objective Evolutionary Algorithm (MOEA) to find trade-off solutions between minimizing estimated energy cost and maximizing simulated plant growth.
+- **Generating control recommendations:** Outputting the resulting (near-)optimal control strategies (e.g., supplemental light schedules) based on the optimization process.
+- **Logging:** Recording key parameters, inputs, outputs, and objective values for analysis and evaluation.
+
+**Out of Scope for initial iterations:** Direct control of physical greenhouse actuators, real-time data ingestion (FR-1.4 is optional), integration with live external APIs like weather/energy (FR-1.5 is optional), development of novel simulation models or optimization algorithms (focus is on applying existing concepts).
 
 ### 1.3 Definitions, Acronyms, and Abbreviations
 
-- **AI:** Artificial Intelligence  
-- **SRS:** Software Requirements Specification  
-- **IoT:** Internet of Things  
-- **ML:** Machine Learning  
-- **UI:** User Interface  
-- **API:** Application Programming Interface  
-- **ADR:** Architectural Decision Record  
-- **Digital Twin:** A virtual representation that serves as the real-time digital counterpart of a physical object or process
+- **SRS:** Software Requirements Specification
+- **MOEA:** Multi-Objective Evolutionary Algorithm
+- **FR:** Functional Requirement
+- **NFR:** Non-Functional Requirement
+- **DB:** Database (specifically TimescaleDB in this project)
+- **PAR:** Photosynthetically Active Radiation (relevant context from DynaGrow)
+- **DLI:** Daily Light Integral (relevant context from DynaGrow)
 
 ### 1.4 References
 
-- Project Overview Document: *Data-Driven Greenhouse Climate Control: A Comprehensive Overview*  
-- Industry standards for smart agriculture systems  
-- Documentation for legacy systems (e.g., DynaGrow, IntelliGrow, ETMPC)
+- *Problem statement - masters thesis in Software engineering-6.pdf* (Defines initial objectives)
+- *DynGrowManual.pdf* (Provides context on system being enhanced, example models/specs)
+- *Dynagrow - multiobjective.pdf* (Details MOEA approach, objectives used in DynaGrow)
+- *(Potentially)* *thesis.pdf* (AGFACAND thesis - for implementation concepts like MOEA structure, model handling)
 
 ### 1.5 Overview of the Document
 
@@ -45,7 +47,7 @@ This document is structured as follows:
 
 - **Section 2:** Provides an overall description of the system including its context, functions, and operational environment.
 - **Section 3:** Details the specific functional and non-functional requirements.
-- **Section 4:** Lists any ancillary information such as appendices, glossary, and additional references.
+- **Section 4:** Lists any ancillary information such as appendices.
 
 ---
 
@@ -53,47 +55,42 @@ This document is structured as follows:
 
 ### 2.1 Product Perspective
 
-The Data-Driven Greenhouse Climate Control System is a standalone solution that can either be integrated into existing greenhouse climate control infrastructures or deployed as an independent platform. It bridges the gap between traditional reactive systems and modern predictive methodologies by providing:
-
-- A modular and scalable architecture.
-- Integration interfaces for existing hardware and software systems.
-- A complementary simulation environment for risk-free testing of control strategies.
+This system is a software simulation and optimization tool designed as part of a Master's thesis project. It utilizes pre-processed historical data stored in a TimescaleDB database to simulate plant growth under different control strategies and identify optimized strategies using MOEAs. It builds upon concepts demonstrated in the DynaGrow system but focuses on simulation rather than direct hardware control. It serves as a platform for investigating the trade-offs between energy use and plant growth in a simulated environment based on real historical conditions.
 
 ### 2.2 Product Functions
 
 The major functionalities provided by the system include:
 
-- **Sensor Integration:** Real-time collection of environmental data from greenhouse sensor networks.
-- **Data Storage and Management:** Storage of both real-time and historical data in a structured format to support analysis.
-- **Predictive Analytics & Control:** Use of genetic algorithms and machine learning models to generate optimal climate control setpoints.
-- **Simulation & Digital Twin:** Environmental simulation to test and validate control strategies without impacting live operations.
-- **User Interface:** A dashboard providing real-time visualization, historical trend analysis, manual overrides, and system status.
-- **External Integration:** Interfaces to interact with weather forecast APIs, energy pricing/demand response systems, and legacy greenhouse management systems.
+- **Data Access:** Retrieving relevant historical environmental data from the TimescaleDB.
+- **Input Preparation:** Calculating derived features needed for simulation/optimization.
+- **Plant Growth Simulation:** Simulating plant responses based on environmental data and configurable models.
+- **Multi-Objective Optimization:** Finding near-optimal control strategies balancing energy and growth using MOEAs.
+- **Recommendation Output:** Providing the optimized control strategy (e.g., light plan).
+- **Logging:** Recording process details for analysis.
 
 ### 2.3 User Characteristics
 
-The system is intended for use by:
+The primary users of this system are:
 
-- **Greenhouse Operators:** Individuals responsible for daily operations will benefit from automated insights and control recommendations.
-- **Systems Engineers and Developers:** Technical staff engaged in system maintenance, performance tuning, and integration.
-- **Researchers:** Academics and industry experts who analyze energy efficiency, plant growth patterns, and the impact of predictive climate control.
-- **Facility Managers:** Decision-makers and high-level managers relying on system-generated reports to steer operational strategies.
+- **Student Developer (Fnux8890):** Responsible for designing, implementing, testing, and evaluating the system.
+- **Supervisor (Jan Corfixen Sørensen):** Responsible for guiding the project, reviewing progress, and evaluating the final thesis based on the system's results.
+- *(Secondary)* **Future Researchers:** May use the system or findings as a basis for further work.
 
 ### 2.4 Constraints
 
-- **Real-Time Response:** The system must process sensor data and generate actionable control decisions with minimal latency.
-- **Data Integrity:** High reliability is required for both real-time data ingestion and long-term storage.
-- **Modularity:** The design must support future enhancements without major architectural changes.
-- **Integration:** Must operate in harmony with legacy systems (e.g., DynaGrow, IntelliGrow, ETMPC) and external APIs.
-- **Environmental Conditions:** The hardware and network components of the system must perform reliably in the greenhouse environment, which may include extreme temperatures and humidity fluctuations.
+- **Project Timeline:** Must be completed within the Master's thesis timeframe.
+- **Methodology:** Must utilize existing, established simulation modeling and optimization techniques (no novel algorithm invention required).
+- **Data Source:** Relies on the specific, pre-ingested historical datasets.
+- **Performance:** Simulation and optimization cycles need to complete within a reasonable time for iterative testing and experimentation (Ref NFR-1.1).
+- **Modularity/Extensibility:** Design must allow for potential modification or replacement of simulation/optimization components (Ref NFR-3).
 
 ### 2.5 Assumptions and Dependencies
 
-- The greenhouse is equipped with reliable, calibrated sensors and IoT devices.
-- There is stable network connectivity within the greenhouse and to any external services.
-- Regular weather forecast data is available from third-party APIs.
-- Legacy systems and actuators support standard communication interfaces and protocols.
-- Sufficient computational resources (on-premise or cloud-based) are available for running real-time analytics and simulation models.
+- The pre-ingested historical data in TimescaleDB is sufficient and representative for the project's goals.
+- Necessary software libraries for database access, simulation implementation (if needed), and MOEA (if using libraries) are available.
+- The chosen plant growth simulation model, although potentially simplified, provides a qualitatively reasonable representation for the optimization task (Ref NFR-6.1).
+- Sufficient computational resources are available on the development machine for running simulations and optimizations.
+- Access to relevant literature for selecting appropriate simulation model parameters and MOEA configurations.
 
 ---
 
@@ -101,109 +98,101 @@ The system is intended for use by:
 
 ### 3.1 Functional Requirements
 
-#### FR1: Sensor Data Acquisition and Integration
+#### FR-1: Data Ingestion and Management (Status: Completed)
 
-- **FR1.1:** The system shall collect real-time data from multiple sensors measuring temperature, humidity, CO₂ levels, lighting intensity, and other relevant greenhouse parameters.
-- **FR1.2:** The system shall ingest historical sensor data and clean, transform, and store it for analysis.
-- **FR1.3:** The system shall support standardized data formats (e.g., JSON or XML) for sensor input.
+- **FR-1.1:** The system needs to extract historical greenhouse environmental data which includes temperature and humidity along with CO2 and Light intensity from predefined file formats like CSV or JSON. *(Implied: Already done)*
+- **FR-1.2:** The system will parse incoming data into suitable data types to facilitate easier processing in future stages. *(Implied: Already done)*
+- **FR-1.3:** The Ingestion system must save the data into a database that enables efficient querying. *(Implied: Already done using TimescaleDB)*
+- **FR-1.4 (Optional):** Future system architecture extensions must enable real-time sensor data stream ingestion.
+- **FR-1.5 (Optional):** System architecture needs to provide functionality for integrating external data sources like weather forecasts.
 
-#### FR2: Predictive Analytics and Decision Engine
+#### FR-2: Input data preparation & Feature definition
 
-- **FR2.1:** The system shall implement machine learning models to analyze historical and current data to forecast near-future environmental conditions.
-- **FR2.2:** The system shall apply genetic algorithms for multi-objective optimization to generate control strategies that balance energy efficiency, plant growth optimization, and climate stability.
-- **FR2.3:** Control decisions shall be based on real-time sensor input and predictive outputs, updating climate control setpoints dynamically.
+- **FR-2.1:** The system shall retrieve historical database information from TimescaleDB that matches the simulation and optimization time windows.
+- **FR-2.2:** The system shall calculate or allow definition of important input features required for simulation models or optimization objective functions (e.g., PAR sums, energy cost estimates).
 
-#### FR3: Climate Control Actuation
+#### FR-3: Plant Growth simulation
 
-- **FR3.1:** The system shall send optimized control commands to greenhouse actuators (e.g., heating systems, ventilation fans, supplemental lighting).
-- **FR3.2:** The system shall allow for manual override by operators via the UI in urgent situations.
-- **FR3.3:** The system shall log every control decision along with the corresponding sensor data and predictive analysis.
+- **FR-3.1:** The system shall implement an appropriate plant growth simulation model (e.g., based on photosynthesis principles).
+- **FR-3.2:** The system shall accept configurable parameters specific to the chosen plant growth model.
+- **FR-3.3:** The simulation model shall process specified inputs (from FR-2.1/FR-2.2) and produce relevant metrics (e.g., growth index).
 
-#### FR4: Simulation and Digital Twin Integration
+#### FR-4: Multi-Objective Optimization
 
-- **FR4.1:** The system shall include a simulation framework capable of modeling different greenhouse scenarios.
-- **FR4.2:** The simulation module shall use digital twin technology to mirror the live environment for testing new strategies.
-- **FR4.3:** The digital twin shall synchronize with live data in near-real-time to provide a virtual representation of current greenhouse conditions.
+- **FR-4.1:** The system shall implement a MOEA (Multi-Objective Evolutionary Algorithm) for finding optimal control strategies.
+- **FR-4.2:** The MOEA shall assess possible control strategies by utilizing the plant growth simulation (FR-3) and the established objective functions.
+- **FR-4.3:** The system shall implement at least two objective functions: (a) minimization of estimated energy cost, and (b) maximization of the simulated plant growth metric.
+- **FR-4.4:** The system shall allow key MOEA parameters (e.g., population size, generations) to be configurable.
 
-#### FR5: External Integration
+#### FR-5: Control Recommendation and Logging
 
-- **FR5.1:** The system shall integrate with external weather forecast APIs to incorporate predictions into its decision-making processes.
-- **FR5.2:** The system shall interface with external energy management systems to facilitate demand-response capabilities.
-- **FR5.3:** The system shall communicate with legacy greenhouse management systems to ensure seamless integration with existing infrastructure.
-
-#### FR6: User Interface (UI) and Reporting
-
-- **FR6.1:** The system shall provide a dashboard that displays current greenhouse conditions, control decisions, energy consumption data, and historical performance trends.
-- **FR6.2:** The UI shall offer interactive visualization tools that allow users to review and analyze historical climate adjustments and outcomes.
-- **FR6.3:** The system shall include role-based access control (RBAC) to restrict and secure system functionalities.
+- **FR-5.1:** The system shall output the determined (near-)optimal control strategy (e.g., light plan, setpoints) resulting from the MOEA.
+- **FR-5.2:** The system shall log key decision parameters, inputs, objective function values, and the recommended control strategy for each optimization run.
 
 ### 3.2 Non-Functional Requirements
 
-#### Performance and Scalability
+#### NFR-1: Performance (Operational Concern)
 
-- **NFR1.1:** The system shall process sensor data and complete control decision computations within a maximum latency of 5 seconds.
-- **NFR1.2:** The architecture shall support scaling up to hundreds of sensor nodes and associated actuators with minimal modification.
+- **NFR-1.1:** Each full simulation and optimization cycle (data reading, simulation, MOEA, recommendation generation) shall finish in under 5 minutes to facilitate reasonable experimentation time.
 
-#### Reliability and Availability
+#### NFR-2: Scalability (Architectural Concern)
 
-- **NFR2.1:** The system shall ensure 99.9% uptime for critical functionalities.
-- **NFR2.2:** Data storage systems shall ensure redundancy and automated backup mechanisms to prevent data loss.
+- **NFR-2.1:** The system design should permit increasing optimization problem complexity (e.g., longer planning horizons, more objectives) without requiring fundamental architectural changes, though performance impacts are expected.
 
-#### Security
+#### NFR-3: Extensibility (Life-cycle Concern)
 
-- **NFR3.1:** All data transmitted between sensors, servers, and external systems shall be encrypted using industry-standard protocols (e.g., TLS/SSL).
-- **NFR3.2:** The system shall implement authentication and authorization mechanisms to control access.
-- **NFR3.3:** The system shall maintain a secure audit log of all transactions and control decisions.
+- **NFR-3.1:** The architectural design shall support the substitution of the plant growth simulation model (FR-3.1) by alternative models through a standardized interface.
+- **NFR-3.2:** The system architecture shall enable swapping of MOEA implementations (FR-4.1) and modification of objective functions (FR-4.3) while minimizing the effect on other modules.
 
-#### Usability and Accessibility
+#### NFR-4: Maintainability & Modularity (Life-cycle Concern)
 
-- **NFR4.1:** The UI shall be designed with an intuitive user experience to accommodate non-technical users.
-- **NFR4.2:** Documentation and help features shall be provided to assist users in system operation and troubleshooting.
+- **NFR-4.1:** The codebase structure shall follow a modular design which divides responsibilities among data access, simulation logic, optimization algorithms, objective functions, and logging systems.
+- **NFR-4.2:** The documentation for code shall enable clear understanding of both module structures and their interactions.
 
-#### Maintainability and Modularity
+#### NFR-5: Reliability (Operational Concern)
 
-- **NFR5.1:** The system shall adhere to a modular design to allow for easy updates, maintenance, and integration of future enhancements (e.g., additional climate parameters like CO₂ management or irrigation optimization).
-- **NFR5.2:** Code and system documentation shall follow industry best practices to enable future developers to understand and modify the system efficiently.
+- **NFR-5.1:** The system shall handle potential errors during database access operations gracefully (e.g., manage connection problems, missing data).
+- **NFR-5.2:** The simulation model component shall manage invalid input parameters or states appropriately (e.g., log errors, return defined error values).
+- **NFR-5.3:** The optimization component shall address potential convergence problems or numerical instability gracefully (e.g., return best-found solution after timeout, log warnings).
+
+#### NFR-6: Model Validity (Operational/Research Concern)
+
+- **NFR-6.1:** The implemented plant growth simulation model requires validation (method TBD) to confirm that its outputs align, at least qualitatively, with known horticultural principles or literature findings.
 
 ### 3.3 Interface Requirements
 
 #### User Interfaces
 
-- The dashboard and reporting interfaces shall be web-based and accessible via modern browsers.
-- The UI shall provide customizable views based on user roles and preferences.
-- The UI shall include tools for manual override of automatic control settings.
+- **Primary Interface:** Command-line execution for running simulations/optimizations.
+- **Configuration:** Input parameters for simulation models and MOEA likely managed via configuration files (e.g., JSON, YAML).
+- **Output:** Results (optimized plans, logs) written to console or output files. Graphical User Interface (GUI) is out of scope.
 
 #### Hardware Interfaces
 
-- The system shall interface with environmental sensors through standardized protocols such as MQTT, HTTP, or proprietary IoT protocols.
-- The system shall communicate with greenhouse actuators via wired or wireless communication protocols (e.g., Modbus, Zigbee).
+- None directly. The system interacts with data already stored in the database, not live sensors or actuators.
 
-#### External Interfaces
+#### Software Interfaces
 
-- **APIs:**  
-  The system shall include RESTful APIs for communication with external services (weather forecasting, energy management, legacy greenhouse systems).
-- **Data Exchange:**  
-  Data exchange shall support standardized formats (e.g., JSON, XML) and meet security and performance requirements.
+- **Database Interface:** Interaction with TimescaleDB via appropriate database drivers/libraries (e.g., JDBC if applicable).
+- **Internal Module Interfaces:** Well-defined programmatic interfaces between the Data Access, Input Preparation, Simulation, MOEA, Objective Functions, and Logging modules (Ref NFR-3.1, NFR-3.2, NFR-4.1).
+- **External Interfaces (Optional):** If FR-1.5 is implemented, requires interfaces to specified weather/energy APIs (e.g., RESTful APIs).
 
 ### 3.4 Data Requirements
 
-- **Real-Time Data:**  
-  Continuous ingestion and processing of sensor data are required. Data integrity checks must be performed upon receipt.
-- **Historical Data:**  
-  Long-term storage of sensor readings, control decisions, and simulation outcomes for analysis and machine learning model retraining.
-- **Data Retention and Archival:**  
-  Data retention policies must be defined to balance between available storage and historical analysis requirements, with secure archival procedures.
+- **Input Data:** Access to the historical time-series data (Timestamp, Temp, Humidity, CO2, etc.) stored in TimescaleDB. Format as defined during ingestion (FR-1).
+- **Configuration Data:** Parameters for the selected plant simulation model; parameters for the MOEA. Format TBD (likely config files).
+- **Output Data:** Generated control strategies (e.g., light plans as time-indexed schedules). Log files containing execution details, parameters, objective values. Format TBD.
+- **Data Retention:** Log files and key results should be retained for thesis analysis and evaluation. Long-term archival policies are not a primary concern for this project phase.
 
 ### 3.5 System Features Summary
 
-| **Feature**                             | **Description**                                                                 |
-|-----------------------------------------|---------------------------------------------------------------------------------|
-| Sensor Integration                      | Real-time ingestion of greenhouse sensor data (temperature, humidity, etc.)     |
-| Predictive Analytics & Optimization     | Proactive control strategy generation using AI, ML, and genetic algorithms      |
-| Actuation Control                        | Dynamic control of greenhouse actuators with manual override capabilities         |
-| Simulation and Digital Twin             | Virtual simulation environment for testing strategies without disrupting operations |
-| External Integration                    | Connectivity with external weather APIs, energy systems, and legacy frameworks  |
-| Reporting & Dashboard                    | Intuitive UI for monitoring, analysis, and management of greenhouse conditions   |
+| Feature                           | Description                                                                     |
+| :-------------------------------- | :------------------------------------------------------------------------------ |
+| Data Access & Prep              | Retrieves historical data, prepares inputs/features for simulation/optimization |
+| Plant Growth Simulation         | Simulates plant growth response based on environmental inputs & model params      |
+| Multi-Objective Optimization    | Finds trade-off control strategies using MOEA (balancing energy/growth)         |
+| Control Recommendation & Output | Generates the optimized control plan determined by the MOEA                     |
+| Logging                           | Records key information about the simulation and optimization process           |
 
 ---
 
@@ -211,31 +200,29 @@ The system is intended for use by:
 
 ### Appendix A: Glossary
 
-- **Actuator:** A device responsible for carrying out control commands (e.g., adjusting ventilation or lighting).
-- **Digital Twin:** A virtual model that accurately reflects the real-time operation and conditions of the greenhouse.
-- **Genetic Algorithm:** An optimization technique inspired by natural selection, used here for multi-objective climate control.
-- **Machine Learning (ML):** A set of algorithms and statistical models used by the system to predict future conditions and optimize decisions.
-- **IoT:** Internet of Things; networked devices that capture and transmit environmental data.
+- **MOEA:** Multi-Objective Evolutionary Algorithm - Optimization technique used to find trade-offs between conflicting goals.
+- **TimescaleDB:** Time-series database used for storing historical sensor data.
+- **Simulation Model:** A mathematical representation used to predict plant growth responses.
 
 ### Appendix B: Assumptions and Dependencies Documentation
 
-- Reliable and calibrated sensor data is assumed.
-- Network connectivity is stable both internally and for communication with external APIs.
-- Legacy systems support standard communication protocols required for integration.
+- Assumes validity and sufficiency of ingested historical data.
+- Assumes availability of standard libraries for DB access, potential MOEA implementation.
+- Depends on the qualitative validity of the chosen simulation model.
 
 ### Appendix C: Revision History
 
-| **Version** | **Date**   | **Description**                                    | **Author**       |
-|-------------|------------|----------------------------------------------------|------------------|
-| 1.0         | [Date]     | Initial version of the SRS document                | [Your Name/Team] |
+| Version | Date           | Description                        | Author      |
+| :------ | :------------- | :--------------------------------- | :---------- |
+| 1.0     | April 12, 2025 | Initial version based on project scope | Fnux8890/AI |
 
 ---
 
 **Approval and Sign-Off**
 
-By signing below, the stakeholders agree that this SRS document accurately reflects the requirements and scope of the Data-Driven Greenhouse Climate Control System.
+*(Placeholders for supervisor sign-off)*
 
-| **Name**               | **Title**               | **Signature** | **Date**  |
-|------------------------|-------------------------|---------------|-----------|
-| [Stakeholder Name 1]   | [Title/Role]            |             |           |
-| [Stakeholder Name 2]   | [Title/Role]            |             |           |
+| Name                  | Title      | Signature | Date     |
+| :-------------------- | :--------- | :-------- | :------- |
+| Jan Corfixen Sørensen | Supervisor |           |          |
+|                       |            |           |          |

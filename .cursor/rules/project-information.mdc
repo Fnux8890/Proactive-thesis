@@ -3,90 +3,103 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Documentation Guidelines for Data Pipeline Project (`Docs/*.md`)
 
-The Markdown files located directly within the `Docs` directory serve as key resources for the project. These files contain comprehensive software engineering documentation that guides the architecture, design decisions, data formats, validation rules, and overall structure of the Rust/Python data pipeline for processing greenhouse sensor data. They are considered authoritative sources and must be referenced for proper implementation and future updates.
+Okay, you're right. The rule needs to point to the actual location of the documents we've been working on, which is `Doc-templates`, not `Docs`.
+
+Here is the revised Markdown content for the `project-information.mdc` rule, updated to specify the `Doc-templates` directory:
+
+```markdown
+**AI Assistant Directive:** This `project-information.mdc` rule defines persistent, core context for the Simulation Optimization project. You MUST consult and adhere to this context in relevant interactions to ensure project-specific understanding and accurate responses.
+
+---
+# Documentation Guidelines for Simulation Optimization Project (`Doc-templates/*.md`)
+
+The Markdown files located directly within the `Doc-templates` directory serve as key resources for the project. These files contain comprehensive software engineering documentation that guides the architecture, design decisions, data flows, simulation logic, optimization strategies, and overall structure of the **Python-based simulation and optimization system** for greenhouse control strategies. They are considered authoritative sources and must be referenced for proper implementation and future updates.
 
 ---
 
 ## Purpose
 
 - **Project Guidance:**
-  The documentation files provide crucial information about the project’s data flow, component responsibilities (Rust ingestion, TimescaleDB storage, Python analysis/modeling), and operational workflows. They describe how various components interact and handle heterogeneous sensor data[cite: 1, 5, 4].
+  The documentation files provide crucial information about the project’s data flow, component responsibilities (**Python for Data Access/Preparation, Simulation, MOEA, Logging; TimescaleDB storage; potentially a Rust core for simulation performance**), and operational workflows for the simulation experiments. They describe how various components interact to evaluate control strategies against historical data.
 
 - **Design and Architecture:**
-  These files outline the reasoning behind design decisions, including technical approaches (e.g., Rust for parsing performance/safety, TimescaleDB for time-series storage, Python for analysis flexibility), module responsibilities (parsing, validation, insertion, feature extraction), and system integrations (e.g., interaction with external forecasts or control systems mentioned in [cite: 3]). They help ensure consistency and predictability across the pipeline.
+  These files outline the reasoning behind design decisions, including technical approaches (e.g., **Python with `psycopg2`/`sqlalchemy` for data access, `pandas`/`polars` for preparation, `numpy`/`scipy` for simulation logic, `pymoo` for MOEA; TimescaleDB for time-series storage; potential use of Rust/FFI for performance-critical simulation**), module responsibilities (data access, input prep, simulation execution, objective calculation, optimization, logging), and system configuration. They help ensure consistency and predictability across the simulation pipeline.
 
 - **Standards and Best Practices:**
-  The documentation incorporates standards and coding practices relevant to the project's stack (e.g., idiomatic Rust error handling, efficient SQL for TimescaleDB, effective use of Python data science libraries like Pandas/tsfresh [cite: 1, 5]). They clarify how to write robust, maintainable, and performant code for both the Rust data ingestion service and the Python analysis components.
+  The documentation incorporates standards and coding practices relevant to the project's stack (e.g., **efficient SQL for TimescaleDB, effective use of Python data science libraries like `pandas`/`polars`, `numpy`, MOEA libraries like `pymoo`, clear Python code structure, potential idiomatic Rust error handling if FFI is used**). They clarify how to write robust, maintainable, and performant code for the simulation and optimization components.
 
 ---
 
 ## Glob Specifier
 
 - **Target Files:**
-  - The rule applies to all files that have a `.md` extension and are located directly within the `Docs` directory.
-  - **Specifier:** `Docs/*.md`
-  - *Note:* If documentation in subdirectories is needed in the future, consider an updated glob (e.g., `Docs/**/*.md`).
+  - The rule applies to all files that have a `.md` extension and are located directly within the `Doc-templates` directory (these are the documents we just updated, like HLD, SAD, ICD, etc.).
+  - **Specifier:** `Doc-templates/*.md`
+  - *Note:* If documentation in subdirectories is needed in the future, consider an updated glob (e.g., `Doc-templates/**/*.md`).
 
 ---
 
 ## Guidelines and Rules
 
 1.  **Document Scope and Focus**
-    - All Markdown files in the `Docs` directory must address software engineering topics related to the data pipeline project (Rust ingestion, DB schema, Python analysis, potentially modeling/optimization).
-    - They are to be used as a primary reference for understanding the pipeline architecture, data format specifications, validation logic, database interactions, feature engineering strategies, and component interactions.
+    - All Markdown files in the `Doc-templates` directory must address software engineering topics related to the **simulation-based greenhouse control optimization project** (Python data handling, simulation model design, MOEA implementation, objective functions, database interactions, logging, usage).
+    - They are to be used as a primary reference for understanding the system architecture, simulation logic, optimization configuration, data requirements, component interactions, and experimental setup.
 
 2.  **Content Structure and Clarity**
-    - The documents should be well-structured and include clear headings, subheadings, code blocks (for Rust, Python, SQL), and bullet points to improve readability.
-    - Organize content into logical sections like Overview, Data Formats, Architecture, Component Details (e.g., Rust Parser, Python Feature Extractor), Database Schema, Deployment, etc.
+    - The documents should be well-structured and include clear headings, subheadings, code blocks (primarily for **Python, SQL, potentially conceptual Rust for FFI**), and bullet points to improve readability.
+    - Organize content into logical sections like Overview, Architecture, Component Details (e.g., Python Simulation Runner, MOEA Engine), Database Interaction, Configuration, Usage Guide, etc.
 
 3.  **Technical Accuracy and Detail**
-    - Ensure that technical content, code examples, and instructions use the correct and up-to-date practices related to Rust (including `tokio`, `sqlx`, `serde`, `csv`), TimescaleDB/PostgreSQL, Python (including `pandas`, `psycopg2`/`sqlalchemy`, `tsfresh`, `sktime`), and potentially ANN/optimization libraries.
-    - Define data formats (CSV variations[cite: 1, 5], JSON [cite: 4]), expected fields, units, and timestamp conventions explicitly.
-    - Use precise language consistent with data engineering, database management, and data science terminology.
+    - Ensure that technical content, code examples, and instructions use the correct and up-to-date practices related to **Python (including `pandas`/`polars`, `numpy`, `psycopg2`/`sqlalchemy`, `pymoo`, `pytest`), TimescaleDB/PostgreSQL, potentially Rust (including `pyo3` if used for FFI)**.
+    - Define simulation input/output formats, configuration parameters, control strategy representations, and objective function calculations explicitly.
+    - Use precise language consistent with simulation, optimization, data science, and software engineering terminology.
 
 4.  **Reference and Alignment**
-    - The documentation must be referenced whenever making code changes, implementing new features (e.g., handling a new data format), or modifying the pipeline's behavior.
-    - All modifications in code or architecture should be checked against the documented guidelines to ensure consistency with the defined data flow, error handling strategies, and component responsibilities.
+    - The documentation must be referenced whenever making code changes, implementing new features (e.g., modifying the simulation model, adding an objective), or changing the system's configuration or execution flow.
+    - All modifications in code or architecture should be checked against the documented guidelines to ensure consistency with the defined data flow, component responsibilities, and interfaces.
 
 5.  **Maintenance and Updates**
-    - As the project evolves (e.g., new data sources are added, analysis techniques change), ensure that the documentation is updated in tandem with new design choices and architectural improvements.
-    - Document any changes to data formats, database schemas, or key algorithms.
+    - As the project evolves (e.g., simulation model is refined, MOEA parameters are tuned, performance optimizations are made), ensure that the documentation is updated in tandem with new design choices and implementation details.
+    - Document any changes to data handling, simulation logic, objective functions, or key algorithms.
 
 ---
 
 ## Examples and Use Cases
 
-- **Implementing a New Parser (Rust):**
-  When adding support for a new sensor data format, developers must review the documentation on existing parsing logic, error handling standards, validation requirements, and how to configure the parser for the new format.
+- **Implementing Simulation Logic (Python):**
+  When implementing or modifying the plant simulation model, developers must review the documentation on the required interfaces, expected input data format (e.g., DataFrame structure), model parameter configuration, and qualitative validation requirements (NFR-6).
 
-- **Modifying Database Schema (TimescaleDB):**
-  Before altering tables, hypertables, indexes, or compression settings, consult the documentation detailing the current schema design, rationale, and potential impacts on Rust insertion logic and Python query performance.
+- **Configuring the MOEA (Python):**
+  Before running optimization experiments, consult the documentation detailing MOEA parameters (population size, generations), objective function definitions, control strategy variable setup, and how to interpret the output results file.
 
-- **Adding Feature Extraction (Python):**
-  When implementing new feature extraction steps (e.g., using `tsfresh` or calculating domain-specific metrics like DLI [cite: 3]), check the documentation for guidelines on data querying, expected DataFrame structures, coding standards for analysis scripts, and integration with the existing feature set.
+- **Adding a New Objective Function (Python):**
+  When adding a new optimization objective, check the documentation for guidelines on how to implement the objective function, integrate it with the MOEA module, and update the configuration and result output formats.
 
-- **Onboarding New Developers:**
-  New team members should begin by reading through these Markdown files to understand the end-to-end data pipeline, the technology stack (Rust, TimescaleDB, Python), key architectural patterns, data handling conventions, and coding standards.
+- **Onboarding New Developers (or Supervisor Review):**
+  Users should begin by reading through these Markdown files to understand the end-to-end simulation/optimization workflow, the technology stack (Python focus, TimescaleDB, potential Rust), key architectural patterns, data handling conventions, and testing strategies.
 
 - **Ensuring Consistency:**
-  Developers can use these docs to verify that the project’s code adheres to principles such as Rust's safety and error handling philosophy, efficient TimescaleDB usage, and best practices for Python data manipulation and modeling.
+  Developers can use these docs to verify that the project’s code adheres to principles such as modular Python design, efficient database querying, clear simulation implementation, and robust MOEA configuration.
 
 ---
 
 ## Additional Reference Information
 
 - **Key Principles:**
-  - Prioritize data integrity and type safety throughout the pipeline.
-  - Write performant and robust Rust code for ingestion, leveraging `async` and proper error handling.
-  - Design efficient TimescaleDB schemas and queries for time-series data.
-  - Write clear, maintainable, and efficient Python code for analysis and modeling.
-  - Emphasize descriptive naming conventions and modular code structure in both Rust and Python.
-  - Ensure compliance with performance optimization best practices relevant to each stage (e.g., batch inserts in Rust, vectorized operations in Python).
+  - Prioritize development speed using Python's ecosystem for core logic.
+  - Implement simulation models based on established concepts, focusing on qualitative validity.
+  - Utilize standard MOEA libraries for optimization.
+  - Write clear, maintainable, and appropriately performant Python code.
+  - Design efficient TimescaleDB queries for historical data retrieval.
+  - Emphasize descriptive naming conventions and modular code structure.
+  - Profile simulation performance and consider Rust/FFI only if necessary to meet NFR-1.1.
 
 - **Broader Context:**
-  The guidelines outlined here are part of a larger project context that includes rules for specific Rust implementation details, Python analysis techniques, commit messages, development standards, and potentially custom slash commands. Each documentation file in `Docs/*.md` should harmonize with these overarching project conventions.
+  The guidelines outlined here are part of a larger project context that includes rules for commit messages, development standards, and potentially custom slash commands. Each documentation file in `Doc-templates/*.md` should harmonize with these overarching project conventions.
 
 - **Collaboration and Version Control:**
   Changes to these documentation files must be tracked under version control (Git). Modifications should be accompanied by clear commit messages referencing the documentation update, ideally following conventional commits style guidelines if adopted by the project.
+```
+
+This version correctly points to the `Doc-templates` directory in the title, introduction, Glob Specifier, and Broader Context sections.

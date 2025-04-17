@@ -1,30 +1,30 @@
 # Software Architecture Document (SAD)
 
-**Project:** Data-Driven Greenhouse Climate Control System  
-**Version:** 1.0  
-**Date:** [Insert Date]  
-**Status:** Draft  
-**Prepared by:** [Your Team/Name]
+**Project:** Simulation-Based Greenhouse Climate Control Optimization System
+**Version:** 1.0
+**Date:** April 12, 2025
+**Status:** Draft
+**Prepared by:** Fnux8890
 
 ---
 
 ## Table of Contents
 
-1. [Introduction](#introduction)
-2. [Architectural Goals and Constraints](#architectural-goals-and-constraints)
-3. [System Context and Stakeholders](#system-context-and-stakeholders)
-4. [Architectural Views](#architectural-views)
-   - [Logical View](#logical-view)
-   - [Process View](#process-view)
-5. [System Components](#system-components)
-6. [Data Architecture](#data-architecture)
-7. [Interface Specifications](#interface-specifications)
-8. [Quality Attributes](#quality-attributes)
-9. [Security Architecture](#security-architecture)
-10. [Deployment View](#deployment-view)
-11. [Development and Technical Considerations](#development-and-technical-considerations)
-12. [Conclusion and Future Considerations](#conclusion-and-future-considerations)
-13. [References](#references)
+1. [Introduction](#1-introduction)
+2. [Architectural Goals and Constraints](#2-architectural-goals-and-constraints)
+3. [System Context and Stakeholders](#3-system-context-and-stakeholders)
+4. [Architectural Views](#4-architectural-views)
+    * [Logical View](#41-logical-view)
+    * [Process View](#42-process-view)
+5. [System Components](#5-system-components)
+6. [Data Architecture](#6-data-architecture)
+7. [Interface Specifications](#7-interface-specifications)
+8. [Quality Attributes](#8-quality-attributes)
+9. [Security Architecture](#9-security-architecture)
+10. [Deployment View](#10-deployment-view)
+11. [Development and Technical Considerations](#11-development-and-technical-considerations)
+12. [Conclusion and Future Considerations](#12-conclusion-and-future-considerations)
+13. [References](#13-references)
 
 ---
 
@@ -32,28 +32,44 @@
 
 ### 1.1 Purpose
 
-This document describes the overall architecture of the Data-Driven Greenhouse Climate Control System. Its goal is to offer an in-depth understanding of the system’s structure, component interactions, data flows, and external interfaces. This document is intended for system architects, developers, operators, and other technical stakeholders, serving as a guide for implementation, integration, and future extension.
+This SRS document provides a complete description of the requirements for the Simulation-Based Greenhouse Climate Control Optimization System. The purpose of the system is to explore strategies for balancing energy efficiency and simulated plant growth in greenhouses, building upon concepts from the DynaGrow project. It leverages ingested historical environmental data and uses plant growth simulation coupled with multi-objective optimization algorithms to determine potentially cost-effective control strategies. This document outlines the functional and non-functional requirements for this Master's thesis project, intended for the student developer and supervisor (Jan Corfixen Sørensen).
 
 ### 1.2 Scope
 
-The system is designed to leverage real-time sensor data, historical trends, and predictive modeling (via AI and genetic algorithms) to optimize greenhouse climate conditions. The architecture supports:
+The system leverages pre-ingested historical greenhouse data and simulation to explore optimal control strategies, building on concepts from DynaGrow. The architecture supports:
 
-- **Real-Time and Historical Data Collection:** Gathering and processing environmental data (temperature, humidity, CO₂, lighting, etc.).
-- **Predictive Analytics:** Utilizing machine learning and genetic optimization to forecast climate conditions and derive control strategies.
-- **Actuation and Control:** Dynamically adjusting greenhouse systems (heating, ventilation, etc.) based on predictive insights.
-- **Simulation and Digital Twin Integration:** Creating virtual models for testing and validation without affecting live operations.
-- **External Integration:** Connecting with weather services, energy management systems, and existing greenhouse platforms.
+* **Historical Data Access:** Reading and preparing environmental data (temperature, humidity, CO₂, etc.) from a TimescaleDB database.
+* **Plant Growth Simulation:** Implementing a model (e.g., photosynthesis-based) to simulate plant responses to environmental conditions.
+* **Multi-Objective Optimization:** Utilizing an MOEA to find trade-offs between minimizing estimated energy cost and maximizing simulated plant growth.
+* **Control Recommendation Generation:** Outputting optimized control plans (e.g., light schedules) based on simulation results.
+* **Logging:** Recording essential data for analysis and debugging.
 
-### 1.3 Document Organization
+*Out of Scope:* Direct hardware interaction, real-time data streams (unless optional FRs are implemented later), complex UI, development of novel algorithms.
 
-After this introduction, the document details:
+### 1.3 Definitions, Acronyms, and Abbreviations
 
-- The key architectural goals and constraints.
-- An overview of the overall system context and an identification of stakeholders.
-- Various architectural views (logical, process) to illustrate system components and interactions.
-- A detailed discussion on system components, data management, interfaces, and quality attributes.
-- Security, deployment considerations, and technical recommendations.
-- A conclusion with future considerations and references.
+* **SRS:** Software Requirements Specification
+* **MOEA:** Multi-Objective Evolutionary Algorithm
+* **FR:** Functional Requirement
+* **NFR:** Non-Functional Requirement
+* **DB:** Database (specifically TimescaleDB in this project)
+* **PAR:** Photosynthetically Active Radiation (relevant context from DynaGrow)
+* **DLI:** Daily Light Integral (relevant context from DynaGrow)
+
+### 1.4 References
+
+* *Problem statement - masters thesis in Software engineering-6.pdf* (Defines initial objectives)
+* *DynGrowManual.pdf* (Provides context on system being enhanced, example models/specs)
+* *Dynagrow - multiobjective.pdf* (Details MOEA approach, objectives used in DynaGrow)
+* *(Potentially)* *thesis.pdf* (AGFACAND thesis - for implementation concepts like MOEA structure, model handling)
+
+### 1.5 Overview of the Document
+
+This document is structured as follows:
+
+* **Section 2:** Provides an overall description of the system including its context, functions, and operational environment.
+* **Section 3:** Details the specific functional and non-functional requirements.
+* **Section 4:** Lists any ancillary information such as appendices.
 
 ---
 
@@ -63,38 +79,25 @@ After this introduction, the document details:
 
 The primary goals for the system architecture are:
 
-- **Modularity & Extensibility:**  
-  Design a modular architecture to allow integration of additional sensors, actuators, or predictive models without substantial rework.
-
-- **Scalability:**  
-  Ensure the system can support multiple greenhouses and an increasing number of sensor nodes and control units.
-
-- **Real-Time Performance:**  
-  Provide timely processing of sensor data and control decision outputs with minimal latency.
-
-- **Fault Tolerance & Reliability:**  
-  Maintain high system availability (target: 99.9% uptime) and robust data integrity, even when individual components fail.
-
-- **Interoperability:**  
-  Seamlessly integrate with third-party weather forecast APIs, legacy greenhouse systems, and external energy management services.
+* **Modularity & Extensibility (NFR-3, NFR-4):** Design a modular architecture allowing the simulation model and MOEA components to be potentially swapped or modified via clear interfaces.
+* **Maintainability (NFR-4):** Ensure the codebase is understandable and well-structured to facilitate development and debugging within the project timeline.
+* **Reliability (NFR-5):** Ensure robust handling of potential errors in data access, simulation, and optimization phases.
+* **Performance (NFR-1):** Achieve reasonable execution time for the simulation-optimization cycle to allow for sufficient experimentation.
+* **Validity (NFR-6):** Facilitate the validation of the simulation component against known principles.
 
 ### 2.2 Architectural Constraints
 
 The following constraints must be observed:
 
-- **Technical Constraints:**
-  - Limited processing capabilities on edge devices.
-  - Variability in network quality within greenhouse environments.
-  - Required compatibility with legacy systems (e.g., DynaGrow, IntelliGrow, ETMPC).
-
-- **Environmental Constraints:**
-  - Harsh greenhouse conditions, including significant temperature and humidity variations.
-  - Possible electromagnetic interference affecting sensor reliability.
-
-- **Business Constraints:**
-  - Cost considerations related to hardware and infrastructure.
-  - High availability and minimal downtime due to 24/7 greenhouse operations.
-  - Adherence to data security and environmental regulatory standards.
+* **Project Constraints:**
+  * Adherence to the Master's thesis timeline.
+  * Focus on applying existing, established techniques for simulation and optimization.
+* **Technical Constraints:**
+  * Reliance on the quality and characteristics of the pre-ingested historical data in TimescaleDB.
+  * Computational performance limited by the development machine resources.
+  * Primary programming language is Python for development speed and library availability (Data Access, Prep, MOEA, initial Simulation). Rust is a potential fallback for performance-critical simulation components.
+* **Environmental Constraints:** Not applicable as this is a simulation-based system operating in a standard development environment.
+* **Business Constraints:** Not applicable beyond delivering the thesis project requirements.
 
 ---
 
@@ -102,316 +105,260 @@ The following constraints must be observed:
 
 ### 3.1 System Context
 
-The Greenhouse Climate Control System interacts with a variety of external systems and hardware. The following context diagram (Figure 1) describes these interactions:
+The system operates primarily on stored data and configuration, producing analysis results. The following context diagram describes these interactions:
 
 ```mermaid
 graph LR
-    subgraph External Systems
-        WF[Weather Forecast APIs]
-        EG[Energy Management Systems]
-        LG[Legacy Greenhouse Systems]
+    sub Input Sources
+        HistDB[(TimescaleDB Historical Data)]
+        Config[Configuration Files (Sim Params, MOEA Params)]
     end
 
-    subgraph Core System
-        DI[Data Ingestion & Storage]
-        AE[AI & Optimization Engine]
-        CM[Control Module]
-        SM[Simulation & Digital Twin]
+    sub Core System
+        DA[Data Access & Prep]
+        Sim[Plant Simulation]
+        Opt[MOEA Engine]
+        Log[Logging]
     end
 
-    subgraph Onsite Hardware
-        S[Sensors]
-        A[Actuators]
+    sub Output
+        Results[Result Files / Console Output (Optimized Plans, Logs)]
     end
 
-    WF --> DI
-    EG --> DI
-    LG --> DI
-    S --> DI
-    DI --> AE
-    AE --> CM
-    CM --> A
-    AE --> SM
-    SM --> AE
+    HistDB --> DA
+    Config --> DA
+    Config --> Sim
+    Config --> Opt
+    DA --> Sim
+    DA --> Opt
+    Sim --> Opt
+    Opt --> Sim  // During evaluation loop
+    Opt --> Log
+    Opt --> Results
 ```
 
-### 3.2 Stakeholders
+Diagram showing configuration files and historical database feeding into the core system (data access, simulation, optimization, logging), which produces results files/console output.
+3.2 Stakeholders
 
-- **Greenhouse Operators:**  
-  Concerned with the system’s ease of use, reliability, and real-time performance. They need an intuitive dashboard and simplified controls.
+    Student Developer (Fnux8890): Primary user, responsible for implementation and testing. Requires clear interfaces, testability, maintainability.
+    Supervisor (Jan Corfixen Sørensen): Needs to understand the architecture, evaluate the implementation against requirements, and assess results. Requires clear documentation and logging/outputs for analysis.
+    (Secondary) Future Researchers: Might benefit from a modular design and clear documentation if the work is extended.
 
-- **System Administrators:**  
-  Focused on maintainability, system monitoring, and operational security.
+4. Architectural Views
+4.1 Logical View
 
-- **Developers:**  
-  Require a well-documented, modular, and testable codebase enabling future enhancements.
-
-- **Business Leaders:**  
-  Interested in cost efficiency, scalability, and potential return on investment.
-
-- **Researchers:**  
-  Look for detailed analytics, simulation outputs, and data for further agricultural studies.
-
----
-
-## 4. Architectural Views
-
-### 4.1 Logical View
-
-The logical view outlines the primary software components and their interactions:
+The logical view outlines the primary software modules and their conceptual layering:
 
 ```mermaid
 graph TD
-    subgraph Presentation Layer
-        UI[User Interface (Dashboard)]
-        API[API Gateway]
+    sub Configuration
+        SimConfig[Simulation Config]
+        MOEAConfig[MOEA Config]
     end
 
-    subgraph Business Layer
-        OE[Optimization Engine]
-        ML[Machine Learning Engine]
-        CM[Control Module]
-        SM[Simulation/Digital Twin]
+    sub Core Logic Layer
+        DataAccess[Data Access Module]
+        InputPrep[Input Preparation Module]
+        Simulation[Plant Simulation Module]
+        MOEA[MOEA Module]
+        Objectives[Objective Functions]
+        Logging[Logging Module]
     end
 
-    subgraph Data Layer
-        TS[Time-Series Database]
-        RDB[Relational Database]
-        Cache[In-Memory Cache]
+    sub Data Storage
+        TSDB[(TimescaleDB)]
+        OutputFiles[Output Files (Results/Logs)]
     end
 
-    UI --> API
-    API --> OE
-    API --> ML
-    OE --> SM
-    ML --> CM
-    SM --> CM
-    CM --> TS
-    CM --> RDB
-    CM --> Cache
+    SimConfig --> Simulation
+    MOEAConfig --> MOEA
+
+    DataAccess --> InputPrep
+    InputPrep --> Simulation
+    InputPrep --> Objectives
+
+    Simulation -.-> Objectives  // Provides growth metric
+    MOEA -- uses --> Objectives
+    MOEA -- uses --> Simulation // For evaluation
+
+    Logging -- receives from --> DataAccess
+    Logging -- receives from --> Simulation
+    Logging -- receives from --> MOEA
+
+    DataAccess -- reads --> TSDB
+    Logging -- writes --> OutputFiles
+    MOEA -- writes --> OutputFiles // Final results
 ```
 
-### 4.2 Process View
+Diagram showing configuration feeding into Simulation and MOEA. Data Access feeds Input Prep, which feeds Simulation and Objectives. MOEA uses Simulation and Objectives. Logging receives info from multiple modules and writes to Output Files, along with final MOEA results.
+4.2 Process View
 
-The process flow illustrates the key data processing and control cycles:
+Illustrates a typical simulation-optimization run:
 
 ```mermaid
 sequenceDiagram
-    participant S as Sensors
-    participant DI as Data Ingestion
-    participant ML as Machine Learning Engine
-    participant OE as Optimization Engine
-    participant CM as Control Module
-    participant A as Actuators
+    participant Main as Main Process
+    participant Cfg as Config Loader
+    participant DA as Data Access
+    participant Sim as Simulation Model
+    participant MOEA as MOEA Engine
+    participant Log as Logging
 
-    S->>DI: Transmit sensor readings
-    DI->>ML: Preprocess and forward data
-    ML->>OE: Generate predictive insights
-    OE->>CM: Determine control actions
-    CM->>A: Activate/adjust actuators
+    Main->>Cfg: Load Simulation & MOEA Params
+    Main->>DA: Request Historical Data for Time Window
+    DA->>Log: Log data request
+    DA-->>Main: Return Data Segment
+    Main->>InputPrep: Prepare Data(Data Segment)
+    InputPrep-->>Main: Return Prepared Data
+    Main->>MOEA: Start Optimization(Prepared Data, Sim Params, MOEA Params)
+    MOEA->>Log: Log optimization start
+    loop Evaluation Cycle
+        MOEA->>MOEA: Generate Candidate Solution (e.g., Light Plan)
+        MOEA->>Sim: Run Simulation(Candidate Solution, Prepared Data, Sim Params)
+        Sim->>Log: Log simulation run
+        Sim-->>MOEA: Return Simulated Growth Metric
+        MOEA->>MOEA: Calculate Objective Values (Growth, Energy Cost)
+        MOEA->>Log: Log evaluation results
+    end
+    MOEA->>Log: Log optimization end
+    MOEA-->>Main: Return Best Found Solution(s)
+    Main->>Log: Log final result
 ```
 
----
+5. System Components
 
-## 5. System Components
+Based on the logical view and FRs:
+5.1 Data Access & Preparation (FR-2)
 
-### 5.1 Data Ingestion and Management
+    Data Access Service: Connects to TimescaleDB (using `psycopg2`/`sqlalchemy`), retrieves data based on time windows. Handles DB connection errors (NFR-5.1).
+    Input Preparation Service: Takes raw DB data, calculates/extracts specific features (using `pandas`/`polars`) needed by simulation and objectives.
 
-- **Data Collection Service:**  
-  Responsible for real-time acquisition of sensor data (temperature, humidity, CO₂, lighting, etc.) via protocols such as MQTT or HTTP.
+5.2 Plant Growth Simulation (FR-3)
 
-- **Data Storage:**  
-  Utilizes a time-series database for high-frequency data and a relational database for long-term storage and analysis.
+    Simulation Core: Implemented initially in Python (using `numpy`, etc.). Takes environmental inputs and parameters, returns growth metric(s). Handles invalid inputs (NFR-5.2). If performance becomes critical (violates NFR-1.1), this core logic may be reimplemented in Rust and called via FFI.
+    Parameter Loader (Python): Reads simulation parameters from configuration.
+    (Future) Validation Module: Component/process for executing validation checks (NFR-6.1).
 
-### 5.2 AI and Optimization Engine
+5.3 Multi-Objective Optimization Engine (FR-4)
 
-- **Machine Learning Module:**  
-  Processes historical and current sensor data to forecast environmental conditions.
+    MOEA Implementation (Python): Uses a library like `pymoo`. Contains the core logic (population management, selection, variation operators). Manages the evaluation loop. Handles convergence issues (NFR-5.3).
+    Objective Function Module (Python): Implements the specific functions to calculate energy cost and use the simulation output for the growth objective.
+    Parameter Loader (Python): Reads MOEA parameters from configuration.
+    Solution Representation: Defines how a control strategy (e.g., light plan) is encoded.
 
-- **Optimization Module:**  
-  Applies genetic algorithms and multi-objective optimization to compute the best control strategies.
+5.4 Logging & Output (FR-5)
 
-### 5.3 Control Module
+    Logging Service (Python): Uses Python's `logging` module. Provides a centralized way for modules to log information. Writes logs to console or files.
+    Result Output Service (Python): Formats and outputs the final recommended control strategy from the MOEA (e.g., using `pandas` or `csv` module).
 
-- **Actuation Service:**  
-  Interfaces with greenhouse actuators (e.g., fans, heaters, lights) to implement control actions.  
-- **Override Mechanism:**  
-  Provides a manual override through the UI to allow operator intervention when necessary.
+5.5 Configuration Management
 
-### 5.4 Simulation and Digital Twin
+    Configuration Loader (Python): Reads parameters for different modules (DB connection, simulation, MOEA) from files (e.g., TOML using `tomli` or YAML using `PyYAML`).
 
-- **Simulation Framework:**  
-  Models various greenhouse scenarios to evaluate proposed control strategies without risk to live operations.
-- **Digital Twin Interface:**  
-  Synchronizes live sensor data with a virtual model for continuous simulation and scenario testing.
+6. Data Architecture
 
----
+    Data Flow: Historical environmental time-series data flows from TimescaleDB via the Data Access module to Input Preparation, then to the Simulation module. Control strategies proposed by MOEA are evaluated using simulation results. Configuration data flows from files to relevant modules. Log data and final results flow to output files/console.
+    Data Storage Strategy:
+        TimescaleDB: Stores the primary input dataset (historical sensor readings). Schema defined during ingestion (FR-1).
+        Configuration Files: Store parameters for simulation and MOEA.
+        Output Files: Store detailed logs and final optimization results/recommendations.
+    Data Security: As the system runs locally on development machine using pre-existing data, security focuses on standard coding practices to prevent accidental data corruption during processing. No sensitive external data transfer is planned initially.
 
-## 6. Data Architecture
+7. Interface Specifications
+7.1 External Interfaces
 
-- **Data Flow:**  
-  Continuous ingestion of sensor data, processing for ML prediction, and storage for historical analysis.
+    None in the core scope (unless optional FR-1.5 is implemented later, requiring APIs for weather/energy services).
 
-- **Data Storage Strategy:**
-  - **Time-Series Data:** Stored in a specialized database to support fast query responses for recent sensor data.
-  - **Structured Data:** Historical logs, configuration, and control decision logs stored in a relational database.
-  - **Caching:** Utilization of in-memory caches to accelerate real-time processing and analytics.
+7.2 Internal Interfaces
 
-- **Data Security:**  
-  All data transfers are encrypted (TLS/SSL) with robust access control policies applied to all storage layers.
+    Module APIs: Python classes and function signatures will define interactions between the main components (Data Access, Input Prep, Simulation, MOEA, Objectives, Logging). Clear APIs are key to NFR-3 (Extensibility) and NFR-4 (Modularity). A potential Python-Rust FFI interface might be needed later for the simulation core.
+    Configuration Interface: A defined format (e.g., JSON schema) for configuration files used by the Parameter Loaders.
 
----
+7.3 User Interface
 
-## 7. Interface Specifications
+    Command-line interface (CLI) for initiating runs and specifying configuration files.
+    Direct interaction via configuration file editing.
+    Output via console messages and generated log/result files.
 
-### 7.1 External Interfaces
+8. Quality Attributes
 
-- **Sensor Interfaces:**  
-  Connect using MQTT/HTTP protocols with standardized data formats (e.g., JSON, XML).
+The architecture addresses the key NFRs:
 
-- **API Integration:**  
-  RESTful APIs are provided for communication with external systems like weather services and legacy control systems.
+    Performance (NFR-1): Addressed by choosing reasonably efficient simulation models and MOEA algorithms, and potentially optimizing implementation details. Performance target (< 5 min cycle) guides algorithm choice and implementation effort.
+    Scalability (NFR-2): Considered in module design, but large-scale scalability is not the primary focus of this simulation-based phase.
+    Extensibility (NFR-3): Addressed through defined interfaces between Simulation/MOEA components and the rest of the system.
+    Maintainability & Modularity (NFR-4): Addressed by separating concerns into distinct components (Section 5) and defining clear interfaces (Section 7.2). Documentation is crucial.
+    Reliability (NFR-5): Addressed through specific error handling requirements within data access, simulation, and optimization components.
+    Validity (NFR-6): Addressed by requiring a validation step for the simulation model, although the specific architectural support for this is TBD (could be separate scripts or a dedicated module).
 
-### 7.2 Internal Interfaces
+9. Security Architecture
 
-- **Service APIs:**  
-  Modules (Data Ingestion, ML Engine, Optimization, Control) expose service endpoints to support internal interactions and data sharing.
+    Not a primary focus for this simulation-based Master's project running locally. Standard secure coding practices should be followed, but no specific security components (authentication, authorization, network security beyond OS level) are planned.
 
-- **User Interface:**  
-  A browser-based dashboard utilizing responsive design principles to display real-time metrics, historical trends, and control overrides.
+10. Deployment View
+10.1 Deployment Strategy
 
----
+    The Python application (handling data access, prep, simulation, optimization, logging) will be deployed and run on the student's development machine, likely managed via a virtual environment (`uv venv`).
+    The TimescaleDB database runs within a Docker container, managed via docker-compose (as per Issue #5).
 
-## 8. Quality Attributes
-
-- **Performance:**  
-  - The system must process incoming sensor data and execute control decisions within a 5‑second window.
-  - Designed to handle high data throughput and concurrent sensor streams.
-
-- **Reliability and Availability:**  
-  - Goal of 99.9% uptime for critical components.
-  - Redundancy and failover mechanisms integrated within the data storage and processing layers.
-
-- **Extensibility and Maintainability:**  
-  - Modular design permits easy upgrades (e.g., additional sensors or control strategies).
-  - Comprehensive documentation and well-defined APIs facilitate ongoing maintenance.
-
-- **Security:**  
-  - Data encryption in transit and at rest.
-  - Role-based access control and audit logging are implemented throughout the system.
-
-- **Usability:**  
-  - The user interface is designed with simplicity and clarity to support non-technical users.
-  - Detailed system logs and monitoring tools provide necessary insights for system administrators.
-
----
-
-## 9. Security Architecture
-
-- **Data Encryption:**  
-  Ensure that all communications (internal and external) use TLS/SSL encryption.
-
-- **Authentication and Authorization:**  
-  Implement robust mechanisms using industry standards (OAuth, JWT) to secure access to APIs and the user interface.
-
-- **Audit Logging:**  
-  Record all operations, configuration changes, and control decisions, ensuring traceability and compliance with regulatory standards.
-
-- **Network Security:**  
-  Apply firewalls, intrusion detection systems, and secure communication channels between all system components.
-
----
-
-## 10. Deployment View
-
-### 10.1 Deployment Strategy
-
-- **Edge Deployment:**  
-  Lightweight data collectors and preliminary processing run on edge devices colocated within the greenhouse, ensuring low-latency communication with sensors and actuators.
-
-- **Centralized Processing:**  
-  Advanced analytics, optimization, and simulation services are deployed on a centralized server (or cloud-based infrastructure) with high processing power to manage heavy computational loads.
-
-### 10.2 Deployment Diagram
+10.2 Deployment Diagram
 
 ```mermaid
-graph LR
-    subgraph Edge Layer
-        E1[Edge Device 1]
-        E2[Edge Device 2]
+graph TD
+    sub Development Machine
+        App[Simulation/Optimization Application (Python)]
+        PythonEnv[Python Environment (uv)]
+        Docker[Docker Engine]
     end
-    subgraph Central Cluster
-        C1[Application Server]
-        C2[Time-Series & RDB Server]
-        C3[Analytics Engine]
+    sub Docker Container
+        DB[(TimescaleDB)]
     end
 
-    E1 --> C1
-    E2 --> C1
-    C1 --> C2
-    C1 --> C3
+    App --> PythonEnv
+    PythonEnv --> Docker
+    Docker -- contains --> DB
 ```
 
-### 10.3 Considerations
+10.3 Considerations
 
-- **Scalability:**  
-  Use container orchestration (e.g., Kubernetes) to facilitate horizontal scaling as the number of greenhouses grows.
+    Ensure sufficient RAM and CPU resources on the development machine for simulation and MOEA execution.
+    Dependency management for the chosen programming language (Python) and any external libraries.
 
-- **Monitoring:**  
-  Continuous monitoring and centralized logging are employed to maintain visibility and detect faults early.
+11. Development and Technical Considerations
+11.1 Coding Standards and Practices
 
----
+    Adhere to standard Python coding conventions (PEP 8). Use type hints.
+    Utilize version control (Git/GitHub).
+    Prioritize clear, modular Python code design (NFR-4.1).
+    Include reasonable docstrings and comments (NFR-4.2).
+    Unit/integration tests using `pytest` are recommended.
 
-## 11. Development and Technical Considerations
+11.2 Continuous Integration / Continuous Deployment (CI/CD)
 
-### 11.1 Coding Standards and Practices
+    Out of scope for this project phase. Manual builds and tests are sufficient.
 
-- Follow best practices for code quality, including modular design, unit testing, and proper documentation.
-- Emphasize API contract stability, ensuring that internal interfaces remain consistent over time.
+11.3 Technical Debt and Future Enhancements
 
-### 11.2 Continuous Integration / Continuous Deployment (CI/CD)
+    Monitoring Technical Debt: Maintain Python code quality through self-review and adherence to modular design principles. Be mindful of potential complexity added if a Rust FFI component becomes necessary for simulation.
+    Roadmap for Enhancements: Potential future work (beyond thesis scope) could include implementing optional FRs (real-time data, external APIs), adding more sophisticated simulation models, or exploring hardware integration.
 
-- Establish automated pipelines for build, test, and deployment.
-- Utilize containerization and orchestration tools to streamline releases and updates.
+12. Conclusion and Future Considerations
 
-### 11.3 Technical Debt and Future Enhancements
+This SAD outlines an architecture focused on achieving the goals of the initial problem statement using a simulation-based approach with multi-objective optimization. It prioritizes modularity and rapid development suitable for a Master's thesis project, leveraging Python's mature ecosystem for data handling and optimization, while reserving Rust as a targeted option for simulation performance. Key Python components include data access, input preparation, plant simulation (initial), MOEA, and logging, designed to work together on a single development machine interacting with a containerized database.
 
-- **Monitoring Technical Debt:**  
-  Regular code reviews and architectural assessments will be conducted.
-- **Roadmap for Enhancements:**  
-  Future work may include integration of additional climate control parameters (e.g., CO₂ management, irrigation), adoption of reinforcement learning techniques, and expanding support for more advanced digital twin features.
+Future considerations beyond this project scope could involve implementing real-time capabilities, deploying to a more scalable infrastructure, or integrating with physical greenhouse hardware.
+13. References
 
----
+    Problem statement - masters thesis in Software engineering-6.pdf
+    DynGrowManual.pdf
+    Dynagrow - multiobjective.pdf
+    (Relevant literature for chosen simulation model and MOEA algorithm)
 
-## 12. Conclusion and Future Considerations
+**Approval and Sign-Off**
 
-This Software Architecture Document defines a robust, modular, and scalable system designed for proactive greenhouse climate control. The architecture balances real-time data processing, predictive analytics, and robust interfaces to meet both current operational needs and future extensions.
+*(Placeholders for supervisor sign-off)*
 
-Future enhancements include:
-
-- Expanding sensor types and data sources.
-- Integrating more advanced predictive models.
-- Enhancing simulation capabilities for extensive testing of novel climate control strategies.
-
----
-
-## 13. References
-
-- [Greenhouse Climate Control Overview Document]
-- [Industry Standards on IoT and Smart Agriculture]
-- [Legacy System Documentation: DynaGrow, IntelliGrow, ETMPC]
-- [Security and Compliance Standards]
-
----
-
-*Approval:*  
-By signing this document, all stakeholders confirm that the outlined architecture meets the agreed requirements and design principles for the Data-Driven Greenhouse Climate Control System.
-
-| **Name**           | **Role**          | **Signature** | **Date**  |
-|--------------------|-------------------|---------------|-----------|
-| [Stakeholder 1]    | [Role/Position]   |               |           |
-| [Stakeholder 2]    | [Role/Position]   |               |           |
-
----
-
-This complete document serves as a reference for all phases of development, implementation, and future scaling of the greenhouse climate control system.
+| Name                  | Title      | Signature | Date     |
+| :-------------------- | :--------- | :-------- | :------- |
+| Jan Corfixen Sørensen | Supervisor |           |          |
+|                       |            |           |          |
