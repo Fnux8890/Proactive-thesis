@@ -63,7 +63,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ../Data:/app/data:ro
-      - ./verification:/app/verification:rw  # Mount for verification output files
+      - ./verification:/app/verification:rw # Mount for verification output files
     ports:
       - "4000:4000" # Phoenix API port
     depends_on:
@@ -78,7 +78,7 @@ services:
       PYTHON_PROCESSING_SERVICE: ${PROCESSING_SERVICE_URL}
       DATA_SOURCE_PATH: /app/data
       SECRET_KEY_BASE: ${ELIXIR_SECRET_KEY}
-      VERIFICATION_DIR: /app/verification  # Add verification directory environment variable
+      VERIFICATION_DIR: /app/verification # Add verification directory environment variable
     healthcheck:
       test: [ "CMD", "nc", "-z", "localhost", "4000" ]
       interval: 30s
