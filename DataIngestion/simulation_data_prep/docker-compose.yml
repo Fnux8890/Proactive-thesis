@@ -1,0 +1,117 @@
+services:
+  # Existing Data Preparation Service (potentially refactored to run Prefect flows)
+  data-prep:
+    build: .
+    env_file:
+      - .env # Load environment variables from .env file (ensure DB connection vars are here)
+    # Command changed to Prefect 2 worker syntax
+    command: [ "prefect", "worker", "start", "-q", "default" ]
+    environment:
+      - PREFECT_API_URL=http://orion:4200/api
+      # DATABASE_URL needed for DAO, load via .env: postgresql+asyncpg://postgres:postgres@db:5432/postgres
+    volumes:
+      - ./src:/app/src # Mount local src directory for development
+      - ./output:/app/output # For DuckDB/Parquet output
+      - ./plant_config.json:/app/plant_config.json # Mount config
+      - ./feast_repo:/app/feast_repo # Mount Feast feature repository (if used)
+      - ./great_expectations:/app/great_expectations # Mount Great Expectations config/results (if used)
+      - prefect_data:/root/.prefect # Persist Prefect agent data
+    depends_on:
+      # Removed direct dependency on local 'db' service
+      # Assumes external 'db' service on ingestion-net is ready
+      orion:
+        condition: service_started # Orion might not have a healthcheck, wait for start
+      mlflow-server:
+        condition: service_started # MLflow might not have a healthcheck, wait for start
+    networks:
+      - ingestion-net
+
+  # Prefect Orion Service (Server & UI)
+  orion:
+    # Build custom image to include DB driver
+    build:
+      context: .
+      dockerfile: orion.Dockerfile
+    # Command changed to Prefect 2 server syntax
+    command: prefect server start
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_UI_API_URL=http://orion:4200/api
+      # Updated connection string to use asyncpg dialect for Prefect's async engine
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@db:5432/prefect
+    volumes:
+      - prefect_db:/root/.prefect/ # Persist Prefect DB data
+    networks:
+      - ingestion-net
+
+  # MLflow Tracking Server
+  mlflow-server:
+    # Build custom image to include DB driver
+    build:
+      context: .
+      dockerfile: mlflow.Dockerfile
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5001:5000" # Map to 5001 locally to avoid conflict
+    environment:
+      # Credentials might not be strictly needed if backend URI has them, but added for clarity/potential use
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # - POSTGRES_DB_MLFLOW=mlflow # DB name is in the URI
+    volumes:
+      - mlflow_data:/mlflow/artifacts # Persist MLflow artifacts
+    networks:
+      - ingestion-net
+
+  # Re-add db service definition to mount the script
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+    volumes:
+      # Mount the new script to create prefect/mlflow DBs
+      - ./create_extra_dbs.sql:/docker-entrypoint-initdb.d/01_create_extra_dbs.sql:ro
+      # Also mount original init script from rust_pipeline if it exists and is needed
+      # Example: Assumes it creates sensor_data table
+      - ../rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro
+      - postgres-data:/var/lib/postgresql/data # Persist data
+    ports:
+      # Map container port 5432 to host port 5433 to avoid conflicts
+      - "5433:5432"
+    networks:
+      - ingestion-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Add a test harness service to run unit tests
+  test:
+    build: . # Build the data-prep image for testing
+    env_file:
+      - .env
+    # Depends on external DB being available on the network
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+    entrypoint: [ "pytest", "src/tests", "--maxfail=1", "--disable-warnings", "-q" ]
+    networks:
+      - ingestion-net
+
+volumes:
+  prefect_data:
+  prefect_db:
+  mlflow_data:
+  postgres-data:
+
+
+networks:
+  ingestion-net:
+    # Network is now defined locally within this file
+    name: ingestion-net
+    driver: bridge

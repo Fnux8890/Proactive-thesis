@@ -1,0 +1,64 @@
+# Basic Great Expectations configuration (v3 API)
+# For use with in-memory Polars/Pandas DataFrames within Prefect flow
+
+config_version: 3
+
+datasources: {}
+# Datasources can be configured here if connecting directly to SQL/Parquet,
+# but for in-memory validation within the flow, we often pass the DataFrame directly.
+
+config_variables_file_path: uncommitted/config_variables.yml
+
+plugins_directory: plugins/
+
+stores:
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: expectations/
+
+  validation_results_store:
+    class_name: ValidationResultsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/validations/
+
+  evaluation_parameter_store:
+    class_name: EvaluationParameterStore
+
+  checkpoint_store:
+    class_name: CheckpointStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: checkpoints/
+
+  profiler_store:
+    class_name: ProfilerStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: profilers/
+
+expectations_store_name: expectations_store
+validation_results_store_name: validation_results_store
+evaluation_parameter_store_name: evaluation_parameter_store
+checkpoint_store_name: checkpoint_store
+profiler_store_name: profiler_store
+
+data_docs_sites:
+  local_site:
+    class_name: SiteBuilder
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/data_docs/local_site/
+    site_index_builder:
+      class_name: DefaultSiteIndexBuilder
+
+anonymous_usage_statistics:
+  enabled: true
+  data_context_id: # This will be populated on first use if enabled
+
+include_rendered_content:
+  globally: false
+  expectation_validation_result: false
+  expectation_suite: false 
