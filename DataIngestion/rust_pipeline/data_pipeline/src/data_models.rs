@@ -80,6 +80,9 @@ pub struct ParsedRecord {
     pub uuid: Option<String>,
     pub value: Option<f64>, // Generic value used in some JSON structures
 
+    // ADDED: Field to identify the specific lamp group or measurement category
+    pub lamp_group: Option<String>,
+
     // Add a generic map for any columns not explicitly mapped?
     // pub extra_data: Option<HashMap<String, String>>,
 } 

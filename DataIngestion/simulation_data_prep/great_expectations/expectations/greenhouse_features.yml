@@ -73,4 +73,31 @@ expectations:
   - expectation_type: expect_column_values_to_be_in_set
     kwargs:
       column: heat_delay_onset_risk
-      value_set: [0, 1, null] # Allow 0, 1, or potentially null if not calculable 
+      value_set: [0, 1, null] # Allow 0, 1, or potentially null if not calculable
+
+  # Lamp Energy Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: Lamp_kWh_daily
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: Lamp_kWh_daily
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: Lamp_kWh_daily
+      min_value: 0
+      max_value: 200  # generous upper bound per day; adjust as real data accrues
+
+  # Supplemental DLI Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: DLI_suppl_mol_m2_d
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: DLI_suppl_mol_m2_d
+      mostly: 0.95 # Allow nulls if supplemental light was never on
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: DLI_suppl_mol_m2_d
+      min_value: 0
+      max_value: 70 # High upper bound for supplemental DLI (mol/m2/day) 

@@ -28,8 +28,6 @@ services:
   redis:
     image: redis:alpine
     restart: always
-    ports:
-      - "6379:6379"
     command: redis-server --save 60 1 --loglevel warning
     volumes:
       - redis-data:/data
@@ -54,9 +52,6 @@ services:
       # Mount script to create extra DBs needed by Python pipeline services
       - ./simulation_data_prep/create_extra_dbs.sql:/docker-entrypoint-initdb.d/01_create_extra_dbs.sql:ro # Adjusted path
       - postgres-data:/var/lib/postgresql/data
-    ports:
-      # Map container port 5432 to host port 5433 (from previous fix)
-      - "5433:5432"
     networks:
       - ingestion-net
     healthcheck:
@@ -91,26 +86,37 @@ services:
       context: ./simulation_data_prep # Adjusted build context
       dockerfile: Dockerfile
     env_file:
-      - ./simulation_data_prep/.env # Adjusted path
-    command: [ "prefect", "worker", "start", "-q", "default" ]
+      - ./.env # Load from the same directory as this docker-compose.yml
+    command: >
+      sh -c '
+        echo "Waiting for Orion server to be ready...";
+        until curl -fs http://orion:4200/health/ready; do
+          echo "waiting for Orion...";
+          sleep 2;
+        done;
+        echo "Orion ready. Starting Prefect worker...";
+        prefect worker start --pool default-process-pool -q default;
+      '
     environment:
       - PREFECT_API_URL=http://orion:4200/api
-      # DATABASE_URL is loaded from .env file
+    depends_on:
+      db:
+        condition: service_healthy
+      orion:
+        condition: service_healthy
+      mlflow-server:
+        condition: service_started
     volumes:
       - ./simulation_data_prep/src:/app/src
       - ./simulation_data_prep/output:/app/output
       - ./simulation_data_prep/plant_config.json:/app/plant_config.json
       - ./simulation_data_prep/feast_repo:/app/feast_repo
       - ./simulation_data_prep/great_expectations:/app/great_expectations
+      - ./simulation_data_prep/dao:/app/dao
+      - ./simulation_data_prep/transforms:/app/transforms
+      - ./simulation_data_prep/loading:/app/loading
+      - ./simulation_data_prep/validation:/app/validation
       - prefect_data:/root/.prefect
-    depends_on:
-      db:
-        # Depends on the single DB service
-        condition: service_healthy
-      orion:
-        condition: service_started
-      mlflow-server:
-        condition: service_started
     networks:
       - ingestion-net
 
@@ -118,19 +124,25 @@ services:
     build:
       context: ./simulation_data_prep # Adjusted build context
       dockerfile: orion.Dockerfile # Relative path from context
-    command: prefect server start
+    command: prefect server start --host 0.0.0.0 --log-level debug
+    # Map host port 4201 to container port 4200 for UI access
     ports:
-      - "4200:4200"
+      - "4201:4200"
     environment:
-      - PREFECT_UI_API_URL=http://orion:4200/api
-      # Use asyncpg dialect, points to single 'db' service
+      - PREFECT_LOGGING_LEVEL=DEBUG
+      # Point the UI (browser) to the host port where the API is exposed
+      - PREFECT_UI_API_URL=http://localhost:4201/api
       - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@db:5432/prefect
     volumes:
       - prefect_db:/root/.prefect/
     depends_on:
       db:
-        # Depends on the single DB service
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fs http://localhost:4200/health/live || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - ingestion-net
 
@@ -140,8 +152,6 @@ services:
       dockerfile: mlflow.Dockerfile # Relative path from context
     command: >
       mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow --default-artifact-root /mlflow/artifacts
-    ports:
-      - "5001:5000"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -149,7 +159,6 @@ services:
       - mlflow_data:/mlflow/artifacts
     depends_on:
       db:
-        # Depends on the single DB service
         condition: service_healthy
     networks:
       - ingestion-net
@@ -159,15 +168,48 @@ services:
     build:
       context: ./simulation_data_prep # Adjusted build context
       dockerfile: Dockerfile
+    working_dir: /app # Set working directory for consistency
     env_file:
-      - ./simulation_data_prep/.env # Adjusted path
-    # Requires DB for config loading which might use DB implicitly? Keep depends_on for safety.
+      - ./.env # Load from the same directory as this docker-compose.yml
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: [ "pytest", "src/tests", "--maxfail=1", "--disable-warnings", "-q" ]
+    entrypoint: [ "pytest", "src/tests", "--maxfail=1" ]
+    volumes:
+      # Mount source code needed for tests
+      - ./simulation_data_prep/src:/app/src:ro
+      - ./simulation_data_prep/dao:/app/dao:ro
+      - ./simulation_data_prep/transforms:/app/transforms:ro
+      - ./simulation_data_prep/loading:/app/loading:ro # If needed by imports
+      - ./simulation_data_prep/validation:/app/validation:ro # If needed by imports
+      # Mount config file needed by tests
+      - ./simulation_data_prep/plant_config.json:/app/plant_config.json:ro
+      # Mount sample data needed by tests (relative to docker-compose.yml location)
+      - ../Data:/app/data:ro
     networks:
       - ingestion-net
+
+  # --- New one-shot service for Prefect Deployment ---
+  prefect-deployer:
+    build:
+      context: ./simulation_data_prep
+      dockerfile: Dockerfile
+    restart: "no"
+    networks:
+      - ingestion-net
+    env_file:
+      - ./.env
+    environment:
+      - PREFECT_API_URL=http://orion:4200/api
+    command: ["echo", "Deployer container ready, awaiting command..."]
+    volumes:
+      - ./simulation_data_prep/src:/app/src
+      - ./simulation_data_prep/dao:/app/dao
+      - ./simulation_data_prep/transforms:/app/transforms
+      - ./simulation_data_prep/loading:/app/loading
+      - ./simulation_data_prep/validation:/app/validation
+      - ./simulation_data_prep/prefect.yaml:/app/prefect.yaml # Mount the Prefect config file
+    working_dir: /app # Ensure this matches the target path, or adjust target path if WORKDIR is different
 
 # --- Volumes ---
 volumes:
@@ -178,7 +220,7 @@ volumes:
   prefect_db:
   mlflow_data:
 
-    # --- Network ---
+# --- Network ---
 networks:
   ingestion-net:
     name: ingestion-net

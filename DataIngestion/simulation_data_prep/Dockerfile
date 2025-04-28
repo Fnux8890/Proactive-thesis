@@ -1,6 +1,9 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
+# Add curl for the wait-for-orion command
+RUN apt-get update && apt-get install -y curl --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -24,6 +27,9 @@ COPY requirements.txt .
 # Using --system allows uv to manage packages globally within the container
 RUN uv pip install --system -r requirements.txt
 
+# Reinstall numpy and pandas to mitigate potential binary incompatibility issues
+RUN uv pip install --system --no-cache-dir --force-reinstall numpy pandas
+
 # Copy the source code into the container
 COPY src/ ./src/
 # Copy plant configuration for the Flow and tests
@@ -33,5 +39,12 @@ COPY great_expectations ./great_expectations
 # Copy tests for pytest
 COPY src/tests ./src/tests
 
-# Command to run the application
+# Copy additional project sub-packages
+COPY dao/ ./dao/
+COPY transforms/ ./transforms/
+COPY loading/ ./loading/
+COPY validation/ ./validation/
+
+ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
+
 CMD ["python", "src/main.py"] 

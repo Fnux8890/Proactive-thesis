@@ -1,0 +1,15 @@
+project: greenhouse_features
+registry: data/registry.db
+provider: local
+offline_store:
+  type: postgres
+  host: db
+  port: 5432
+  database: greenhouse
+  user: postgres
+  password: postgres
+online_store:
+  type: redis
+  host: redis
+  port: 6379
+entity_key_serialization_version: 2

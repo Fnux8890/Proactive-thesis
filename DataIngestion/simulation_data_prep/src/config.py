@@ -135,6 +135,11 @@ class AdvancedFeatureParameters(BaseModel):
     in_optimal_range_flag: Optional[Dict[str, str]] = None
     night_stress_flags: Optional[Dict[str, Union[str, NightStressFlagDetail]]] = None
 
+class LampGroupDetail(BaseModel):
+    count: int
+    ppf_umol_s: float
+    power_kw: float
+
 # Main Configuration Model
 class PlantConfig(BaseModel):
     plant_profile_metadata: Metadata
@@ -147,12 +152,15 @@ class PlantConfig(BaseModel):
     feature_parameters: FeatureParameters
     objective_function_parameters: ObjectiveFunctionParameters
     advanced_feature_parameters: AdvancedFeatureParameters
+    lamp_groups: Optional[Dict[str, LampGroupDetail]] = None
+    column_uuid_mapping: Optional[Dict[str, List[str]]] = Field(default_factory=dict)
 
 # Function to load the configuration
 def load_config(path: str = "/app/plant_config.json") -> PlantConfig:
     with open(path, 'r') as f:
         data = json.load(f)
-    return PlantConfig.parse_obj(data) # Use parse_obj for dictionary input
+    # Use model_validate for Pydantic v2 compatibility
+    return PlantConfig.model_validate(data)
 
 # Example Usage (keep commented out in final script)
 # if __name__ == "__main__":
