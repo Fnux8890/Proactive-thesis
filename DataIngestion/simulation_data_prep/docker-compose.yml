@@ -25,6 +25,14 @@ services:
         condition: service_started # MLflow might not have a healthcheck, wait for start
     networks:
       - ingestion-net
+    # Make sure the container gets an NVIDIA GPU via compose V2 device reservations
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu", "compute", "utility"]
 
   # Prefect Orion Service (Server & UI)
   orion:

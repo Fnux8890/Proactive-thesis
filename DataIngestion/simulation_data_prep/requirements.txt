@@ -19,3 +19,4 @@ asyncpg
 sqlalchemy>=2.0
 redis>=4.3,<5
 scipy
+cupy-cuda12x
