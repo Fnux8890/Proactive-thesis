@@ -1,0 +1,36 @@
+# prefect.yaml
+# Defines Prefect deployment configurations non-interactively.
+
+# Specify the Prefect version used for this configuration if needed
+# prefect-version: 3.x.y 
+
+deployments:
+  - name: feature-etl-deployment             # The name of the deployment itself
+    flow_name: main-feature-flow             # The name of the flow being deployed
+    entrypoint: src/flow_main.py:main_feature_flow # Path to your flow file and function name
+    
+    # --- Configuration based on previous answers ---
+    
+    # Equivalent to answering 'n' to the remote storage question.
+    # Assumes code is available locally to the worker (e.g., in Docker image)
+    pull: [] # Explicitly define zero pull steps
+    
+    # Equivalent to answering 'n' to the schedule question.
+    schedule: null 
+
+    # --- Optional but Recommended ---
+    
+    # Specify the work pool and queue if not using defaults
+    work_pool:
+      name: default-process-pool 
+    # work_queue_name: default # Can uncomment if needed, but often defaults correctly if pool is set
+    
+    # Add tags for organization
+    # tags:
+    #   - etl
+    #   - daily
+
+    # Define default parameters for the flow run if needed
+    # parameters:
+    #   some_parameter: "default_value"
+    #   skip_ge_validation: false # Example 

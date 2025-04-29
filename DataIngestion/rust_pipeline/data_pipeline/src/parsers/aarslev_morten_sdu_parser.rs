@@ -3,30 +3,26 @@
 use crate::config::FileConfig;
 use crate::data_models::ParsedRecord;
 use crate::errors::ParseError;
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
-use csv::ReaderBuilder;
+use chrono::{DateTime, Utc, NaiveDateTime, TimeZone};
+use csv::{ReaderBuilder, StringRecord};
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-// --- Replicate or import set_field! macro ---
-// Updated to include fields from MortenSDUData.csv
+// ADDED BACK: set_field! macro
 macro_rules! set_field {
     // Match f64
     ($record:expr, $field_name:expr, $value:expr; f64) => {
-        match $field_name.as_str() {
-            // Fields from MortenSDUData3.csv
+        match $field_name {
             "curtain_4_percent" => $record.curtain_4_percent = Some($value),
             "light_intensity_umol" => $record.light_intensity_umol = Some($value),
             "outside_temp_c" => $record.outside_temp_c = Some($value),
             "outside_light_w_m2" => $record.outside_light_w_m2 = Some($value),
-            // Fields from MortenSDUData2.csv
             "flow_temp_2_c" => $record.flow_temp_2_c = Some($value),
             "window_1_percent" => $record.window_1_percent = Some($value),
             "window_2_percent" => $record.window_2_percent = Some($value),
             "curtain_1_percent" => $record.curtain_1_percent = Some($value),
             "curtain_3_percent" => $record.curtain_3_percent = Some($value),
-            // Fields from MortenSDUData.csv (added)
             "relative_humidity_percent" => $record.relative_humidity_percent = Some($value),
             "co2_measured_ppm" => $record.co2_measured_ppm = Some($value),
             "co2_status" => $record.co2_status = Some($value),
@@ -40,7 +36,7 @@ macro_rules! set_field {
     };
     // Match bool
     ($record:expr, $field_name:expr, $value:expr; bool) => {
-        match $field_name.as_str() {
+        match $field_name {
             "rain_status" => $record.rain_status = Some($value),
             _ => eprintln!(
                 "WARN (MortenSDU): Attempted to set unhandled bool field '{}' in ParsedRecord.",
@@ -56,6 +52,19 @@ macro_rules! set_field {
             $field_name
         );
     };
+}
+
+// ADDED BACK: Helper function parse_datetime_utc
+fn parse_datetime_utc(datetime_str: &str, format: &str) -> Result<DateTime<Utc>, String> {
+    // use chrono::NaiveDateTime; // Use import from top
+    NaiveDateTime::parse_from_str(datetime_str, format)
+        .map_err(|e| {
+            format!(
+                "Failed to parse timestamp '{}' with format '{}': {}",
+                datetime_str, format, e
+            )
+        })
+        .map(|naive_dt| Utc.from_utc_datetime(&naive_dt)) // Use import from top
 }
 
 pub fn parse_morten_sdu(
@@ -321,7 +330,7 @@ pub fn parse_morten_sdu(
                                      );
                                     // Don't set the field, effectively leaving it as None
                                 } else {
-                                    set_field!(parsed_record, *target_field, val; f64);
+                                    set_field!(parsed_record, target_field.as_str(), val; f64);
                                     // Set if in range
                                 }
                             }
@@ -333,9 +342,9 @@ pub fn parse_morten_sdu(
                         "boolean" | "bool" => {
                             // Allow "0", "1", "0.0", "1.0" (case-insensitive matching for true/false might be too broad here)
                             match trimmed_value {
-                                "1" | "1.0" => set_field!(parsed_record, *target_field, true; bool),
+                                "1" | "1.0" => set_field!(parsed_record, target_field.as_str(), true; bool),
                                 "0" | "0.0" => {
-                                    set_field!(parsed_record, *target_field, false; bool)
+                                    set_field!(parsed_record, target_field.as_str(), false; bool)
                                 }
                                 _ => {
                                     eprintln!("ERROR (MortenSDU): Boolean parse failed for field '{}' ('{}') in {} at row {}: Expected 0, 1, 0.0, or 1.0", target_field, raw_value, file_path.display(), file_row_num);
@@ -375,10 +384,9 @@ pub fn parse_morten_sdu(
     Ok(parsed_records)
 }
 
-// Helper to safely get a field by index, returning Option<&str>
-// Mirrors the logic in csv_parser.rs
+// ADDED BACK: Helper function get_field_by_index
 fn get_field_by_index<'r>(
-    record: &'r csv::StringRecord,
+    record: &'r StringRecord,
     index: usize,
 ) -> Result<Option<&'r str>, ParseError> {
     match record.get(index) {
@@ -391,22 +399,9 @@ fn get_field_by_index<'r>(
             }
         }
         None => Err(ParseError::ConfigError {
-            // Assuming missing column is a config/data mismatch
-            path: PathBuf::new(), // Ideally pass path here
+            path: PathBuf::new(), // Needs PathBuf
             field: format!("column index {}", index),
             message: format!("Index out of bounds (record len = {})", record.len()),
         }),
     }
-}
-
-// Helper function - mirrors csv_parser.rs
-fn parse_datetime_utc(datetime_str: &str, format: &str) -> Result<DateTime<Utc>, String> {
-    NaiveDateTime::parse_from_str(datetime_str, format)
-        .map_err(|e| {
-            format!(
-                "Failed to parse timestamp '{}' with format '{}': {}",
-                datetime_str, format, e
-            )
-        })
-        .map(|naive_dt| Utc.from_utc_datetime(&naive_dt))
 }

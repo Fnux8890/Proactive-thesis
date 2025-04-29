@@ -37,8 +37,6 @@ pub enum PipelineError {
     DbQueryError(#[from] tokio_postgres::Error),
     #[error("Failed to get database connection from pool: {0}")]
     DbConnectionError(#[from] deadpool_postgres::PoolError),
-    #[error("Failed to serialize data for database: {0}")]
-    DbSerializationError(String),
     #[error("Schema mismatch for table '{table}': Missing columns: {missing:?}, Extra columns: {extra:?}")]
     SchemaMismatch {
         table: String,
@@ -72,21 +70,12 @@ pub enum ParseError {
         format: String,
         message: String,
     },
-    #[error("Type conversion error in {path} at row {row}, column '{column}': {details}")]
-    TypeConversion {
-        path: PathBuf,
-        row: usize,
-        column: String,
-        details: String,
-    },
     #[error("JSON parsing error in {path}: {source}")]
     JsonParseError {
         path: PathBuf,
         #[source]
         source: serde_json::Error,
     },
-    #[error("Unsupported file format type specified in config for {path}: {format_type}")]
-    UnsupportedFormatType { path: PathBuf, format_type: String },
     #[error("Error reading CSV headers in {path}: {source}")]
     HeaderReadError {
         path: PathBuf,
@@ -106,15 +95,5 @@ pub enum ParseError {
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
-    #[error("Range error in {file} at row {row} for field '{field}': value {value} is {details}")]
-    RangeError {
-        file: String,
-        row: usize,
-        field: String,
-        value: f64,
-        min: Option<f64>,
-        max: Option<f64>,
-        details: String, // e.g., "less than min (0)", "greater than max (100)"
-    },
     // Add other validation error types here (e.g., RequiredFieldMissing, InvalidTimestampOrder)
 }

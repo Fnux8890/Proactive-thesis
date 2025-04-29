@@ -1,21 +1,18 @@
 -- create_extra_dbs.sql
--- Creates databases needed by other services if they don't exist.
+-- Creates databases needed by Prefect and MLflow.
+-- These commands run directly, as CREATE DATABASE cannot be in a function/transaction
+-- during initialization via /docker-entrypoint-initdb.d/
 
--- Function to create database if it doesn't exist
--- (PostgreSQL doesn't have explicit IF NOT EXISTS for CREATE DATABASE)
--- This is a common workaround.
-CREATE OR REPLACE FUNCTION create_database_if_not_exists(dbname text) RETURNS void AS $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = dbname) THEN
-        EXECUTE 'CREATE DATABASE ' || quote_ident(dbname);
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
+\set ON_ERROR_STOP true
 
--- Create the databases
-SELECT create_database_if_not_exists('prefect');
-SELECT create_database_if_not_exists('mlflow');
+-- Attempt to create databases. psql might throw an error if they already exist,
+-- but the script should continue with the next command due to how the entrypoint handles it.
+-- Alternatively, connect manually and create if needed.
+CREATE DATABASE prefect;
+CREATE DATABASE mlflow;
 
--- Optional: Grant privileges if needed, though default user usually has rights
+-- Optional: Grant privileges if needed
 -- GRANT ALL PRIVILEGES ON DATABASE prefect TO postgres;
--- GRANT ALL PRIVILEGES ON DATABASE mlflow TO postgres; 
+-- GRANT ALL PRIVILEGES ON DATABASE mlflow TO postgres;
+
+\echo 'Finished creating prefect and mlflow databases (if they did not exist).' 

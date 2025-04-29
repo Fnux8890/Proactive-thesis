@@ -75,6 +75,10 @@ pub struct FileConfig {
     // Added stream_map field for JSON stream formats
     #[serde(default)]
     pub stream_map: Option<HashMap<String, StreamMapTarget>>, // UUID -> Target/Type mapping
+
+    // ADDED: Optional field to identify the source group/category for this file
+    #[serde(default)]
+    pub lamp_group_id: Option<String>,
 }
 
 // Function to provide a default status if not present in JSON

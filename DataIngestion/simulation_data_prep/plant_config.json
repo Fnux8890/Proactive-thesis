@@ -4,17 +4,14 @@
         "profile_name": "Kalanchoe_ReputableSource_v1",
         "version": "1.0.0",
         "description": "Configuration based on synthesis of reputable scientific literature discussed in 'Kalanchoe Horticultural Feature Extraction Parameters_.pdf'[cite: 1]. Emphasizes experimental findings and models from cited peer-reviewed articles and Acta Horticulturae.",
-        "source_document_id": "uploaded:Kalanchoe Horticultural Feature Extraction Parameters_.pdf",
-        "_comment_cultivar": "Responses can be cultivar-specific (e.g., 'Anatole', 'Calandiva' studied in key models [cite: 230, 233]). This profile represents a general synthesis."
+        "source_document_id": "uploaded:Kalanchoe Horticultural Feature Extraction Parameters_.pdf"
     },
     "gdd_parameters": {
         "crop_profile": "kalanchoe_model_specific",
         "profiles": {
             "kalanchoe_model_specific": {
                 "t_base_celsius": 6.0,
-                "_comment_t_base": "Based on GDD model for leaf number in 'Calandiva'[cite: 35]. Note: Practical growth minimum likely higher (~16C based on grower guides [cite: 32]).",
-                "t_cap_celsius": 24.0,
-                "_comment_t_cap": "Represents approximate night temperature threshold during SD where significant heat delay occurs [cite: 60, 68 citing 38]. Quality decline noted at 26C constant temp[cite: 13, 68]. This cap is primarily relevant for flowering induction phase."
+                "t_cap_celsius": 24.0
             },
             "default_example": {
                 "t_base_celsius": 10.0,
@@ -23,82 +20,65 @@
         }
     },
     "optimal_conditions": {
-        "_comment_stages": "Optimal conditions vary by growth stage (Vegetative, Flowering Initiation, Flowering Development).",
         "temperature_celsius": {
             "vegetative_adt_target": {
                 "min": 18.0,
-                "max": 22.0,
-                "_comment": "General range supporting good growth and quality, slightly cooler temps (18-21C) favored quality with high light[cite: 13]."
+                "max": 22.0
             },
             "flowering_initiation_sd_night_target": {
-                "max": 21.0,
-                "_comment": "Night temperature during SD induction critical for avoiding heat delay [cite: 59, 60 (citing 46, 38), Ref 3.1]. Must be kept below heat delay threshold."
+                "max": 21.0
             },
             "flowering_development_adt_target": {
                 "min": 18.0,
-                "max": 22.0,
-                "_comment": "ADT range balancing acceptable development rate with good final quality (e.g., inflorescence size)[cite: 13]. Rate increases up to 26C, but quality suffers[cite: 13]."
+                "max": 22.0
             }
         },
         "dli_mol_m2_day": {
             "minimum_growth": 5.0,
-            "_comment_min": "Approximate minimum based on general horticultural principles [cite: 151 (citing 47 - Purdue DLI)].",
             "vegetative_target": {
                 "min": 12.0,
-                "max": 17.0,
-                "_comment": "Target range for good vegetative growth based on general principles and reviews [cite: 154 (citing 89 - taxonomic paper, less ideal source), 152 (citing 89)]."
+                "max": 17.0
             },
             "flowering_target": {
                 "min": 15.0,
-                "max": 25.0,
-                "_comment": "Higher DLI (>=15) recommended to maximize flower number/size[cite: 13, 154]. Benefits likely plateau >20-25."
+                "max": 25.0
             },
-            "saturation_approx": 25.0,
-            "_comment_saturation": "Approximate DLI where saturation effects become significant [cite: 156 (citing 47 - Purdue DLI)]. Practical greenhouse max often ~30[cite: 156]."
+            "saturation_approx": 25.0
         },
         "vpd_kpa": {
             "target_range": {
                 "min": 0.5,
-                "max": 0.9,
-                "_comment": "Target range balancing growth, quality, and physiological function. Better quality observed around 0.7 kPa vs lower VPDs[cite: 101]. Avoid very low VPD (<0.4 kPa) due to impaired stomatal function risk[cite: 85]."
+                "max": 0.9
             }
         }
     },
     "photoperiod_parameters": {
         "classification": "Short Day Plant (Qualitative)",
-        "_comment_classification": "Requires long nights for floral induction [cite: 164 (citing 5 - GrowerTalks), 168 (citing 91)].",
         "critical_night_length_hours": 12.0,
-        "_comment_cnl": "Minimum *uninterrupted* dark period required to induce flowering [cite: 169 (citing 26 - ProQuest, 91)].",
         "inductive_night_length_hours_target": 14.0,
-        "_comment_inductive_ln": "Providing nights safely longer than CNL ensures induction. 14-16h common practice [cite: 172 (citing 5, 38)], but CNL is the key threshold.",
         "sd_induction_duration_weeks": {
-            "value": null,
-            "_comment": "4-6 weeks commonly cited [cite: 177, 178 (citing 5, 38)], but minimum required cycles lacks direct primary experimental data in the reviewed reputable sources."
+            "value": null
         },
-        "night_interruption_inhibits_flowering": true,
-        "_comment_ni": "Light during the critical dark period prevents flowering [cite: 175, 176 (citing 23, 91)]."
+        "night_interruption_inhibits_flowering": true
     },
     "dif_parameters": {
-        "_comment_dif": "DIF (Day Temp - Night Temp) primarily affects stem elongation/height[cite: 199, 200]. Kalanchoe response may be complex/cultivar-specific [cite: Ref 4.3]. ADT controls timing[cite: 11, 12].",
         "day_definition": "lamp_status",
-        "_comment_day_def": "Method for calculating day vs night temp (Options: 'lamp_status', 'fixed_time', 'solar_radiation').",
         "lamp_status_columns": [
             "lamp_grp1_no3_status",
-            "lamp_grp2_no3_status"
+            "lamp_grp2_no3_status",
+            "lamp_grp1_no4_status",
+            "lamp_grp2_no4_status"
         ],
         "fixed_time_day_start_hour": 6,
         "fixed_time_day_end_hour": 18,
-        "target_dif_celsius": null,
-        "_comment_target": "No single optimal DIF target derived from reviewed reputable sources due to complexity. Height control often aims for zero or slightly negative DIF, but empirical testing recommended."
+        "target_dif_celsius": null
     },
     "stress_thresholds": {
         "heat_delay_night_temp_celsius_sd": {
             "onset_risk": 21.0,
-            "significant_impact": 24.0,
-            "_comment": "Night temperatures above onset risk during SD induction can cause issues; temps above significant impact severely affect flowering/marketability [cite: 59, 60 (citing 46, 38)]. Critical during first 4-6 weeks SD."
+            "significant_impact": 24.0
         },
-        "low_temp_cam_induction_celsius": 12.0,
-        "_comment_cam": "Approximate threshold below which CAM metabolism may be induced, reducing daytime photosynthesis [cite: 184 (citing 3)]."
+        "low_temp_cam_induction_celsius": 12.0
     },
     "actuator_summary_parameters": {
         "percent_columns_for_average": [
@@ -139,14 +119,17 @@
             "measured_status_bool",
             "rain_status",
             "climate_cooler_status"
-        ],
-        "_comment_on_time": "Added active air-conditioner flag for powered ventilation."
+        ]
     },
     "feature_parameters": {
         "delta_cols": {
             "temp_delta_in_out": [
                 "air_temp_c",
-                "outside_temp_c"
+                "temperature_actual_c"
+            ],
+            "humidity_delta_in_out": [
+                "relative_humidity_percent",
+                "relative_humidity_afd4_percent"
             ]
         },
         "rate_of_change_cols": [
@@ -156,19 +139,14 @@
         "rolling_average_cols": {
             "air_temp_c": 60,
             "relative_humidity_percent": 60
-        },
-        "_comment_humidity_delta": "Removed humidity_delta_in_out calculation because outside humidity column is missing in the sensor_data table schema (init.sql)."
+        }
     },
     "objective_function_parameters": {
-        "_comment": "Parameters for calculating scalar objective function values over the simulation period.",
         "energy_power_ratings_kw": {
-            "_comment_heating": "Define total power consumption (kW) when the main heating system is considered ON. The logic for determining ON status needs implementation.",
             "heating_system_power_kw": null,
-            "_comment_ventilation": "Set ventilation_passive to true if main vents (vent_pos_%) are passive (no direct power cost). If false, add power ratings for specific active ventilation actuators (ventilation_system_power_kw or air_conditioning_power_kw).",
             "ventilation_passive": false,
             "ventilation_system_power_kw": null,
             "air_conditioning_power_kw": null,
-            "_comment_lighting": "Define power consumption (kW) for EACH lamp group when its status is ON (True/1). Use '...' key for a default if not all specified.",
             "lamp_group_power_kw": {
                 "lamp_grp1_no3_status": null,
                 "lamp_grp2_no3_status": null,
@@ -180,14 +158,11 @@
             }
         },
         "fixed_setpoints": {
-            "_comment": "Representative fixed setpoints for calculating Mean Absolute Deviation (MAD). Adjust based on target growth phase/strategy.",
             "temperature_celsius": 20.0,
             "relative_humidity_percent": 75.0,
-            "_comment_light_mad": "Instantaneous PAR MAD is often less meaningful than daily DLI MAD. Setpoint below is null. Consider calculating MAD on daily DLI vs a target DLI (e.g., 15 mol/m2/d) separately.",
             "light_par_umol_m2_s": null
         },
         "optimal_ranges": {
-            "_comment": "Target ranges for calculating percentage of time conditions were optimal.",
             "temperature_celsius": {
                 "lower": 18.0,
                 "upper": 22.0
@@ -199,34 +174,45 @@
         }
     },
     "advanced_feature_parameters": {
-        "_comment": "Parameters for statistical and advanced domain-knowledge features.",
         "rolling_std_dev_cols": {
-            "_comment": "Columns for rolling std dev calculation and window size in minutes.",
             "air_temp_c": 60,
             "relative_humidity_percent": 60
         },
         "lag_features": {
-            "_comment": "Columns for lag feature calculation and lag period in minutes.",
             "air_temp_c": 60,
             "relative_humidity_percent": 60
         },
         "distance_from_optimal_midpoint": {
-            "_comment": "Calculate distance from midpoint of optimal ranges defined in objective_function_parameters.",
             "temperature_celsius": "air_temp_c",
             "relative_humidity_percent": "relative_humidity_percent"
         },
         "in_optimal_range_flag": {
-            "_comment": "Create binary flag (0/1) if value is within optimal ranges defined in objective_function_parameters.",
             "temperature_celsius": "air_temp_c",
             "relative_humidity_percent": "relative_humidity_percent"
         },
         "night_stress_flags": {
-            "_comment": "Create binary flag (0/1) if night temperature exceeds thresholds defined in stress_thresholds.",
             "heat_delay_onset_risk": {
                 "input_temp_col": "air_temp_c",
                 "threshold_config_key": "heat_delay_night_temp_celsius_sd",
                 "threshold_sub_key": "onset_risk"
             }
         }
+    },
+    "lamp_groups": {
+        "lamp_grp1_no3_status": {"count": 24, "ppf_umol_s": 1100, "power_kw": 0.60},
+        "lamp_grp2_no3_status": {"count": 24, "ppf_umol_s": 1100, "power_kw": 0.60},
+        "lamp_grp1_no4_status": {"count": 18, "ppf_umol_s": 1650, "power_kw": 0.65},
+        "lamp_grp2_no4_status": {"count": 18, "ppf_umol_s": 1650, "power_kw": 0.65}
+    },
+    "column_uuid_mapping": {
+        "air_temp_c": [
+            "be3ddbb8-5210-3be3-84d8-904df2da1754"
+        ],
+        "outside_temp_c": [
+            "87178386-1a2d-3b6d-810c-b7f7e2638e99"
+        ],
+        "light_intensity_umol": [
+            "5f893ebd-002c-3708-8e76-bb519336f210"
+        ]
     }
 }

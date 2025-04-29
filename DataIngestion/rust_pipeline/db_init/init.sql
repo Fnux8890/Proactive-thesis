@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS sensor_data (
     source_file TEXT NULL,           -- from source_file
     format_type TEXT NULL,           -- from format_type
     uuid TEXT NULL,                  -- from uuid (used by JSON streams)
+    lamp_group VARCHAR(100) NULL,    -- ADDED: from lamp_group_id
 
     -- Common Environmental Measurements
     air_temp_c DOUBLE PRECISION NULL,

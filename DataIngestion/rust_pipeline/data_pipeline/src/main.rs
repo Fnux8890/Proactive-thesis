@@ -29,8 +29,8 @@ use config::load_config; // <-- Remove unused FileConfig
 use errors::PipelineError;
 
 // Restore TARGET_COLUMNS
-const TARGET_COLUMNS: [&str; 61] = [ /* ... all column names ... */
-    "time", "source_system", "source_file", "format_type", "uuid",
+const TARGET_COLUMNS: [&str; 62] = [ /* ... all column names ... */
+    "time", "source_system", "source_file", "format_type", "uuid", "lamp_group",
     "air_temp_c", "air_temp_middle_c", "outside_temp_c",
     "relative_humidity_percent", "humidity_deficit_g_m3",
     "radiation_w_m2", "light_intensity_lux", "light_intensity_umol",
@@ -110,6 +110,8 @@ async fn main() -> Result<(), PipelineError> {
     let _total_inserted_records = 0; // <-- Add underscore, remove mut
     let mut _total_errors = 0; // <-- Add underscore
     let mut unique_expected_columns: HashSet<String> = HashSet::new();
+    let mut total_attempted_files: u64 = 0; // counts every file we try to parse (includes failures)
+    let mut failed_files: Vec<(String, String)> = Vec::new(); // (file path, error)
 
     println!(">>> RESTORED MAIN: Step 6 - Entering Main Loop...");
     let _ = std::io::stdout().flush();
@@ -132,6 +134,8 @@ async fn main() -> Result<(), PipelineError> {
                                 let mut specific_config = config.clone();
                                 specific_config.container_path = actual_path.clone();
 
+                                total_attempted_files += 1;
+
                                 let process_result = file_processor::process_file(&specific_config);
                                 let _ = std::io::stdout().flush();
 
@@ -148,6 +152,7 @@ async fn main() -> Result<(), PipelineError> {
                                         error!("---- PARSE ERR for {}: {} ----", actual_path.display(), e);
                                         current_file_errors += 1;
                                         _total_errors += 1; // <-- Add underscore
+                                        failed_files.push((actual_path.display().to_string(), e.to_string()));
                                     }
                                 }
                             }
@@ -163,6 +168,8 @@ async fn main() -> Result<(), PipelineError> {
         } else {
             let actual_path = config.container_path.clone();
             println!("Processing single file: {}", actual_path.display());
+            total_attempted_files += 1;
+
             let process_result = file_processor::process_file(&config);
             let _ = std::io::stdout().flush();
 
@@ -178,6 +185,7 @@ async fn main() -> Result<(), PipelineError> {
                     error!("---- PARSE ERR for {}: {} ----", actual_path.display(), e);
                     current_file_errors += 1;
                     _total_errors += 1; // <-- Add underscore
+                    failed_files.push((actual_path.display().to_string(), e.to_string()));
                 }
             }
         }
@@ -253,6 +261,14 @@ async fn main() -> Result<(), PipelineError> {
     println!(">>> RESTORED MAIN: Step 10 - Finished Script");
     let _ = std::io::stdout().flush();
 
+    println!(">>> SUMMARY: Attempted files: {}, Successfully processed: {}, Failed: {} <<<", total_attempted_files, _total_processed_files, failed_files.len());
+    if !failed_files.is_empty() {
+        println!(">>> FAILED FILES LIST <<<");
+        for (path, err) in &failed_files {
+            println!("- {} -> {}", path, err);
+        }
+    }
+
     Ok(())
 }
 
@@ -295,7 +311,7 @@ async fn insert_records(pool: &DbPool, records: &[ParsedRecord], skipped_writer:
 
         let row_values: Vec<&(dyn ToSql + Sync)> = vec![
             &record.timestamp_utc, &record.source_system, &record.source_file,
-            &record.format_type, &record.uuid,
+            &record.format_type, &record.uuid, &record.lamp_group,
             &record.air_temp_c, &record.air_temp_middle_c, &record.outside_temp_c,
             &record.relative_humidity_percent, &record.humidity_deficit_g_m3,
             &record.radiation_w_m2, &record.light_intensity_lux, &record.light_intensity_umol,
@@ -330,7 +346,7 @@ async fn insert_records(pool: &DbPool, records: &[ParsedRecord], skipped_writer:
 
 fn get_column_types() -> Vec<Type> {
     vec![
-        Type::TIMESTAMPTZ, Type::TEXT, Type::TEXT, Type::TEXT, Type::TEXT,
+        Type::TIMESTAMPTZ, Type::TEXT, Type::TEXT, Type::TEXT, Type::TEXT, Type::TEXT,
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8,
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8,
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::BOOL,
@@ -366,7 +382,7 @@ async fn run_merge_script(pool: &DbPool) -> Result<(), PipelineError> {
     info!("Successfully read merge script ({} bytes)", sql_script.len());
 
     // 2. Get a database client
-    let mut client = pool.get().await.map_err(PipelineError::DbConnectionError)?;
+    let client = pool.get().await.map_err(PipelineError::DbConnectionError)?;
     info!("Acquired DB connection for merge script.");
 
     // 3. Execute the script

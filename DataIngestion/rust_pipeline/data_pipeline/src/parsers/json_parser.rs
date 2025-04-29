@@ -1,18 +1,21 @@
 use crate::config::FileConfig;
 use crate::data_models::ParsedRecord;
 use crate::errors::ParseError;
-use chrono::{TimeZone, Utc};
+// use crate::parsers::utils::*; // REMOVED wildcard import
+// use crate::set_field; // REMOVED explicit macro import
+// use crate::parsers::utils::parse_unix_ms_utc; // REMOVED unused import
+use chrono::{TimeZone, Utc}; // Keep only TimeZone, Utc
+// use chrono::{TimeZone, Utc}; // REMOVED unused chrono types
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-// --- Replicate set_field! focusing on fields from stream_map ---
-// NOTE: This should eventually be moved to a shared utils module.
+// Restore local set_field! macro definition
 macro_rules! set_field {
     // Match f64
     ($record:expr, $field_name:expr, $value:expr; f64) => {
-        match $field_name {
+        match $field_name { // Use $field_name directly (accepts &str)
             "temperature_c" => $record.air_temp_c = Some($value), // Map to ParsedRecord field
             "sun_radiation_w_m2" => $record.radiation_w_m2 = Some($value), // Map to ParsedRecord field
             _ => eprintln!("WARN (StreamJSON): Attempted to set unhandled f64 field '{}' in ParsedRecord.", $field_name),
@@ -127,7 +130,15 @@ pub fn parse_aarslev_stream_json(
                 match data_type.as_str() {
                     "float" => {
                         if let Some(val_f64) = val_num.as_f64() {
+                            // Use local macro, ensure call uses .as_str()
                             set_field!(record, target_field.as_str(), val_f64; f64);
+                            // Original match logic removed as it's now in the macro
+                            // // Map to ParsedRecord field
+                            // match target_field.as_str() {
+                            //     "temperature_c" => record.air_temp_c = Some(val_f64),
+                            //     "sun_radiation_w_m2" => record.radiation_w_m2 = Some(val_f64),
+                            //     _ => eprintln!("WARN (StreamJSON): Attempted to set unhandled f64 field '{}' in ParsedRecord.", target_field),
+                            // }
                             // println!("DEBUG (StreamJSON): Parsed value {} -> {}", val_num, val_f64); // Optional: Very verbose
                         } else {
                             eprintln!(
@@ -163,13 +174,19 @@ pub fn parse_aarslev_stream_json(
 
 // Placeholder for AarslevCelleJSON (e.g., celle*/...csv.json)
 pub fn parse_aarslev_celle_json(
-    _config: &FileConfig,
+    config: &FileConfig,
     file_path: &Path,
 ) -> Result<Vec<ParsedRecord>, ParseError> {
     println!(
         "WARN: Parser for AarslevCelleJSON format not fully implemented yet. Skipping file: {}",
         file_path.display()
     );
+    let mut placeholder_record = ParsedRecord::default();
+    placeholder_record.source_file = Some(file_path.to_string_lossy().into_owned());
+    placeholder_record.source_system = config.source_system.clone();
+    placeholder_record.format_type = Some(config.format_type.clone());
+    placeholder_record.lamp_group = config.lamp_group_id.clone();
+
     Ok(Vec::new())
     // TODO: Implement parsing logic - this format seems different, might be column-oriented.
     // 1. Define appropriate structs for serde deserialization.

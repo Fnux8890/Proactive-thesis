@@ -1,14 +1,13 @@
 use crate::config::FileConfig;
 use crate::data_models::ParsedRecord;
 use crate::errors::ParseError;
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc, TimeZone, NaiveDateTime};
 use csv::{ReaderBuilder, StringRecord};
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-// Helper to set fields in ParsedRecord dynamically (using a macro for less boilerplate)
-// The macro now accepts specific types directly.
+// ADDED BACK: set_field! macro
 macro_rules! set_field {
     // Match f64
     ($record:expr, $field_name:expr, $value:expr; f64) => {
@@ -56,11 +55,6 @@ macro_rules! set_field {
             "value" => $record.value = Some($value),
             "temperature_c" => $record.air_temp_c = Some($value),
             "sun_radiation_w_m2" => $record.radiation_w_m2 = Some($value),
-            // "heating_setpoint_c" => $record.heating_setpoint_c = Some($value),
-            // "vpd_hpa" => $record.vpd_hpa = Some($value),
-            // "light_intensity_lux" => $record.light_intensity_lux = Some($value),
-            // "curtain_1_pos_percent" => $record.curtain_1_percent = Some($value),
-            // "solar_radiation_w_m2" => $record.radiation_w_m2 = Some($value),
             _ => eprintln!("WARN: Attempted to set unhandled f64 field '{}' in ParsedRecord.", $field_name),
         }
     };
@@ -126,6 +120,74 @@ enum TimestampStrategy {
     UnixMsByIndex(usize),
     DateTimeByIndex(usize, String),           // index, format
     DateIndexTimeIndex(usize, usize, String), // date_idx, time_idx, format
+}
+
+// Helper function to create a ConfigError for missing timestamp format
+fn missing_format_error(file_path: &Path, context: &str) -> ParseError {
+    ParseError::ConfigError {
+        path: file_path.to_path_buf(),
+        field: format!("timestamp_info.format (needed for {})", context),
+        message: "Timestamp format is required.".to_string(),
+    }
+}
+
+// Helper function to parse timestamp based on the determined strategy
+fn parse_timestamp_from_strategy(
+    record: &StringRecord,
+    strategy: &TimestampStrategy,
+    file_path: &Path,
+    row_num: usize,
+) -> Result<Option<DateTime<Utc>>, ParseError> {
+    match strategy {
+        TimestampStrategy::NoTimestamp => Ok(None),
+        TimestampStrategy::UnixMsByIndex(index) => {
+            get_field_by_index(record, *index)?
+                .map(|val_str| {
+                    parse_unix_ms_utc(val_str)
+                        .map_err(|e| ParseError::TimestampParseError {
+                            path: file_path.to_path_buf(),
+                            row: row_num,
+                            value: val_str.to_string(),
+                            format: "unix_ms".to_string(),
+                            message: e,
+                        })
+                })
+                .transpose()
+        }
+        TimestampStrategy::DateTimeByIndex(index, format) => {
+            get_field_by_index(record, *index)?
+                .map(|val_str| {
+                    parse_datetime_utc(val_str, format)
+                        .map_err(|e| ParseError::TimestampParseError {
+                            path: file_path.to_path_buf(),
+                            row: row_num,
+                            value: val_str.to_string(),
+                            format: format.clone(),
+                            message: e,
+                        })
+                })
+                .transpose()
+        }
+        TimestampStrategy::DateIndexTimeIndex(date_idx, time_idx, format) => {
+            let date_str_opt = get_field_by_index(record, *date_idx)?;
+            let time_str_opt = get_field_by_index(record, *time_idx)?;
+            if let (Some(date_str), Some(time_str)) = (date_str_opt, time_str_opt) {
+                let datetime_str = format!("{} {}", date_str, time_str);
+                match parse_datetime_utc(&datetime_str, format) {
+                    Ok(dt) => Ok(Some(dt)),
+                    Err(e) => Err(ParseError::TimestampParseError {
+                        path: file_path.to_path_buf(),
+                        row: row_num,
+                        value: datetime_str,
+                        format: format.clone(),
+                        message: e,
+                    }),
+                }
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedRecord>, ParseError> {
@@ -422,6 +484,7 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
         parsed_record.source_file = Some(file_path.to_string_lossy().into_owned());
         parsed_record.source_system = config.source_system.clone();
         parsed_record.format_type = Some(config.format_type.clone());
+        parsed_record.lamp_group = config.lamp_group_id.clone();
 
         // Timestamp Parsing
         let timestamp_result =
@@ -442,16 +505,23 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
             match get_field_by_index(&record, *source_index) {
                 // Use helper here
                 Ok(Some(raw_value)) => {
-                    // Check inner Option
-
-                    // Check for null markers BEFORE trimming
+                    // Check for null markers BEFORE trimming. For boolean columns, interpret null placeholders as FALSE.
+                    let is_boolean_col = data_type == "boolean" || data_type == "bool";
                     if null_markers.iter().any(|marker| marker == raw_value) {
-                        continue; // Skip nulls
+                        if is_boolean_col {
+                            set_field!(parsed_record, *target_field, false; bool);
+                        }
+                        continue; // Skip further processing for this column
                     }
 
                     let trimmed_value = raw_value.trim(); // Now trim non-null value
+                    // Handle boolean empty/placeholder values specially before generic empty check.
                     if trimmed_value.is_empty() {
-                        continue; // Skip empty strings after trimming (unless explicitly allowed)
+                        if data_type == "boolean" || data_type == "bool" {
+                            // Empty string -> treat as FALSE/off (0) for lamp status columns.
+                            set_field!(parsed_record, *target_field, false; bool);
+                        }
+                        continue; // Skip further processing for empty values for other types or after setting bool.
                     }
 
                     // --- Handle datetime_partial specifically before the generic match ---
@@ -499,17 +569,27 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                             }
                         }
                         "boolean" | "bool" => {
-                            match trimmed_value.to_lowercase().as_str() {
-                                "true" | "1" | "yes" | "t" | "y" => {
-                                    set_field!(parsed_record, *target_field, true; bool)
-                                }
-                                "false" | "0" | "no" | "f" | "n" => {
-                                    set_field!(parsed_record, *target_field, false; bool)
-                                }
-                                _ => {
-                                    eprintln!("WARN: Boolean parse failed for field '{}' ('{}') in {} at row {}: Invalid boolean value. Setting field to None.", target_field, raw_value, file_path.display(), file_row_num);
-                                    // REMOVED: row_has_error = true;
-                                }
+                            // Enhanced boolean parsing to handle common lamp status representations.
+                            // Treat various placeholders (empty, " ", "-", "–") and strings like "FALSE", "OFF" as false.
+                            // Accept "ON", "TRUE", "1" etc. as true.
+                            let val_lower = trimmed_value.to_lowercase();
+                            let parsed_bool_opt = match val_lower.as_str() {
+                                "true" | "1" | "yes" | "t" | "y" | "on" => Some(true),
+                                "false" | "0" | "no" | "f" | "n" | "off" | "-" | "–" => Some(false),
+                                _ => None, // Will be logged as warning below
+                            };
+
+                            if let Some(parsed_bool) = parsed_bool_opt {
+                                set_field!(parsed_record, *target_field, parsed_bool; bool);
+                            } else {
+                                eprintln!(
+                                    "WARN: Boolean parse failed for field '{}' ('{}') in {} at row {}: Invalid boolean value. Setting field to None.",
+                                    target_field,
+                                    raw_value,
+                                    file_path.display(),
+                                    file_row_num
+                                );
+                                // Keep None to indicate unknown value
                             }
                         }
                         "string" => {
@@ -567,78 +647,7 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
     Ok(parsed_records)
 }
 
-// Helper function to create a ConfigError for missing timestamp format
-fn missing_format_error(file_path: &Path, context: &str) -> ParseError {
-    ParseError::ConfigError {
-        path: file_path.to_path_buf(),
-        field: format!("timestamp_info.format (needed for {})", context),
-        message: "Timestamp format is required.".to_string(),
-    }
-}
-
-// Helper function to parse timestamp based on the determined strategy
-fn parse_timestamp_from_strategy(
-    record: &StringRecord,
-    strategy: &TimestampStrategy,
-    file_path: &Path,
-    row_num: usize,
-) -> Result<Option<DateTime<Utc>>, ParseError> {
-    // Return ParseError directly
-    match strategy {
-        TimestampStrategy::NoTimestamp => Ok(None),
-        TimestampStrategy::UnixMsByIndex(index) => {
-            get_field_by_index(record, *index)?
-                .map(|val_str| {
-                    parse_unix_ms_utc(val_str) // Returns Result<DateTime<Utc>, String>
-                        .map_err(|e| ParseError::TimestampParseError {
-                            path: file_path.to_path_buf(),
-                            row: row_num,
-                            value: val_str.to_string(),
-                            format: "unix_ms".to_string(),
-                            message: e, // Use 'message' field
-                        })
-                })
-                .transpose() // Convert Option<Result<Option<T>, E>> to Result<Option<T>, E>
-        }
-        TimestampStrategy::DateTimeByIndex(index, format) => {
-            get_field_by_index(record, *index)?
-                .map(|val_str| {
-                    parse_datetime_utc(val_str, format) // Returns Result<DateTime<Utc>, String>
-                        .map_err(|e| ParseError::TimestampParseError {
-                            path: file_path.to_path_buf(),
-                            row: row_num,
-                            value: val_str.to_string(),
-                            format: format.clone(),
-                            message: e, // Use 'message' field
-                        })
-                })
-                .transpose() // Convert Option<Result<Option<T>, E>> to Result<Option<T>, E>
-        }
-        TimestampStrategy::DateIndexTimeIndex(date_idx, time_idx, format) => {
-            let date_str_opt = get_field_by_index(record, *date_idx)?;
-            let time_str_opt = get_field_by_index(record, *time_idx)?;
-            if let (Some(date_str), Some(time_str)) = (date_str_opt, time_str_opt) {
-                let datetime_str = format!("{} {}", date_str, time_str);
-                match parse_datetime_utc(&datetime_str, format) {
-                    Ok(dt) => Ok(Some(dt)),
-                    Err(e) => Err(ParseError::TimestampParseError {
-                        path: file_path.to_path_buf(),
-                        row: row_num,
-                        value: datetime_str,
-                        format: format.clone(),
-                        message: e, // Use 'message' field
-                    }),
-                }
-            } else {
-                Ok(None)
-            }
-        }
-    }
-}
-
-// Helper to safely get a field by index, returning Option<&str>
-// Returns outer Result for potential index out of bounds error
-// Returns inner Option<&str> which is None if the field is empty/whitespace
+// Ensure local get_field_by_index definition exists
 fn get_field_by_index<'r>(
     record: &'r StringRecord,
     index: usize,
@@ -647,14 +656,13 @@ fn get_field_by_index<'r>(
         Some(s) => {
             let trimmed = s.trim();
             if trimmed.is_empty() {
-                Ok(None) // Treat empty/whitespace fields as None
+                Ok(None)
             } else {
-                Ok(Some(trimmed)) // Return the trimmed, non-empty field
+                Ok(Some(trimmed))
             }
         }
         None => Err(ParseError::ConfigError {
-            // Changed to ConfigError as it implies bad index from config/headers
-            path: PathBuf::new(), // TODO: Need to pass path here somehow if we want it in the error
+            path: PathBuf::new(),
             field: format!("column index {}", index),
             message: format!("Index out of bounds (record len = {})", record.len()),
         }),
@@ -662,7 +670,6 @@ fn get_field_by_index<'r>(
 }
 
 // Parses a datetime string with a given format into UTC DateTime
-// Returns Result<DateTime<Utc>, String> where Err contains a descriptive message
 fn parse_datetime_utc(datetime_str: &str, format: &str) -> Result<DateTime<Utc>, String> {
     NaiveDateTime::parse_from_str(datetime_str, format)
         .map_err(|e| {
@@ -675,7 +682,6 @@ fn parse_datetime_utc(datetime_str: &str, format: &str) -> Result<DateTime<Utc>,
 }
 
 // Parses a Unix millisecond timestamp string into UTC DateTime
-// Returns Result<DateTime<Utc>, String> where Err contains a descriptive message
 fn parse_unix_ms_utc(ms_str: &str) -> Result<DateTime<Utc>, String> {
     ms_str
         .parse::<i64>()
@@ -688,6 +694,6 @@ fn parse_unix_ms_utc(ms_str: &str) -> Result<DateTime<Utc>, String> {
         .and_then(|ms| {
             Utc.timestamp_millis_opt(ms)
                 .single()
-                .ok_or_else(|| format!("Unix ms timestamp '{}' ({}) is out of range", ms_str, ms))
+                .ok_or_else(|| format!("Unix ms timestamp '{}' ({}) is out of range or invalid", ms_str, ms))
         })
 }

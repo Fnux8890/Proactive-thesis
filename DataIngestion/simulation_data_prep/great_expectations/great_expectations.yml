@@ -1,31 +1,40 @@
-# Basic Great Expectations configuration (v3 API)
-# For use with in-memory Polars/Pandas DataFrames within Prefect flow
+# Basic Great Expectations configuration file V3 API
+# See https://docs.greatexpectations.io/docs/reference/data_context_reference
 
-config_version: 3
+config_version: 3.0
 
-datasources: {}
-# Datasources can be configured here if connecting directly to SQL/Parquet,
-# but for in-memory validation within the flow, we often pass the DataFrame directly.
+datasources:
+  # Example runtime datasource for Pandas - needed by the flow
+  runtime_pandas_datasource:
+    class_name: Datasource
+    module_name: great_expectations.datasource
+    execution_engine:
+      class_name: PandasExecutionEngine
+      module_name: great_expectations.execution_engine
+    data_connectors:
+      runtime_connector:
+        class_name: RuntimeDataConnector
+        module_name: great_expectations.datasource.data_connector
+        batch_identifiers:
+          - run_id
 
 config_variables_file_path: uncommitted/config_variables.yml
 
 plugins_directory: plugins/
 
 stores:
+  # Define essential stores using filesystem store backend
   expectations_store:
     class_name: ExpectationsStore
     store_backend:
       class_name: TupleFilesystemStoreBackend
       base_directory: expectations/
 
-  validation_results_store:
-    class_name: ValidationResultsStore
+  validations_store:
+    class_name: ValidationsStore
     store_backend:
       class_name: TupleFilesystemStoreBackend
       base_directory: uncommitted/validations/
-
-  evaluation_parameter_store:
-    class_name: EvaluationParameterStore
 
   checkpoint_store:
     class_name: CheckpointStore
@@ -33,17 +42,16 @@ stores:
       class_name: TupleFilesystemStoreBackend
       base_directory: checkpoints/
 
-  profiler_store:
-    class_name: ProfilerStore
+  evaluation_parameter_store:
+    class_name: EvaluationParameterStore
     store_backend:
-      class_name: TupleFilesystemStoreBackend
-      base_directory: profilers/
+      class_name: InMemoryStoreBackend
 
+# Keep exactly one set of pointers here ⬇
 expectations_store_name: expectations_store
-validation_results_store_name: validation_results_store
-evaluation_parameter_store_name: evaluation_parameter_store
+validations_store_name: validations_store
 checkpoint_store_name: checkpoint_store
-profiler_store_name: profiler_store
+evaluation_parameter_store_name: evaluation_parameter_store
 
 data_docs_sites:
   local_site:
@@ -56,9 +64,4 @@ data_docs_sites:
 
 anonymous_usage_statistics:
   enabled: true
-  data_context_id: # This will be populated on first use if enabled
-
-include_rendered_content:
-  globally: false
-  expectation_validation_result: false
-  expectation_suite: false 
+  # data_context_id: <REPLACE_ME_WITH_UUID> # Optional: You can add a UUID here if needed

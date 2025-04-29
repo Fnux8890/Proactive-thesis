@@ -1,5 +1,8 @@
 # Start from the official Prefect image
-FROM prefecthq/prefect:2-latest
+FROM prefecthq/prefect:3-latest
+
+# Add curl for healthcheck
+RUN apt-get update && apt-get install -y curl --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 # Install the PostgreSQL database drivers
 # psycopg2-binary: Needed for SQLAlchemy to recognize the postgresql+psycopg2 scheme

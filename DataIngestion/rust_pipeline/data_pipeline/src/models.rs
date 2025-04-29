@@ -367,7 +367,7 @@ pub struct AarslevJsonDataFile {
 // --- Structs for parsing sensor data from .csv.json files ---
 
 // Represents the entire structure of a .csv.json file
-pub type SensorDataFile = HashMap<String, SensorEntry>;
+// pub type SensorDataFile = HashMap<String, SensorEntry>; // REMOVED unused type alias
 
 // Represents a single sensor's data within the JSON
 #[derive(Debug, Clone, Deserialize, Serialize)] // Ensure derives are present
