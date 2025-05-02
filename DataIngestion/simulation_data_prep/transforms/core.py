@@ -18,9 +18,28 @@ from prefect import task
 # Make sure config is importable from the parent directory or adjust path as needed
 # If src is a package, relative import might work: from ..config import ...
 # Assuming config.py is accessible:
-from config import PlantConfig, OptimalRange, NightStressFlagDetail
+from src.config import PlantConfig, OptimalRange, NightStressFlagDetail
 from prefect.logging import get_run_logger
 from prefect.exceptions import MissingContextError
+
+import warnings
+import logging
+from datetime import timedelta, time
+from typing import Dict, Any
+
+import pandas as pd
+import numpy as np
+from polars import col
+
+# Internal imports - Use absolute paths from project root (/app)
+from src.config import PlantConfig, OptimalRange, NightStressFlagDetail
+from src.feature_calculator import (
+    calculate_dli,
+    calculate_gdd,
+    calculate_vpd,
+    calculate_dif,
+    # TODO: Add imports for other helpers if/when called (e.g., calculate_rolling_std_dev)
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     import logging
@@ -280,76 +299,68 @@ def transform_features(df: pl.DataFrame, config: PlantConfig) -> pl.DataFrame:  
          logger.warning("Skipping GDD_cumulative calculation as GDD_daily column was not created.")
     logger.info(f"Shape after GDD: {df.shape}")
 
-    # 4. DIF (Day-minus-Night Temperature) - Explicit Calculation
-    # Unit Test Target: Day=25C, Night=18C -> +7C
-    logger.info("Calculating DIF (Explicit Method)...")
-    if config.dif_parameters.day_definition == "lamp_status":
-        lamp_cols = config.dif_parameters.lamp_status_columns
-        # <-- ADD Lamp Value Debugging (Optional)-->
+    # --- END GDD CALCULATION --- 
+
+    # DIF
+    dif_temp_col = "air_temp_c"
+    if dif_temp_col in df.columns:
+        logger.info("Calling calculate_dif helper...")
         try:
-            logger.info(f"Unique values in lamp status columns ({lamp_cols}):")
-            for col_name in lamp_cols:
-                 if col_name in df.columns:
-                     unique_vals = df[col_name].unique().to_list()
-                     logger.info(f"  {col_name}: {unique_vals}")
+            # Convert Polars inputs to Pandas before calling the Pandas-based function
+            # Ensure the source Polars df HAS a 'time' column for index setting
+            if 'time' not in df.columns:
+                logger.error("Cannot call calculate_dif: Polars DataFrame missing 'time' column for index.")
+                raise ValueError("Missing 'time' column in Polars DataFrame for DIF calculation")
+
+            # Convert column to pandas Series and set DatetimeIndex
+            temp_series_pd = df[dif_temp_col].to_pandas()
+            time_index_pd = pd.to_datetime(df['time'].to_pandas(), errors='coerce') # Convert time column to DatetimeIndex
+            temp_series_pd.index = time_index_pd
+
+            # Convert full DataFrame and set DatetimeIndex
+            data_df_pd = df.to_pandas() # Pass the whole df if needed for lamp status
+            data_df_pd.index = time_index_pd
+
+            # Call the function with Pandas objects that now have a DatetimeIndex
+            dif_daily_result_pd = calculate_dif(temp_series_pd, config.dif_parameters, data_df_pd)
+
+            # Convert the result back to Polars if needed downstream (currently mapped directly)
+            # If dif_daily_result_pd is a Pandas Series as expected:
+            if dif_daily_result_pd is not None and not dif_daily_result_pd.empty:
+                # Ensure index name is 'date' BEFORE mapping
+                dif_daily_result_pd.index.name = 'date'
+                logger.info(f"Calculated daily DIF summary (Pandas result shape): {dif_daily_result_pd.shape}")
+                if 'date' in df.columns: # Check in the original Polars df
+                    # Map the Pandas Series result to the Polars DataFrame
+                    # Ensure the Series name is unique or handle potential conflicts
+                    dif_col_name = "DIF_C" # Example name, adjust if needed
+                    if hasattr(dif_daily_result_pd, 'name') and dif_daily_result_pd.name:
+                        dif_col_name = dif_daily_result_pd.name
+                    # Convert Pandas result Series to Polars Series for mapping
+                    # Convert the Pandas Series result back to a Polars DataFrame
+                    dif_daily_result_pl = pl.from_pandas(dif_daily_result_pd.reset_index())
+                    # Ensure the 'date' column in the result is cast to pl.Date to match the main df
+                    dif_daily_result_pl = dif_daily_result_pl.with_columns(
+                        pl.col('date').cast(pl.Date)
+                    )
+
+                    # Perform the map/join in Polars
+                    # Since map is tricky between pandas/polars, let's use a join
+                    df = df.join(dif_daily_result_pl.select(['date', dif_daily_result_pd.name]), on='date', how='left')
+
+                    # Original mapping logic (might fail across types):
+                    # df[dif_col_name] = df['date'].map(dif_daily_result_pd)
+                    logger.info(f"Shape after DIF join: {df.shape}")
+                else:
+                     logger.warning("Cannot map/join DIF results, 'date' column missing from main Polars df.")
                  else:
-                     logger.warning(f"  Lamp column {col_name} not found in DataFrame.")
+                 logger.warning("calculate_dif returned empty or None result.")
+        except AttributeError as ae:
+             logger.exception(f"AttributeError calling calculate_dif (likely Pandas/Polars mismatch): {ae}")
         except Exception as e:
-            logger.warning(f"Could not log unique lamp values: {e}")
-        # <-- END Lamp Value Debugging -->
-
-        if not lamp_cols or not any(c in df.columns for c in lamp_cols):
-            logger.warning("DIF calc by lamp_status specified, but no valid lamp_status_columns found or defined.")
-            df = df.with_columns(pl.lit(None).cast(pl.Float64).alias("DIF_daily")) # Add null column
-        else:
-            # Create masks
-            # FIX: Treat None as 0 (OFF) before comparing lamp status
-            day_mask_expr = pl.any_horizontal([pl.col(c).fill_null(0).eq(1) for c in lamp_cols if c in df.columns])
-            night_mask_expr = ~day_mask_expr
-
-            # Calculate daily mean day temperature
-            day_temps_daily = (
-                df.filter(day_mask_expr)
-                .group_by("date", maintain_order=True)
-                .agg(pl.mean("air_temp_c").alias("_dayT_mean"))
-            )
-
-            # Calculate daily mean night temperature
-            night_temps_daily = (
-                df.filter(night_mask_expr)
-                .group_by("date", maintain_order=True)
-                .agg(pl.mean("air_temp_c").alias("_nightT_mean"))
-            )
-
-            # <-- ADD DIF DEBUG LOGGING -->
-            logger.info(f"Day temps rows: {day_temps_daily.shape}, Night temps rows: {night_temps_daily.shape}")
-
-            # Join day and night means together
-            # Use outer_coalesce if polars >= 0.20.11, otherwise use outer and fillna
-            try:
-                # Try outer_coalesce first
-                dif_stats_daily = day_temps_daily.join(
-                    night_temps_daily, on="date", how="outer_coalesce"
-                )
-            except Exception: # Broad exception for potential older polars version
-                logger.warning("outer_coalesce join failed, falling back to outer join for DIF stats.")
-                dif_stats_daily = day_temps_daily.join(
-                    night_temps_daily, on="date", how="outer"
-                )
-
-            # Calculate DIF daily, filling missing day/night means with 0 before subtraction
-            dif_stats_daily = dif_stats_daily.with_columns(
-                (pl.col("_dayT_mean").fill_null(0.0) - pl.col("_nightT_mean").fill_null(0.0)).alias("DIF_daily")
-            ).select(["date", "DIF_daily"]) # Keep only date and final DIF
-
-            # Join the calculated daily DIF back to the main DataFrame - REVERTED FROM MAP
-            logger.info(f"Calculated daily DIF summary with shape: {dif_stats_daily.shape}")
-            df = df.join(dif_stats_daily, on="date", how="left")
-
+            logger.exception(f"Error calling calculate_dif: {e}")
     else:
-        logger.warning(f"DIF calculation method '{config.dif_parameters.day_definition}' not implemented.")
-        df = df.with_columns(pl.lit(None).cast(pl.Float64).alias("DIF_daily")) # Add null column
-    logger.info(f"Shape after DIF: {df.shape}")
+         logger.warning(f"Skipping DIF calculation: Temp column '{dif_temp_col}' not found.")
 
     # 4.5 Basic Statistical Features: Rate of Change & Rolling Average (config-driven)
     feature_cfg = config.feature_parameters
@@ -391,255 +402,108 @@ def transform_features(df: pl.DataFrame, config: PlantConfig) -> pl.DataFrame:  
 
     # End basic statistical features
 
-    # 5. Advanced Flags
-    logger.info("Calculating advanced flags...")
-    # Rolling SD / Lag (Using duration syntax)
-    # Access advanced feature parameters from configuration (fixed attribute name)
-    advanced_config = config.advanced_feature_parameters
-    objective_config = config.objective_function_parameters
-
-    # --- Rolling Standard Deviation ---
-    # Safeguard: only iterate if rolling_std_dev_cols is provided
-    if advanced_config.rolling_std_dev_cols:
-        for col_name, window_minutes in advanced_config.rolling_std_dev_cols.items():
-            if col_name.startswith("_"):
-                logger.debug(f"Skipping rolling std dev for config key: {col_name}")
-                continue
-            if col_name not in df.columns:
-                logger.warning(f"Skipping rolling std dev for '{col_name}': column not found.")
-                continue
-            try:
-                window_duration_str = f"{window_minutes}m"
-                # Aggregate separately
-                rolling_agg_df = df.select(["time", col_name]) \
-                                    .rolling(index_column="time", period=window_duration_str, closed="left") \
-                                    .agg(pl.std(col_name).alias(f"{col_name}_rolling_std"))
-
-                # FIX: Add unique step to prevent row explosion before joining
-                rolling_agg_df = rolling_agg_df.unique(subset=["time"], keep="first")
-
-                # Join back
-                df = df.join(rolling_agg_df, on="time", how="left") \
-                      .rename({f"{col_name}_rolling_std": f"{col_name}_rolling_std_{window_minutes}m"})
-
-                # Construct the new column name first
-                new_col_name = f"{col_name}_rolling_std_{window_minutes}m"
-                # Re-check if column exists after potential join failures
-                if new_col_name in df.columns:
-                     logger.info(f"Shape after rolling std dev for {col_name}: {df.shape}")
-                else:
-                     # Use the pre-constructed column name variable
-                     logger.warning(f"Rolling std dev column {new_col_name} was not successfully added.")
-
-            except Exception as e:
-                logger.error(f"Failed in-place rolling std dev calculation for {col_name} with period {window_duration_str}: {e}")
-
-    # Lag features processing
-    if advanced_config.lag_features:
-        logger.info("Calculating time-based lag features using asof_join...")
-        for col_name, lag_minutes in advanced_config.lag_features.items():
-            if col_name.startswith("_"):
-                logger.debug(f"Skipping lag feature for config key: {col_name}")
-                continue
-            if col_name not in df.columns:
-                logger.warning(f"Skipping lag feature for '{col_name}': column not found.")
-                continue
-
-            try:
-                # Define lag duration and new column name
-                lag_duration = timedelta(minutes=lag_minutes)
-                lagged_col_name = f"{col_name}_lag_{lag_minutes}m"
-                logger.debug(f"Processing lag for {col_name} with duration {lag_duration} -> {lagged_col_name}")
-
-                # Prepare a temporary DataFrame with time shifted *forward*
-                df_to_lag = df.select(['time', col_name])
-                df_lagged_time = df_to_lag.with_columns(
-                    (pl.col('time') + lag_duration).alias('time_join_key')
-                )
-
-                # Perform the asof join
-                # Find the last value in df_lagged_time whose 'time_join_key' is less than or equal to the current row's 'time'
-                df = df.join_asof(
-                    df_lagged_time.select(['time_join_key', col_name]).rename({col_name: lagged_col_name}),
-                    left_on='time',          # Original time
-                    right_on='time_join_key', # Time shifted forward by lag
-                    strategy='backward'      # Match the latest record at or before the left timestamp
-                )
-                logger.info(f"Shape after lag feature for {col_name}: {df.shape}")
-
-            except Exception as e:
-                 logger.error(f"Failed processing lag feature for {col_name} with {lag_minutes}m lag: {e}", exc_info=True)
-
-    # Distance-from-midpoint & in-range flag
-    logger.info("Calculating distance-from-midpoint and in-range flags...")
-    processed_dist_range = False
-    # Get the mapping from config key to actual column name
-    dist_midpoint_mapping = advanced_config.distance_from_optimal_midpoint
-    if not dist_midpoint_mapping:
-        logger.warning("Config key 'distance_from_optimal_midpoint' not found or empty in advanced_feature_parameters, skipping calculation.")
-    else:
-        for config_key, optimal_range in objective_config.optimal_ranges.items():
-            if config_key.startswith("_"):
-                logger.debug(f"Skipping midpoint/range for config key: {config_key}")
-                continue
-
-            # Get the actual input column name from the mapping
-            input_col_name = dist_midpoint_mapping.get(config_key)
-
-            # Check if the mapping exists for this config_key
-            if not input_col_name:
-                 logger.warning(f"Skipping distance-from-midpoint for config key '{config_key}': No corresponding input column defined in 'distance_from_optimal_midpoint'.")
-                 continue
-
-            # Check if the mapped input column exists in the DataFrame
-            if input_col_name not in df.columns:
-                logger.warning(f"Skipping distance-from-midpoint/in-range for config key '{config_key}': Mapped input column '{input_col_name}' not found.")
-                continue
-
-            if isinstance(optimal_range, OptimalRange) and optimal_range.lower is not None and optimal_range.upper is not None:
-                lower_val = optimal_range.lower
-                upper_val = optimal_range.upper
-                midpoint = (lower_val + upper_val) / 2.0
-                # Use the mapped input_col_name for calculation and alias
-                df = df.with_columns(
-                    (pl.col(input_col_name) - midpoint).abs().alias(f"{input_col_name}_dist_opt_mid")
-                )
-                processed_dist_range = True
-            else:
-                logger.warning(f"Skipping distance-from-midpoint for config key '{config_key}' (column '{input_col_name}'): Optimal range not found or invalid in config.")
-
-    if config.advanced_feature_parameters.in_optimal_range_flag:
-        # Get the mapping for in_optimal_range flags as well
-        in_range_mapping = config.advanced_feature_parameters.in_optimal_range_flag
-        if not in_range_mapping:
-             logger.warning("Config key 'in_optimal_range_flag' not found or empty, skipping these flags.")
-        else:
-             for target_key, input_col in in_range_mapping.items(): # Original logic used target_key and input_col from here
-                if not isinstance(input_col, str) or not input_col:
-                     logger.warning(f"Skipping in-optimal-range flag for '{target_key}': invalid input column name '{input_col}'.")
-                     continue
-                if input_col not in df.columns:
-                     logger.warning(f"Skipping in-optimal-range flag for '{target_key}': input column '{input_col}' not found.")
-                     continue
-
-                # Find corresponding optimal range using the target_key
-                optimal_range = config.objective_function_parameters.optimal_ranges.get(target_key)
-                if isinstance(optimal_range, OptimalRange) and optimal_range.lower is not None and optimal_range.upper is not None: # Ensure range is valid
-                    lower = optimal_range.lower
-                    upper = optimal_range.upper
-                    df = df.with_columns(
-                        pl.when((pl.col(input_col) >= lower) & (pl.col(input_col) <= upper))
-                        .then(1)
-                        .otherwise(0)
-                        .cast(pl.Int8) # Use Int8 for flags
-                        .alias(f"{input_col}_in_opt_range") # Alias uses the actual input column
-                    )
-                    processed_dist_range = True
-                else:
-                    logger.warning(f"Skipping in-optimal-range flag for '{target_key}' (column '{input_col}'): Optimal range not found or invalid in objective_function_parameters.")
-    if processed_dist_range:
-        logger.info(f"Shape after midpoint/range flags: {df.shape}")
-
-    # Night-stress flag
-    processed_night_stress = False
-    if config.dif_parameters.day_definition == "lamp_status" and config.advanced_feature_parameters.night_stress_flags:
-        # Ensure night_mask_expr is defined for this scope
-        lamp_cols = config.dif_parameters.lamp_status_columns
-        night_mask_expr = None # Default to None
-        if lamp_cols:
-            # Recreate night_mask_expr for this scope
-            day_mask_expr = pl.any_horizontal([pl.col(c) == 1 for c in lamp_cols if c in df.columns])
-            night_mask_expr = ~day_mask_expr # Define it here for use below
-
-        if night_mask_expr is not None:
-            logger.info("Calculating night stress flags...")
-            for flag_name, details in config.advanced_feature_parameters.night_stress_flags.items():
-                 if flag_name.startswith("_"):
-                     logger.debug(f"Skipping night stress flag for config key: {flag_name}")
-                     continue
-
-                 # FIX: Check instance using imported class directly
-                 if isinstance(details, NightStressFlagDetail):
-                    logger.info(f"Processing night stress flag: name='{flag_name}', type={type(details)}, details={details}")
-                    input_col = details.input_temp_col
-                    threshold_key = details.threshold_config_key
-                    threshold_sub_key = details.threshold_sub_key
-
-                    if input_col not in df.columns:
-                        logger.warning(f"Skipping night stress flag '{flag_name}': Input column '{input_col}' not found.")
-                        continue
-
-                    try:
-                        threshold_val = getattr(getattr(config.stress_thresholds, threshold_key), threshold_sub_key)
-                        df = df.with_columns(
-                            # Ensure night_mask_expr is valid before using
-                            pl.when(night_mask_expr & (pl.col(input_col) > threshold_val))
-                            .then(1)
-                            .otherwise(0)
-                            .cast(pl.Int8) # Use Int8 for flags
-                            .alias(flag_name)
-                        )
-                        processed_night_stress = True
-                    except AttributeError:
-                         logger.warning(f"Could not find threshold '{threshold_key}.{threshold_sub_key}' in config for night stress flag '{flag_name}'.")
-                    except Exception as e:
-                         logger.warning(f"Error processing night stress flag '{flag_name}': {e}")
-                 else:
-                     logger.warning(f"Skipping night stress flag '{flag_name}': Invalid config format.")
-            if processed_night_stress:
-                logger.info(f"Shape after night stress flags: {df.shape}")
-        else:
-            logger.warning("Cannot calculate night stress flags: Lamp status columns not defined or missing.")
-
-    # 2.6 Lamp Energy (kWh) daily aggregation
+    # 2.6 Lamp Energy (kWh) daily aggregation (Total)
+    # This calculates the TOTAL lamp energy per day
     if "lamp_power_kw" in df.columns:
         try:
-            logger.info("Aggregating lamp energy (kWh) per day ...")
-            energy_daily = (
-                df.select(["time", "date", "lamp_power_kw"])
-                  .sort("time")
-                  .with_columns(
+            logger.info("Aggregating TOTAL lamp energy (kWh) per day ...")
+            # Calculate time delta in seconds if not already present
+            if "delta_t_s_energy" not in df.columns:
+                 df = df.with_columns(
                       pl.col("time").diff().dt.total_seconds().fill_null(0).alias("delta_t_s_energy")
                   )
-                  .with_columns(
-                      (pl.col("lamp_power_kw") * pl.col("delta_t_s_energy") / 3600.0).alias("kwh_chunk")
-                  )
-                  .group_by("date", maintain_order=True)
-                  .agg(pl.sum("kwh_chunk").alias("Lamp_kWh_daily"))
-            )
-            df = df.join(energy_daily, on="date", how="left")
-            logger.info(f"Shape after Lamp_kWh_daily: {df.shape}")
-        except Exception as e:
-            logger.error(f"Failed lamp energy aggregation: {e}")
-    else:
-        logger.info("lamp_power_kw column not found; skipping lamp energy aggregation.")
-
-    # --- ADDED: Lamp Energy (kWh) per Group (Phase 3) ---
-    if "lamp_power_kw" in df.columns and "lamp_group" in df.columns:
-        try:
-            logger.info("Aggregating lamp energy (kWh) per group per day...")
-            # Ensure delta_t_s_energy and kwh_chunk are calculated. Re-calculate if needed.
-            # If kwh_chunk isn't already on df, recalculate it here:
-            if "kwh_chunk" not in df.columns:
+            # Calculate kWh chunk for the total power
+            if "kwh_chunk_total" not in df.columns: # Use a distinct name
                  df = df.with_columns(
-                    pl.col("time").diff().dt.total_seconds().fill_null(0).alias("_delta_t_s_temp")
-                 ).with_columns(
-                    (pl.col("lamp_power_kw") * pl.col("_delta_t_s_temp") / 3600.0).alias("kwh_chunk")
-                 ).drop("_delta_t_s_temp")
+                      (pl.col("lamp_power_kw") * pl.col("delta_t_s_energy") / 3600.0).alias("kwh_chunk_total")
+                 )
 
-            energy_per_group_daily = (
-                df.filter(pl.col("lamp_group").is_not_null() & pl.col("kwh_chunk").is_not_null())
-                  .group_by(["date", "lamp_group"], maintain_order=True)
-                  .agg(pl.sum("kwh_chunk").alias("Lamp_kWh_daily_per_group"))
+            energy_daily_total = (
+                df.select(["date", "kwh_chunk_total"])
+                  .group_by("date", maintain_order=True)
+                  .agg(pl.sum("kwh_chunk_total").alias("Lamp_kWh_daily")) # Keep original output column name
             )
-            logger.info(f"Calculated daily kWh per lamp group summary:\n{energy_per_group_daily}")
-            # Note: This result (energy_per_group_daily) is currently only logged.
-            # It could be joined back, pivoted, or saved separately as needed.
+            df = df.join(energy_daily_total, on="date", how="left")
+            logger.info(f"Shape after Lamp_kWh_daily (Total): {df.shape}")
         except Exception as e:
-            logger.error(f"Failed per-group lamp energy aggregation: {e}")
+            logger.error(f"Failed TOTAL lamp energy aggregation: {e}")
     else:
-        logger.info("lamp_power_kw or lamp_group column not found; skipping per-group lamp energy aggregation.")
-    # --- END: Lamp Energy (kWh) per Group ---
+        logger.info("lamp_power_kw column not found; skipping TOTAL lamp energy aggregation.")
+
+
+    # --- REVISED: Lamp Energy (kWh) per Group ---
+    # This calculates energy PER GROUP based on individual status columns
+    logger.info("Attempting per-group lamp energy calculation...")
+    all_groups_energy = []
+    # Ensure delta_t_s_energy is calculated (needed for per-group chunks)
+    if "delta_t_s_energy" not in df.columns and "time" in df.columns:
+        df = df.with_columns(
+            pl.col("time").diff().dt.total_seconds().fill_null(0).alias("delta_t_s_energy")
+        )
+
+    if getattr(config, "lamp_groups", None) and "delta_t_s_energy" in df.columns:
+        logger.debug(f"Found lamp_groups in config: {list(config.lamp_groups.keys())}")
+        for col_name, detail in config.lamp_groups.items():
+            if col_name in df.columns:
+                try:
+                    # Extract group identifier (e.g., '1' from 'lamp_grp1_no3_status')
+                    # This assumes a consistent naming convention. Adjust regex if needed.
+                    group_match = pl.lit(col_name).str.extract(r"lamp_grp(\d+)_.*", 1)
+                    # Handle cases where regex might not match - default to a placeholder?
+                    group_id_expr = pl.coalesce(group_match.cast(pl.Int8), pl.lit(-1).cast(pl.Int8)).alias("lamp_group") # Use Int8 for space
+
+                    # Calculate power for this specific group
+                    group_power_kw = detail.power_kw * detail.count
+
+                    # Calculate kWh chunk specifically for this group when it's ON
+                    # Ensure status column is treated as binary (0 or 1)
+                    status_col_binary = pl.col(col_name).cast(pl.Int8).fill_null(0) # Cast to Int8, fill nulls as 0 (OFF)
+                    kwh_chunk_group_expr = (
+                        pl.lit(group_power_kw) * status_col_binary * pl.col("delta_t_s_energy") / 3600.0
+                    ).alias("kwh_chunk_group")
+
+                    # Aggregate daily kWh for this group
+                    energy_this_group_daily = (
+                        df.select(["date", col_name, "delta_t_s_energy"]) # Select necessary columns
+                          .with_columns([
+                              group_id_expr,
+                              kwh_chunk_group_expr
+                          ])
+                          .filter(pl.col("kwh_chunk_group") > 0) # Only sum when power was consumed
+                  .group_by(["date", "lamp_group"], maintain_order=True)
+                          .agg(pl.sum("kwh_chunk_group")) # Sum the group-specific chunk
+                          # Rename the aggregated column here
+                          .rename({"kwh_chunk_group": "Lamp_kWh_daily_per_group"})
+                    )
+                    if not energy_this_group_daily.is_empty():
+                        all_groups_energy.append(energy_this_group_daily)
+                        logger.debug(f"Calculated daily kWh for group derived from {col_name}.")
+                    else:
+                        logger.debug(f"No energy calculated for group derived from {col_name} (likely always off or missing data).")
+
+        except Exception as e:
+                     logger.error(f"Failed processing energy for lamp group column '{col_name}': {e}", exc_info=True)
+            else:
+                 logger.warning(f"Configured lamp group column '{col_name}' not found in DataFrame. Skipping.")
+
+        if all_groups_energy:
+            # Combine results from all groups
+            energy_per_group_combined = pl.concat(all_groups_energy)
+            logger.info(f"Calculated daily kWh per lamp group summary:\n{energy_per_group_combined}")
+            # --- OPTIONAL: Join back to main df ---
+            # Joining this back might make the main df very long if many groups.
+            # Consider if this joined data is needed or if the summary table is sufficient.
+            # Example join (uncomment and adapt if needed):
+            # df = df.join(energy_per_group_combined, on="date", how="left", suffix="_group_agg")
+            # logger.info(f"Shape after joining per-group kWh summary: {df.shape}")
+            # --------------------------------------
+        else:
+             logger.info("No per-group lamp energy data was generated.")
+
+    else:
+         logger.info("Skipping per-group lamp energy calculation: lamp_groups not configured, delta_t_s missing, or time missing.")
+    # --- END: REVISED Lamp Energy (kWh) per Group ---
+
 
     # --- Final Cleanup --- (Optional)
     if "date" in df.columns:

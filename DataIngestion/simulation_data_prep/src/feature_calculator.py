@@ -272,40 +272,63 @@ def calculate_dif(
     # Create a temporary Series for period assignment, aligning with temp_numeric index
     period_assignment = pd.Series(index=temp_numeric.index, dtype=str)
 
-    day_definition = dif_config.get('day_definition', 'fixed_time').lower()
+    # Access Pydantic model attributes directly
+    day_definition = getattr(dif_config, 'day_definition', 'fixed_time').lower()
 
     if day_definition == 'fixed_time':
         logger.info("Calculating DIF using fixed time definition.")
-        day_start = dif_config.get('fixed_time_day_start_hour', 6)
-        day_end = dif_config.get('fixed_time_day_end_hour', 18)
+        # Access attributes directly, provide defaults if they might be missing
+        day_start = getattr(dif_config, 'fixed_time_day_start_hour', 6)
+        day_end = getattr(dif_config, 'fixed_time_day_end_hour', 18)
         hours = temp_numeric.index.hour
         period_assignment = np.where((hours >= day_start) & (hours < day_end), 'Day', 'Night')
 
     elif day_definition == 'lamp_status':
         logger.info("Calculating DIF using lamp status definition.")
-        lamp_cols = dif_config.get('lamp_status_columns')
+        # Access attribute directly
+        lamp_cols = getattr(dif_config, 'lamp_status_columns', None)
         if not lamp_cols:
             logger.error("DIF calculation skipped: 'lamp_status_columns' missing in config for 'lamp_status' definition.")
             return pd.Series(dtype=np.float64)
 
         # Ensure data_df index matches temp_numeric index for alignment
         if not data_df.index.equals(temp_numeric.index):
-             logger.error("DataFrame index does not match temperature series index for lamp status DIF. Aligning...")
+             logger.warning("DataFrame index does not match temperature series index for lamp status DIF. Aligning...")
              data_df = data_df.reindex(temp_numeric.index)
 
-        missing_lamp_cols = [col for col in lamp_cols if col not in data_df.columns]
-        if missing_lamp_cols:
-            logger.error(f"DIF calculation skipped: Required lamp status columns missing from DataFrame: {missing_lamp_cols}")
-            return pd.Series(dtype=np.float64)
+        active_lamp_cols = [col for col in lamp_cols if col in data_df.columns]
+        if not active_lamp_cols:
+             logger.error(f"DIF calculation skipped: None of the required lamp status columns found in DataFrame: {lamp_cols}")
+             return pd.Series(dtype=np.float64)
+        elif len(active_lamp_cols) < len(lamp_cols):
+             logger.warning(f"Missing some lamp status columns for DIF: {list(set(lamp_cols) - set(active_lamp_cols))}. Proceeding with available: {active_lamp_cols}")
 
         # Assume Day = ANY specified lamp is ON (status == 1)
         lamp_on = pd.Series(index=temp_numeric.index, data=False)
-        for col in lamp_cols:
+        all_lamp_data_null = True # Flag to track if all input lamp columns are null
+        for col in active_lamp_cols:
             # Ensure column is numeric, default non-numeric/NaN to 0 (OFF)
             lamp_status_numeric = pd.to_numeric(data_df[col], errors='coerce').fillna(0)
             lamp_on = lamp_on | (lamp_status_numeric == 1)
+            if not data_df[col].isnull().all(): # Check if *any* value was not null before fillna(0)
+                 all_lamp_data_null = False
 
-        period_assignment = np.where(lamp_on, 'Day', 'Night')
+        # --- START FALLBACK LOGIC ---
+        if not lamp_on.any() or all_lamp_data_null:
+            if all_lamp_data_null:
+                 logger.warning("Lamp status columns contain only nulls. Falling back to fixed time for DIF day/night definition.")
+            else:
+                 logger.warning("No lamp ON status detected for the period. Falling back to fixed time for DIF day/night definition.")
+            # Fallback to fixed time definition
+            day_start = getattr(dif_config, 'fixed_time_day_start_hour', 6)
+            day_end = getattr(dif_config, 'fixed_time_day_end_hour', 18)
+            hours = temp_numeric.index.hour
+            period_assignment = np.where((hours >= day_start) & (hours < day_end), 'Day', 'Night')
+            day_definition = 'fixed_time (fallback)' # Update definition label for logging
+        else:
+            # Use the lamp status definition if lamps were detected
+            period_assignment = np.where(lamp_on, 'Day', 'Night')
+        # --- END FALLBACK LOGIC ---
 
     else:
         logger.error(f"Invalid 'day_definition' in DIF config: '{day_definition}'. Cannot calculate DIF.")
@@ -988,15 +1011,15 @@ def calculate_night_stress_flag(
 
     # Determine Day/Night periods (copied & adapted from calculate_dif)
     period_assignment = pd.Series(index=temp_numeric.index, dtype=str)
-    day_definition = dif_config.get('day_definition', 'fixed_time').lower()
+    day_definition = getattr(dif_config, 'day_definition', 'fixed_time').lower()
 
     if day_definition == 'fixed_time':
-        day_start = dif_config.get('fixed_time_day_start_hour', 6)
-        day_end = dif_config.get('fixed_time_day_end_hour', 18)
+        day_start = getattr(dif_config, 'fixed_time_day_start_hour', 6)
+        day_end = getattr(dif_config, 'fixed_time_day_end_hour', 18)
         hours = temp_numeric.index.hour
         period_assignment = np.where((hours >= day_start) & (hours < day_end), 'Day', 'Night')
     elif day_definition == 'lamp_status':
-        lamp_cols = dif_config.get('lamp_status_columns')
+        lamp_cols = getattr(dif_config, 'lamp_status_columns', None)
         if not lamp_cols:
             logger.error("Night stress flag skipped: 'lamp_status_columns' missing in config for 'lamp_status' definition.")
             return pd.Series(dtype=np.float64)

@@ -87,25 +87,21 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./.env # Load from the same directory as this docker-compose.yml
-    command: >
-      sh -c '
-        echo "Waiting for Orion server to be ready...";
-        until curl -fs http://orion:4200/health/ready; do
-          echo "waiting for Orion...";
-          sleep 2;
-        done;
-        echo "Orion ready. Starting Prefect worker...";
-        prefect worker start --pool default-process-pool -q default;
-      '
+    command: [ "prefect", "worker", "start", "--pool", "default-process-pool", "--limit", "1" ] # Use direct CLI command
     environment:
       - PREFECT_API_URL=http://orion:4200/api
+      - PREFECT_LOGGING_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
+      - PYTHONPATH=/app # Add project root to Python path
+      # Pass through host environment variables
+      # - USE_GPU=${USE_GPU:-false} # Example, passed from host
+      # - PARALLEL_EXECUTION=${PARALLEL_EXECUTION:-true} # Example
+      # - ONLY_EARLIEST_DATE=${ONLY_EARLIEST_DATE:-false} # Example
     depends_on:
-      db:
-        condition: service_healthy
       orion:
         condition: service_healthy
-      mlflow-server:
-        condition: service_started
+      db:
+        condition: service_healthy
     volumes:
       - ./simulation_data_prep/src:/app/src
       - ./simulation_data_prep/output:/app/output
@@ -201,7 +197,7 @@ services:
       - ./.env
     environment:
       - PREFECT_API_URL=http://orion:4200/api
-    command: ["echo", "Deployer container ready, awaiting command..."]
+    command: [ "echo", "Deployer container ready, awaiting command..." ]
     volumes:
       - ./simulation_data_prep/src:/app/src
       - ./simulation_data_prep/dao:/app/dao
@@ -210,6 +206,22 @@ services:
       - ./simulation_data_prep/validation:/app/validation
       - ./simulation_data_prep/prefect.yaml:/app/prefect.yaml # Mount the Prefect config file
     working_dir: /app # Ensure this matches the target path, or adjust target path if WORKDIR is different
+
+  model_builder:
+    image: rapidsai/base:25.04-cuda12.8-py3.12
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilites: [ gpu, utilities ]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - simulation_data_prep/output:/data:ro
+      - ./model_builder/models:/models
+    command: [ "python", "-m", "src.train_surrogate" ]
 
 # --- Volumes ---
 volumes:
@@ -220,7 +232,7 @@ volumes:
   prefect_db:
   mlflow_data:
 
-# --- Network ---
+    # --- Network ---
 networks:
   ingestion-net:
     name: ingestion-net

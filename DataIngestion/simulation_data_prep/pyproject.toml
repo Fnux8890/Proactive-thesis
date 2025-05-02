@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simulation_data_prep"
+version = "0.1.0"
+description = "Data preparation pipeline for simulation optimization project."
+# Add other metadata if desired
+
+# Define where setuptools can find the packages
+# Assuming 'src' and 'transforms' contain your main code
+[tool.setuptools.packages.find]
+where = ["."] # Look in the current directory (mapped to /app)
+include = ["src*", "transforms*", "dao*", "loading*", "validation*"] # Include relevant directories as packages
+exclude = ["tests*"] # Exclude tests directory if present 

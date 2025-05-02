@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM python:3.11-slim AS runtime
+FROM python:3.10-slim AS runtime
 
 # -----------------------------
 # System dependencies & tooling
@@ -18,7 +18,16 @@ RUN --mount=type=cache,target=/var/cache/apt \
 # -----------------------------
 WORKDIR /app
 COPY requirements.txt ./
-RUN uv pip install --system --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+
+# Install Python dependencies using uv
+RUN uv pip install --system --no-cache-dir \
+      --extra-index-url https://pypi.nvidia.com \
+      -r requirements.txt \
+      black
+
+# Install the project in editable mode
+RUN uv pip install --system --no-cache-dir -e .
 
 # -----------------------------
 # Project sources
@@ -35,8 +44,7 @@ COPY validation/ ./validation/
 # -----------------------------
 # Runtime env variables
 # -----------------------------
-ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src" \
-    NVIDIA_VISIBLE_DEVICES=all \
+ENV NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 # -----------------------------

@@ -7,7 +7,7 @@
 deployments:
   - name: feature-etl-deployment             # The name of the deployment itself
     flow_name: main-feature-flow             # The name of the flow being deployed
-    entrypoint: src/flow_main.py:main_feature_flow # Path to your flow file and function name
+    entrypoint: src.flow_main:main_feature_flow # New Python object path
     
     # --- Configuration based on previous answers ---
     
