@@ -15,7 +15,14 @@
             }
         },
         "Pieces": {
-      "url": "http://localhost:39300/model_context_protocol/2024-11-05/sse"
+            "url": "http://localhost:39300/model_context_protocol/2024-11-05/sse"
+        }
+    },
+    "git": {
+        "command": "git-mcp-server",
+        "args": [],
+        "env": {},
+        "disabled": false
     }
-    }
+}
 }
