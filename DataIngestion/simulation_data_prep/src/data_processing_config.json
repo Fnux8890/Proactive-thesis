@@ -1,0 +1,254 @@
+{
+    "db_connection": {
+        "host": "db",
+        "port": 5432,
+        "user": "postgres",
+        "password": "postgres",
+        "dbname": "postgres"
+    },
+    "data_segments": [
+        {
+            "name": "Era1_CoreEnv",
+            "start_date": "2014-01-01T00:00:00Z",
+            "end_date": "2014-08-31T23:59:59Z",
+            "description": "Focus on core environmental sensors (temp, rh, light, rad, basic co2)"
+        },
+        {
+            "name": "Era2_Actuators",
+            "start_date": "2015-10-01T00:00:00Z",
+            "end_date": "2016-09-08T23:59:59Z",
+            "description": "Focus on radiation, AFD humidity, intermittent actuators/lamps/pipes. STATUS: EXPERIMENTAL/FUTURE"
+        },
+        {
+            "name": "Full_Range_Test",
+            "start_date": "2013-12-01T00:00:00Z",
+            "end_date": "2016-09-08T23:59:59Z",
+            "description": "Full range for specific analysis needs. STATUS: EXPERIMENTAL/FUTURE"
+        }
+    ],
+    "outlier_detection": {
+        "rules": [
+            {
+                "column": "air_temp_c",
+                "method": "domain",
+                "params": {
+                    "lower_bound": -10,
+                    "upper_bound": 45
+                },
+                "handling_strategy": "clip"
+            },
+            {
+                "column": "relative_humidity_percent",
+                "method": "domain",
+                "params": {
+                    "lower_bound": 0,
+                    "upper_bound": 100
+                },
+                "handling_strategy": "clip"
+            },
+            {
+                "column": "radiation_w_m2",
+                "method": "domain",
+                "params": {
+                    "lower_bound": 0,
+                    "upper_bound": 1500
+                },
+                "handling_strategy": "clip"
+            },
+            {
+                "column": "light_intensity_umol",
+                "method": "domain",
+                "params": {
+                    "lower_bound": 0,
+                    "upper_bound": 3000
+                },
+                "handling_strategy": "clip"
+            },
+            {
+                "column": "co2_measured_ppm",
+                "method": "domain",
+                "params": {
+                    "lower_bound": 100,
+                    "upper_bound": 1500
+                },
+                "handling_strategy": "clip"
+            }
+        ]
+    },
+    "imputation": {
+        "default_strategy": {
+            "method": "linear"
+        },
+        "column_specific_strategies": {
+            "rain_status": {
+                "method": "forward_fill"
+            },
+            "co2_measured_ppm": {
+                "method": "linear",
+                "limit_direction": "both",
+                "limit": 5
+            }
+        }
+    },
+    "column_lists": {
+        "potential_numeric_cols": [],
+        "columns_to_exclude": [
+            "source_system",
+            "source_file",
+            "format_type",
+            "uuid",
+            "lamp_group",
+            "status_str",
+            "oenske_ekstra_lys",
+            "behov",
+            "value",
+            "measured_status_bool",
+            "timer_on",
+            "timer_off",
+            "lampe_timer_on",
+            "lampe_timer_off",
+            "window_1_percent",
+            "window_2_percent",
+            "dli_sum",
+            "climate_cooler_status"
+        ],
+        "target_variable": null,
+        "datetime_column": "time"
+    },
+    "processing_start_date": "2013-12-01T00:00:00Z",
+    "processing_end_date": "2016-09-08T00:00:00Z",
+    "segment_feature_configs": {
+        "Era1_CoreEnv": {
+            "feature_parameters": {
+                "delta_cols": {
+                    "temp_delta_in_out": [
+                        "air_temp_c",
+                        "temperature_actual_c"
+                    ]
+                },
+                "rate_of_change_cols": [
+                    "air_temp_c",
+                    "relative_humidity_percent",
+                    "radiation_w_m2",
+                    "light_intensity_umol",
+                    "co2_measured_ppm"
+                ],
+                "rolling_average_cols": {
+                    "air_temp_c": {
+                        "window_minutes": 180,
+                        "min_periods": 12
+                    },
+                    "relative_humidity_percent": {
+                        "window_minutes": 180,
+                        "min_periods": 12
+                    },
+                    "radiation_w_m2": {
+                        "window_minutes": 180,
+                        "min_periods": 12
+                    }
+                }
+            },
+            "advanced_feature_parameters": {
+                "rolling_std_dev_cols": {
+                    "air_temp_c": {
+                        "window_minutes": 360,
+                        "min_periods": 24
+                    },
+                    "relative_humidity_percent": {
+                        "window_minutes": 360,
+                        "min_periods": 24
+                    }
+                },
+                "lag_features": {
+                    "air_temp_c": 60,
+                    "radiation_w_m2": 120,
+                    "co2_measured_ppm": 180
+                },
+                "availability_flags_for_cols": [
+                    "air_temp_c",
+                    "relative_humidity_percent",
+                    "radiation_w_m2",
+                    "co2_measured_ppm",
+                    "light_intensity_umol"
+                ],
+                "night_stress_flags": {
+                    "low_temp_stress": {
+                        "input_temp_col": "air_temp_c",
+                        "threshold_config_key": "low_temp_cam_induction_celsius",
+                        "stress_type": "low"
+                    },
+                    "high_temp_stress_onset": {
+                        "input_temp_col": "air_temp_c",
+                        "threshold_config_key": "heat_delay_night_temp_celsius_sd",
+                        "threshold_sub_key": "onset_risk",
+                        "stress_type": "high"
+                    },
+                    "high_temp_stress_impact": {
+                        "input_temp_col": "air_temp_c",
+                        "threshold_config_key": "heat_delay_night_temp_celsius_sd",
+                        "threshold_sub_key": "significant_impact",
+                        "stress_type": "high"
+                    }
+                }
+            },
+            "active_optimal_condition_keys": [
+                "temperature_celsius",
+                "vpd_kpa",
+                "dli_mol_m2_day"
+            ]
+        },
+        "Era2_Actuators": {
+            "_comment": "EXPERIMENTAL/FUTURE - Configuration below is placeholder and needs full review if Era 2 is activated.",
+            "feature_parameters": {
+                "rate_of_change_cols": [
+                    "radiation_w_m2",
+                    "relative_humidity_afd3_percent"
+                ],
+                "rolling_average_cols": {
+                    "radiation_w_m2": {
+                        "window_minutes": 180,
+                        "min_periods": 3
+                    },
+                    "relative_humidity_afd3_percent": {
+                        "window_minutes": 120,
+                        "min_periods": 2
+                    }
+                }
+            },
+            "advanced_feature_parameters": {
+                "rolling_std_dev_cols": {
+                    "radiation_w_m2": {
+                        "window_minutes": 360,
+                        "min_periods": 6
+                    }
+                },
+                "lag_features": {
+                    "radiation_w_m2": 180,
+                    "co2_measured_ppm": 180
+                },
+                "availability_flags_for_cols": [
+                    "radiation_w_m2",
+                    "co2_measured_ppm",
+                    "pipe_temp_1_c",
+                    "vent_lee_afd3_percent",
+                    "relative_humidity_afd3_percent",
+                    "lamp_grp1_no3_status",
+                    "lamp_grp1_no4_status"
+                ],
+                "night_stress_flags": {
+                    "low_temp_stress_era2": {
+                        "input_temp_col": "pipe_temp_1_c",
+                        "threshold_config_key": "low_temp_cam_induction_celsius",
+                        "stress_type": "low",
+                        "output_col_suffix": "pipe1_low"
+                    }
+                }
+            },
+            "active_optimal_condition_keys": []
+        }
+    },
+    "global_feature_config": {
+        "feature_parameters": {},
+        "advanced_feature_parameters": {}
+    }
+}

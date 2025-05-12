@@ -10,6 +10,7 @@
 -- Alternatively, connect manually and create if needed.
 CREATE DATABASE prefect;
 CREATE DATABASE mlflow;
+CREATE DATABASE greenhouse; -- Add database for Feast offline store
 
 -- Optional: Grant privileges if needed
 -- GRANT ALL PRIVILEGES ON DATABASE prefect TO postgres;

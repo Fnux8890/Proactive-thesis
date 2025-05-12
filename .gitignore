@@ -138,3 +138,5 @@ DataIngestion/rust_pipeline/data_pipeline/target/CACHEDIR.TAG
 DataIngestion/rust_pipeline/db_checker/target/*
 
 *.parquet
+
+DataIngestion/rust_pipeline/data_pipeline/output/sensor_data_upsampled.csv

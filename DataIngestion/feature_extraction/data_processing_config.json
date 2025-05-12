@@ -1,0 +1,481 @@
+{
+    "common_settings": {
+        "time_col": "time",
+        "id_col": "entity_id",
+        "default_era_to_process_for_script": "Era1",
+        "boolean_columns_to_int": [
+            "rain_status",
+            "lamp_grp1_no3_status",
+            "lamp_grp1_no4_status",
+            "lamp_grp2_no3_status",
+            "lamp_grp2_no4_status",
+            "lamp_grp3_no3_status",
+            "lamp_grp4_no3_status",
+            "co2_dosing_status",
+            "co2_status",
+            "measured_status_bool"
+        ]
+    },
+    "database_connection": {
+        "user": "postgres",
+        "password": "postgres",
+        "host": "db",
+        "port": "5432",
+        "dbname": "postgres"
+    },
+    "era_definitions": {
+        "Era1": {
+            "description": "Era 1: Dec 2013 - Aug 2014. Focus on core environmental sensors.",
+            "db_table": "public.sensor_data_merged",
+            "start_date": "2013-12-01T00:00:00Z",
+            "end_date": "2014-08-27T23:59:59Z",
+            "dead_columns_to_drop": [
+                "format_type",
+                "uuid",
+                "source_file",
+                "source_system",
+                "lamp_group",
+                "behov",
+                "status_str",
+                "timer_on",
+                "timer_off",
+                "oenske_ekstra_lys",
+                "lampe_timer_on",
+                "lampe_timer_off",
+                "value",
+                "measured_status_bool",
+                "dli_sum",
+                "co2_required_ppm",
+                "heating_setpoint_c",
+                "temperature_forecast_c",
+                "sun_radiation_forecast_w_m2",
+                "temperature_actual_c",
+                "sun_radiation_actual_w_m2",
+                "air_temp_middle_c",
+                "pipe_temp_1_c",
+                "pipe_temp_2_c",
+                "lamp_grp1_no3_status",
+                "lamp_grp1_no4_status",
+                "lamp_grp2_no3_status",
+                "lamp_grp2_no4_status",
+                "lamp_grp3_no3_status",
+                "lamp_grp4_no3_status",
+                "vent_pos_1_percent",
+                "vent_pos_2_percent",
+                "vent_lee_afd3_percent",
+                "vent_wind_afd3_percent",
+                "vent_lee_afd4_percent",
+                "vent_wind_afd4_percent",
+                "humidity_deficit_afd3_g_m3",
+                "relative_humidity_afd3_percent",
+                "humidity_deficit_afd4_g_m3",
+                "relative_humidity_afd4_percent",
+                "humidity_deficit_g_m3",
+                "curtain_2_percent",
+                "curtain_3_percent",
+                "vpd_hpa",
+                "window_1_percent",
+                "window_2_percent",
+                "outside_light_w_m2"
+            ],
+            "target_frequency": "5min",
+            "outlier_rules_ref": "default_outlier_rules",
+            "imputation_rules_ref": "era1_imputation_rules"
+        },
+        "Era2": {
+            "description": "Era 2: Sep 2015 - Sep 2016. Focus on actuators, pipe temps, AFD humidity.",
+            "db_table": "public.sensor_data_merged",
+            "start_date": "2015-09-07T00:00:00Z",
+            "end_date": "2016-09-06T23:59:59Z",
+            "dead_columns_to_drop": [
+                "format_type",
+                "uuid",
+                "source_file",
+                "source_system",
+                "lamp_group",
+                "behov",
+                "status_str",
+                "timer_on",
+                "timer_off",
+                "oenske_ekstra_lys",
+                "lampe_timer_on",
+                "lampe_timer_off",
+                "value",
+                "measured_status_bool",
+                "dli_sum",
+                "co2_required_ppm",
+                "heating_setpoint_c",
+                "temperature_forecast_c",
+                "sun_radiation_forecast_w_m2",
+                "temperature_actual_c",
+                "sun_radiation_actual_w_m2",
+                "air_temp_c",
+                "relative_humidity_percent",
+                "humidity_deficit_g_m3",
+                "light_intensity_umol",
+                "light_intensity_lux",
+                "outside_light_w_m2",
+                "rain_status",
+                "flow_temp_1_c",
+                "flow_temp_2_c",
+                "curtain_1_percent",
+                "curtain_2_percent",
+                "curtain_3_percent",
+                "curtain_4_percent",
+                "window_1_percent",
+                "window_2_percent",
+                "vpd_hpa"
+            ],
+            "target_frequency": "5min",
+            "outlier_rules_ref": "default_outlier_rules",
+            "imputation_rules_ref": "era2_imputation_rules"
+        }
+    },
+    "preprocessing_rules": {
+        "default_outlier_rules": [
+            {
+                "column": "air_temp_c",
+                "max_value": 45,
+                "min_value": -5,
+                "clip": true
+            },
+            {
+                "column": "air_temp_middle_c",
+                "max_value": 45,
+                "min_value": -5,
+                "clip": true
+            },
+            {
+                "column": "outside_temp_c",
+                "max_value": 40,
+                "min_value": -20,
+                "clip": true
+            },
+            {
+                "column": "relative_humidity_percent",
+                "min_value": 5,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "radiation_w_m2",
+                "min_value": 0,
+                "max_value": 1400,
+                "clip": true
+            },
+            {
+                "column": "light_intensity_umol",
+                "min_value": 0,
+                "max_value": 2500,
+                "clip": true
+            },
+            {
+                "column": "co2_measured_ppm",
+                "min_value": 200,
+                "max_value": 2500,
+                "clip": true
+            },
+            {
+                "column": "pipe_temp_1_c",
+                "min_value": 10,
+                "max_value": 85,
+                "clip": true
+            },
+            {
+                "column": "pipe_temp_2_c",
+                "min_value": 10,
+                "max_value": 85,
+                "clip": true
+            },
+            {
+                "column": "flow_temp_1_c",
+                "min_value": 10,
+                "max_value": 90,
+                "clip": true
+            },
+            {
+                "column": "flow_temp_2_c",
+                "min_value": 10,
+                "max_value": 90,
+                "clip": true
+            },
+            {
+                "column": "vent_pos_1_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "vent_pos_2_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "vent_lee_afd3_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "vent_wind_afd3_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "vent_lee_afd4_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "vent_wind_afd4_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "curtain_1_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "curtain_2_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "curtain_3_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "curtain_4_percent",
+                "min_value": 0,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "relative_humidity_afd3_percent",
+                "min_value": 5,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "relative_humidity_afd4_percent",
+                "min_value": 5,
+                "max_value": 100,
+                "clip": true
+            },
+            {
+                "column": "humidity_deficit_afd3_g_m3",
+                "min_value": 0,
+                "max_value": 50,
+                "clip": true
+            },
+            {
+                "column": "humidity_deficit_afd4_g_m3",
+                "min_value": 0,
+                "max_value": 50,
+                "clip": true
+            },
+            {
+                "column": "vpd_hpa",
+                "min_value": 0,
+                "max_value": 60,
+                "clip": true
+            }
+        ],
+        "era1_imputation_rules": [
+            {
+                "column": "air_temp_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "outside_temp_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "relative_humidity_percent",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "light_intensity_umol",
+                "strategy": "linear",
+                "limit": 6
+            },
+            {
+                "column": "light_intensity_lux",
+                "strategy": "linear",
+                "limit": 6
+            },
+            {
+                "column": "radiation_w_m2",
+                "strategy": "linear",
+                "limit": 6
+            },
+            {
+                "column": "co2_measured_ppm",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "co2_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "co2_dosing_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "rain_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "curtain_1_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "curtain_4_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "flow_temp_1_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "flow_temp_2_c",
+                "strategy": "linear",
+                "limit": 12
+            }
+        ],
+        "era2_imputation_rules": [
+            {
+                "column": "air_temp_middle_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "outside_temp_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "radiation_w_m2",
+                "strategy": "linear",
+                "limit": 6
+            },
+            {
+                "column": "co2_measured_ppm",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "co2_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "co2_dosing_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "pipe_temp_1_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "pipe_temp_2_c",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "lamp_grp1_no3_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "lamp_grp1_no4_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "lamp_grp2_no3_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "lamp_grp2_no4_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "lamp_grp3_no3_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "lamp_grp4_no3_status",
+                "strategy": "forward_fill"
+            },
+            {
+                "column": "vent_pos_1_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "vent_pos_2_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "vent_lee_afd3_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "vent_wind_afd3_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "vent_lee_afd4_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "vent_wind_afd4_percent",
+                "strategy": "forward_fill",
+                "limit": 24
+            },
+            {
+                "column": "relative_humidity_afd3_percent",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "relative_humidity_afd4_percent",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "humidity_deficit_afd3_g_m3",
+                "strategy": "linear",
+                "limit": 12
+            },
+            {
+                "column": "humidity_deficit_afd4_g_m3",
+                "strategy": "linear",
+                "limit": 12
+            }
+        ]
+    },
+    "segmentation": {
+        "min_gap_hours": 24,
+        "time_col_ref": "common_settings.time_col"
+    }
+}

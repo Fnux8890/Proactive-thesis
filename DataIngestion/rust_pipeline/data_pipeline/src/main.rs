@@ -54,6 +54,316 @@ const TARGET_COLUMNS: [&str; 62] = [ /* ... all column names ... */
     "value"
  ];
 
+#[derive(Debug, Clone, Default)]
+struct MergedRecord {
+    time: Option<chrono::DateTime<chrono::Utc>>,
+    source_system: Option<String>,
+    source_file: Option<String>,
+    format_type: Option<String>,
+    uuid: Option<String>,
+    lamp_group: Option<String>,
+    air_temp_c: Option<f64>,
+    air_temp_middle_c: Option<f64>,
+    outside_temp_c: Option<f64>,
+    relative_humidity_percent: Option<f64>,
+    humidity_deficit_g_m3: Option<f64>,
+    radiation_w_m2: Option<f64>,
+    light_intensity_lux: Option<f64>,
+    light_intensity_umol: Option<f64>,
+    outside_light_w_m2: Option<f64>,
+    co2_measured_ppm: Option<f64>,
+    co2_required_ppm: Option<f64>,
+    co2_dosing_status: Option<f64>,
+    co2_status: Option<f64>,
+    rain_status: Option<bool>,
+    vent_pos_1_percent: Option<f64>,
+    vent_pos_2_percent: Option<f64>,
+    vent_lee_afd3_percent: Option<f64>,
+    vent_wind_afd3_percent: Option<f64>,
+    vent_lee_afd4_percent: Option<f64>,
+    vent_wind_afd4_percent: Option<f64>,
+    curtain_1_percent: Option<f64>,
+    curtain_2_percent: Option<f64>,
+    curtain_3_percent: Option<f64>,
+    curtain_4_percent: Option<f64>,
+    window_1_percent: Option<f64>,
+    window_2_percent: Option<f64>,
+    lamp_grp1_no3_status: Option<bool>,
+    lamp_grp2_no3_status: Option<bool>,
+    lamp_grp3_no3_status: Option<bool>,
+    lamp_grp4_no3_status: Option<bool>,
+    lamp_grp1_no4_status: Option<bool>,
+    lamp_grp2_no4_status: Option<bool>,
+    measured_status_bool: Option<bool>,
+    heating_setpoint_c: Option<f64>,
+    pipe_temp_1_c: Option<f64>,
+    pipe_temp_2_c: Option<f64>,
+    flow_temp_1_c: Option<f64>,
+    flow_temp_2_c: Option<f64>,
+    temperature_forecast_c: Option<f64>,
+    sun_radiation_forecast_w_m2: Option<f64>,
+    temperature_actual_c: Option<f64>,
+    sun_radiation_actual_w_m2: Option<f64>,
+    vpd_hpa: Option<f64>,
+    humidity_deficit_afd3_g_m3: Option<f64>,
+    relative_humidity_afd3_percent: Option<f64>,
+    humidity_deficit_afd4_g_m3: Option<f64>,
+    relative_humidity_afd4_percent: Option<f64>,
+    behov: Option<i32>,
+    status_str: Option<String>,
+    timer_on: Option<i32>,
+    timer_off: Option<i32>,
+    dli_sum: Option<f64>,
+    oenske_ekstra_lys: Option<String>,
+    lampe_timer_on: Option<i64>,
+    lampe_timer_off: Option<i64>,
+    value: Option<f64>,
+}
+
+impl MergedRecord {
+    fn from_row(row: &tokio_postgres::Row) -> Result<Self, PipelineError> {
+        // Helper to get value by index, converting error
+        fn get_opt<T: tokio_postgres::types::FromSqlOwned>(row: &tokio_postgres::Row, idx: usize) -> Option<T> {
+            match row.try_get(idx) {
+                Ok(val) => Some(val),
+                Err(_) => None, // Could log error here if specific handling is needed
+            }
+        }
+
+        Ok(MergedRecord {
+            time: get_opt(row, 0),
+            source_system: get_opt(row, 1),
+            source_file: get_opt(row, 2),
+            format_type: get_opt(row, 3),
+            uuid: get_opt(row, 4),
+            lamp_group: get_opt(row, 5),
+            air_temp_c: get_opt(row, 6),
+            air_temp_middle_c: get_opt(row, 7),
+            outside_temp_c: get_opt(row, 8),
+            relative_humidity_percent: get_opt(row, 9),
+            humidity_deficit_g_m3: get_opt(row, 10),
+            radiation_w_m2: get_opt(row, 11),
+            light_intensity_lux: get_opt(row, 12),
+            light_intensity_umol: get_opt(row, 13),
+            outside_light_w_m2: get_opt(row, 14),
+            co2_measured_ppm: get_opt(row, 15),
+            co2_required_ppm: get_opt(row, 16),
+            co2_dosing_status: get_opt(row, 17),
+            co2_status: get_opt(row, 18),
+            rain_status: get_opt(row, 19),
+            vent_pos_1_percent: get_opt(row, 20),
+            vent_pos_2_percent: get_opt(row, 21),
+            vent_lee_afd3_percent: get_opt(row, 22),
+            vent_wind_afd3_percent: get_opt(row, 23),
+            vent_lee_afd4_percent: get_opt(row, 24),
+            vent_wind_afd4_percent: get_opt(row, 25),
+            curtain_1_percent: get_opt(row, 26),
+            curtain_2_percent: get_opt(row, 27),
+            curtain_3_percent: get_opt(row, 28),
+            curtain_4_percent: get_opt(row, 29),
+            window_1_percent: get_opt(row, 30),
+            window_2_percent: get_opt(row, 31),
+            lamp_grp1_no3_status: get_opt(row, 32),
+            lamp_grp2_no3_status: get_opt(row, 33),
+            lamp_grp3_no3_status: get_opt(row, 34),
+            lamp_grp4_no3_status: get_opt(row, 35),
+            lamp_grp1_no4_status: get_opt(row, 36),
+            lamp_grp2_no4_status: get_opt(row, 37),
+            measured_status_bool: get_opt(row, 38),
+            heating_setpoint_c: get_opt(row, 39),
+            pipe_temp_1_c: get_opt(row, 40),
+            pipe_temp_2_c: get_opt(row, 41),
+            flow_temp_1_c: get_opt(row, 42),
+            flow_temp_2_c: get_opt(row, 43),
+            temperature_forecast_c: get_opt(row, 44),
+            sun_radiation_forecast_w_m2: get_opt(row, 45),
+            temperature_actual_c: get_opt(row, 46),
+            sun_radiation_actual_w_m2: get_opt(row, 47),
+            vpd_hpa: get_opt(row, 48),
+            humidity_deficit_afd3_g_m3: get_opt(row, 49),
+            relative_humidity_afd3_percent: get_opt(row, 50),
+            humidity_deficit_afd4_g_m3: get_opt(row, 51),
+            relative_humidity_afd4_percent: get_opt(row, 52),
+            behov: get_opt(row, 53),
+            status_str: get_opt(row, 54),
+            timer_on: get_opt(row, 55),
+            timer_off: get_opt(row, 56),
+            dli_sum: get_opt(row, 57),
+            oenske_ekstra_lys: get_opt(row, 58),
+            lampe_timer_on: get_opt(row, 59),
+            lampe_timer_off: get_opt(row, 60),
+            value: get_opt(row, 61),
+        })
+    }
+}
+
+async fn perform_upsampling(pool: &DbPool) -> Result<(), PipelineError> {
+    info!("Starting upsampling process for sensor_data_merged...");
+    let mut client = pool.get().await.map_err(PipelineError::DbConnectionError)?;
+
+    let query_string = format!("SELECT {} FROM sensor_data_merged ORDER BY time ASC", TARGET_COLUMNS.join(", "));
+    let rows = client
+        .query(&query_string, &[])
+        .await
+        .map_err(PipelineError::DbQueryError)?;
+
+    if rows.is_empty() {
+        info!("No data in sensor_data_merged to upsample.");
+        return Ok(());
+    }
+
+    let mut records: Vec<MergedRecord> = Vec::with_capacity(rows.len());
+    for row in rows {
+        match MergedRecord::from_row(&row) {
+            Ok(record) => records.push(record),
+            Err(e) => {
+                error!("Failed to map row to MergedRecord: {:?}. Skipping row.", e);
+            }
+        }
+    }
+    info!("Fetched {} records from sensor_data_merged for upsampling.", records.len());
+
+    // Initialize LOCF trackers
+    let mut last_known_air_temp_c: Option<f64> = None;
+    let mut last_known_relative_humidity_percent: Option<f64> = None;
+    let mut last_known_co2_measured_ppm: Option<f64> = None;
+    let mut last_known_co2_dosing_status: Option<f64> = None; // Stored as f64 (0.0/1.0)
+    let mut last_known_co2_status: Option<f64> = None;        // Stored as f64 (0.0/1.0)
+    let mut last_known_rain_status: Option<bool> = None;      // Stored as bool
+    // Add more trackers for other columns as needed
+
+    for record in records.iter_mut() {
+        // Numeric LOCF
+        if record.air_temp_c.is_some() { last_known_air_temp_c = record.air_temp_c; }
+        else { record.air_temp_c = last_known_air_temp_c; }
+
+        if record.relative_humidity_percent.is_some() { last_known_relative_humidity_percent = record.relative_humidity_percent; }
+        else { record.relative_humidity_percent = last_known_relative_humidity_percent; }
+        
+        if record.co2_measured_ppm.is_some() { last_known_co2_measured_ppm = record.co2_measured_ppm; }
+        else { record.co2_measured_ppm = last_known_co2_measured_ppm; }
+
+        // Statuses (numeric f64 for 0.0/1.0) LOCF
+        if record.co2_dosing_status.is_some() { last_known_co2_dosing_status = record.co2_dosing_status; }
+        else { record.co2_dosing_status = last_known_co2_dosing_status; }
+
+        if record.co2_status.is_some() { last_known_co2_status = record.co2_status; }
+        else { record.co2_status = last_known_co2_status; }
+
+        // Statuses (boolean) LOCF
+        if record.rain_status.is_some() { last_known_rain_status = record.rain_status; }
+        else { record.rain_status = last_known_rain_status; }
+
+        // Fill light_intensity_umol with 0.0 if None
+        if record.light_intensity_umol.is_none() {
+            record.light_intensity_umol = Some(0.0);
+        }
+    }
+    info!("LOCF and fillna(0) applied to records in memory.");
+
+    info!("Logging first 10 (or fewer) upsampled records to demonstrate effect:");
+    for (i, record) in records.iter().take(10).enumerate() {
+        info!("Upsampled Record {}: time={:?}, air_temp_c={:?}, light_intensity_umol={:?}, rain_status={:?}, co2_dosing_status={:?}",
+            i, record.time, record.air_temp_c, record.light_intensity_umol, record.rain_status, record.co2_dosing_status);
+    }
+    
+    let upsampled_csv_path = "/app/output/sensor_data_upsampled.csv";
+    info!("Attempting to write upsampled data to CSV: {}", upsampled_csv_path);
+    if let Some(parent) = std::path::Path::new(upsampled_csv_path).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            warn!("Could not create output directory for upsampled CSV: {}. Skipping CSV write.", e);
+            return Ok(()); 
+        }
+    }
+
+    match File::create(upsampled_csv_path) {
+        Ok(file) => {
+            let mut wtr = WriterBuilder::new().from_writer(file);
+            if let Err(e) = wtr.write_record(TARGET_COLUMNS.iter()) {
+                 error!("Failed to write header to upsampled CSV: {}", e);
+            }
+            for record in records.iter() {
+                // Simplified CSV row writing for demonstration
+                let mut csv_row: Vec<String> = Vec::with_capacity(TARGET_COLUMNS.len());
+                csv_row.push(record.time.map_or(String::new(), |t| t.to_rfc3339()));
+                csv_row.push(record.source_system.clone().unwrap_or_default());
+                csv_row.push(record.source_file.clone().unwrap_or_default());
+                csv_row.push(record.format_type.clone().unwrap_or_default());
+                csv_row.push(record.uuid.clone().unwrap_or_default());
+                csv_row.push(record.lamp_group.clone().unwrap_or_default());
+                csv_row.push(record.air_temp_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.air_temp_middle_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.outside_temp_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.relative_humidity_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.humidity_deficit_g_m3.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.radiation_w_m2.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.light_intensity_lux.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.light_intensity_umol.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.outside_light_w_m2.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.co2_measured_ppm.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.co2_required_ppm.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.co2_dosing_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.co2_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.rain_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vent_pos_1_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vent_pos_2_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vent_lee_afd3_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vent_wind_afd3_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vent_lee_afd4_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vent_wind_afd4_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.curtain_1_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.curtain_2_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.curtain_3_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.curtain_4_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.window_1_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.window_2_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lamp_grp1_no3_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lamp_grp2_no3_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lamp_grp3_no3_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lamp_grp4_no3_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lamp_grp1_no4_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lamp_grp2_no4_status.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.measured_status_bool.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.heating_setpoint_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.pipe_temp_1_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.pipe_temp_2_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.flow_temp_1_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.flow_temp_2_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.temperature_forecast_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.sun_radiation_forecast_w_m2.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.temperature_actual_c.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.sun_radiation_actual_w_m2.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.vpd_hpa.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.humidity_deficit_afd3_g_m3.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.relative_humidity_afd3_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.humidity_deficit_afd4_g_m3.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.relative_humidity_afd4_percent.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.behov.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.status_str.clone().unwrap_or_default());
+                csv_row.push(record.timer_on.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.timer_off.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.dli_sum.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.oenske_ekstra_lys.clone().unwrap_or_default());
+                csv_row.push(record.lampe_timer_on.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.lampe_timer_off.map_or(String::new(), |v| v.to_string()));
+                csv_row.push(record.value.map_or(String::new(), |v| v.to_string()));
+
+                 if let Err(e) = wtr.write_record(&csv_row) {
+                     error!("Failed to write record to upsampled CSV: {}", e);
+                 }
+            }
+            if let Err(e) = wtr.flush() { error!("Failed to flush upsampled CSV: {}", e); }
+            else { info!("Successfully wrote {} upsampled records to {}", records.len(), upsampled_csv_path); }
+        }
+        Err(e) => {
+            error!("Failed to create upsampled CSV file '{}': {}", upsampled_csv_path, e);
+        }
+    }
+
+    info!("Upsampling process finished.");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), PipelineError> {
     env_logger::init();
@@ -202,7 +512,7 @@ async fn main() -> Result<(), PipelineError> {
         println!("---> Loop End: Idx {} <----", config_index);
         let _ = std::io::stdout().flush();
 
-        if file_processed_successfully {
+        if file_processed_successfully && !parsed_records.is_empty() { // Added !parsed_records.is_empty()
             match insert_records(&pool, &parsed_records, &mut skipped_writer).await {
                 Ok(_inserted_count) => {
                     info!("Successfully inserted records for file: {}.", config.container_path.display());
@@ -224,38 +534,46 @@ async fn main() -> Result<(), PipelineError> {
     println!("Performing final validation checks...");
     let validation_result = validation::check_schema_and_data_integrity(&pool, "public", "sensor_data", &TARGET_COLUMNS).await;
 
-    let proceed_with_merge = match validation_result {
+    let mut proceed_with_merge = false;
+    match validation_result {
         Ok(_) => {
             println!("Final validation checks PASSED.");
-            true
+            proceed_with_merge = true;
         }
         Err(e @ PipelineError::SchemaMismatch { .. }) => {
             error!("Final validation FAILED (Schema Mismatch): {}. Merge will be skipped.", e);
-            false
         }
         Err(e @ PipelineError::DataIntegrityError { .. }) => {
             error!("Final validation FAILED (Data Integrity): {}. Merge will be skipped.", e);
-            false
         }
         Err(e) => {
             error!("Final validation FAILED (Unexpected Error): {}. Merge will be skipped.", e);
-            false
         }
     };
 
     if proceed_with_merge {
         info!("Final validation passed. Attempting to run merge script...");
         match run_merge_script(&pool).await {
-            Ok(_) => info!("Merge script executed successfully."),
+            Ok(_) => {
+                info!("Merge script executed successfully.");
+                // Upsampling step is now disabled as per user request.
+                info!("Skipping upsampling process (perform_upsampling function call disabled).");
+                /*  // Original upsampling call -  COMMENTED OUT
+                info!("Attempting to perform upsampling on merged data...");
+                if let Err(e) = perform_upsampling(&pool).await {
+                    error!("Upsampling process failed: {}", e);
+                } else {
+                    info!("Upsampling process completed (results logged/written to CSV).");
+                }
+                */
+            }
             Err(e) => {
                 error!("Failed to execute merge script: {}", e);
-                // Decide if pipeline should error out completely or just log failure
-                // For now, just log and continue to finish gracefully
             }
         }
-    }
-    else {
-        println!("Skipping database merge due to failed validation checks.");
+    } else {
+        // Ensure this log also reflects that upsampling is part of what's skipped.
+        println!("Skipping database merge (and subsequent upsampling) due to failed validation checks.");
     }
 
     println!(">>> RESTORED MAIN: Step 10 - Finished Script");
@@ -349,7 +667,7 @@ fn get_column_types() -> Vec<Type> {
         Type::TIMESTAMPTZ, Type::TEXT, Type::TEXT, Type::TEXT, Type::TEXT, Type::TEXT,
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8,
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8,
-        Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::BOOL,
+        Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::BOOL, // co2_dosing_status (idx 17), co2_status (idx 18), rain_status (idx 19)
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8,
         Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8, Type::FLOAT8,
         Type::FLOAT8, Type::FLOAT8, Type::BOOL, Type::BOOL, Type::BOOL, Type::BOOL,

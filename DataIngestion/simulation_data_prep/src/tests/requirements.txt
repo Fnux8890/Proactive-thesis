@@ -1,0 +1,5 @@
+pytest
+polars
+numpy
+pydantic
+prefect 

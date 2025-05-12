@@ -7,9 +7,9 @@ FROM python:3.10-slim AS runtime
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl \
-        libpq5 \
-        libpq-dev && \
+    curl \
+    libpq5 \
+    libpq-dev && \
     pip install --no-cache-dir uv && \
     rm -rf /var/lib/apt/lists/*
 
@@ -22,9 +22,9 @@ COPY pyproject.toml .
 
 # Install Python dependencies using uv
 RUN uv pip install --system --no-cache-dir \
-      --extra-index-url https://pypi.nvidia.com \
-      -r requirements.txt \
-      black
+    --extra-index-url https://pypi.nvidia.com \
+    -r requirements.txt \
+    black
 
 # Install the project in editable mode
 RUN uv pip install --system --no-cache-dir -e .
@@ -38,8 +38,7 @@ COPY great_expectations ./great_expectations
 COPY src/tests ./src/tests
 COPY dao/ ./dao/
 COPY transforms/ ./transforms/
-COPY loading/ ./loading/
-COPY validation/ ./validation/
+# COPY loading/ ./loading/
 
 # -----------------------------
 # Runtime env variables

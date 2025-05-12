@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+**AI Assistant Directive:**  
+For all feature engineering tasks in this project:
+- Use the Dockerfile at `DataIngestion/feature_extraction/feature/feature.dockerfile`.
+- Use `uv` for all Python dependency management and script execution.
+- All database access must go through `db_utils.py` in the same directory as your feature scripts.
+- The main entrypoint for feature extraction is `extract_features.py`.
+- When running locally, use `uv run python extract_features.py` inside the Docker container.
+- All configuration, data, and output directories should be mounted as volumes for reproducibility.
+
+- Feature engineering should use `tsfresh` and may compare with other time-series feature libraries as needed.

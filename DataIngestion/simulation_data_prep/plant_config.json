@@ -121,26 +121,6 @@
             "climate_cooler_status"
         ]
     },
-    "feature_parameters": {
-        "delta_cols": {
-            "temp_delta_in_out": [
-                "air_temp_c",
-                "temperature_actual_c"
-            ],
-            "humidity_delta_in_out": [
-                "relative_humidity_percent",
-                "relative_humidity_afd4_percent"
-            ]
-        },
-        "rate_of_change_cols": [
-            "air_temp_c",
-            "relative_humidity_percent"
-        ],
-        "rolling_average_cols": {
-            "air_temp_c": 60,
-            "relative_humidity_percent": 60
-        }
-    },
     "objective_function_parameters": {
         "energy_power_ratings_kw": {
             "heating_system_power_kw": null,
@@ -173,36 +153,27 @@
             }
         }
     },
-    "advanced_feature_parameters": {
-        "rolling_std_dev_cols": {
-            "air_temp_c": 60,
-            "relative_humidity_percent": 60
-        },
-        "lag_features": {
-            "air_temp_c": 60,
-            "relative_humidity_percent": 60
-        },
-        "distance_from_optimal_midpoint": {
-            "temperature_celsius": "air_temp_c",
-            "relative_humidity_percent": "relative_humidity_percent"
-        },
-        "in_optimal_range_flag": {
-            "temperature_celsius": "air_temp_c",
-            "relative_humidity_percent": "relative_humidity_percent"
-        },
-        "night_stress_flags": {
-            "heat_delay_onset_risk": {
-                "input_temp_col": "air_temp_c",
-                "threshold_config_key": "heat_delay_night_temp_celsius_sd",
-                "threshold_sub_key": "onset_risk"
-            }
-        }
-    },
     "lamp_groups": {
-        "lamp_grp1_no3_status": {"count": 24, "ppf_umol_s": 1100, "power_kw": 0.60},
-        "lamp_grp2_no3_status": {"count": 24, "ppf_umol_s": 1100, "power_kw": 0.60},
-        "lamp_grp1_no4_status": {"count": 18, "ppf_umol_s": 1650, "power_kw": 0.65},
-        "lamp_grp2_no4_status": {"count": 18, "ppf_umol_s": 1650, "power_kw": 0.65}
+        "lamp_grp1_no3_status": {
+            "count": 24,
+            "ppf_umol_s": 1100,
+            "power_kw": 0.60
+        },
+        "lamp_grp2_no3_status": {
+            "count": 24,
+            "ppf_umol_s": 1100,
+            "power_kw": 0.60
+        },
+        "lamp_grp1_no4_status": {
+            "count": 18,
+            "ppf_umol_s": 1650,
+            "power_kw": 0.65
+        },
+        "lamp_grp2_no4_status": {
+            "count": 18,
+            "ppf_umol_s": 1650,
+            "power_kw": 0.65
+        }
     },
     "column_uuid_mapping": {
         "air_temp_c": [
@@ -214,5 +185,6 @@
         "light_intensity_umol": [
             "5f893ebd-002c-3708-8e76-bb519336f210"
         ]
-    }
+    },
+    "data_frequency_minutes": 60
 }

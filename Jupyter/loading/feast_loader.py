@@ -75,7 +75,7 @@ def persist_features(
         except Exception as feast_e:
             logger.error(f"Feast ingestion failed: {feast_e}", exc_info=True)
             # Decide if this should raise or just warn
-            # raise  # Uncomment to fail the task on Feast error
+            raise  # Uncommented to fail the task on Feast error
     elif enable_feast_ingest and not FEAST_AVAILABLE:
         logger.warning("Feast ingestion enabled but Feast library not found. Skipping.")
     else:
