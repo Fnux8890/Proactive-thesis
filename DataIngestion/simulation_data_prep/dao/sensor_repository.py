@@ -4,11 +4,13 @@ import asyncpg
 import logging
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import pyarrow as pa
 from prefect.logging import get_run_logger
+from asyncpg.exceptions import DuplicateDatabaseError
 
-__all__ = ["SensorRepository"]
+__all__ = ["SensorRepository", "ensure_database_exists"]
 
 
 def _logger() -> logging.Logger:
@@ -59,23 +61,56 @@ class SensorRepository:
     # ------------------------------------------------------------------
 
     async def get_sensor_data(self, start: datetime, end: datetime) -> pa.Table | None:
-        """Fetch sensor rows between *start* (inclusive) and *end* (exclusive)."""
+        """Fetch sensor rows between *start* (inclusive) and *end* (exclusive) from sensor_data_merged."""
         if self._pool is None:
             raise RuntimeError("Pool not initialised – use as async context manager")
 
         SQL = (
-            "SELECT * FROM sensor_data "
-            "WHERE time >= $1 AND time < $2 ORDER BY time;"
+            'SELECT * FROM public.sensor_data_merged '
+            'WHERE "time" >= $1 AND "time" < $2 ORDER BY "time";'
         )
         log = _logger()
-        log.debug("Fetching sensor rows from %s to %s", start, end)
+        log.debug("Fetching sensor rows from public.sensor_data_merged from %s to %s", start, end)
 
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(SQL, start, end)
         if not rows:
-            log.warning("No sensor rows returned for interval.")
+            log.warning("No sensor rows returned for interval from public.sensor_data_merged.")
             return None
 
-        # Convert list<Record> → Arrow Table for zero-copy Polars import
         cols = {k: [r[k] for r in rows] for k in rows[0].keys()}
-        return pa.table(cols) 
+        return pa.table(cols)
+
+
+# --- Database Utility ---
+
+async def ensure_database_exists(db_url: str, db_name: str):
+    """Connects to the default 'postgres' database and creates the target database if it doesn't exist."""
+    log = _logger()
+    conn = None
+    try:
+        parsed_url = urlparse(db_url)
+        default_db_path = "/postgres"
+        default_db_url_parts = parsed_url._replace(path=default_db_path)
+        default_db_url = urlunparse(default_db_url_parts)
+
+        log.debug(f"Connecting to default DB URL '{default_db_url}' to check/create '{db_name}'")
+        conn = await asyncpg.connect(default_db_url)
+
+        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
+
+        if exists:
+            log.info(f"Database '{db_name}' already exists.")
+        else:
+            log.info(f"Database '{db_name}' does not exist. Attempting to create...")
+            await conn.execute(f'CREATE DATABASE "{db_name}"')
+            log.info(f"Database '{db_name}' created successfully.")
+
+    except DuplicateDatabaseError:
+        log.warning(f"Database '{db_name}' already exists (caught DuplicateDatabaseError).")
+    except Exception as e:
+        log.error(f"Failed to ensure database '{db_name}' exists: {e}", exc_info=True)
+        raise
+    finally:
+        if conn:
+            await conn.close() 

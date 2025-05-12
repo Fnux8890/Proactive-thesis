@@ -1,0 +1,14 @@
+FROM rapidsai/base:25.04-cuda12.8-py3.12
+RUN pip install --no-cache-dir uv \
+    && uv pip install --system --no-cache-dir torch==2.3.* pytorch-lightning==2.* \
+    pandas==2.* pyarrow==15.* \
+    scikit-learn==1.* matplotlib==3.* \
+    typing-extensions joblib==1.4.* \
+    mlflow-skinny
+# Create a writable /tmp/mlflow directory for potential client-side staging
+RUN mkdir -p /tmp/mlflow && chmod 777 /tmp/mlflow
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+COPY src/ ./src/
+CMD ["python", "-m", "src.training.train_surrogate"]

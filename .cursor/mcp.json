@@ -14,15 +14,15 @@
                 "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
             }
         },
-        "Pieces": {
-            "url": "http://localhost:39300/model_context_protocol/2024-11-05/sse"
+        "postgres": {
+            "command": "docker",
+            "args": [
+                "run",
+                "-i",
+                "--rm",
+                "mcp/postgres",
+                "postgresql://postgres:postgres@host.docker.internal:5432/postgres"
+            ]
         }
-    },
-    "git": {
-        "command": "git-mcp-server",
-        "args": [],
-        "env": {},
-        "disabled": false
     }
-}
 }

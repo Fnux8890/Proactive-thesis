@@ -1,0 +1,12 @@
+# RAPIDS core (Provided by base image)
+#cudf==25.04 
+#cupy-cuda12x            # CuPy built for your CUDA major version
+#dask-cuda==25.04
+
+# Feature libraries & DB access
+tsflex
+numpy
+pandas                  # still handy for final export
+pyarrow                 # Parquet write
+sqlalchemy
+psycopg2-binary

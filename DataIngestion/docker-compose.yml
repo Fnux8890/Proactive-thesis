@@ -13,6 +13,7 @@ services:
       # Mount the data directory relative to DataIngestion parent
       - ../Data:/app/data:ro
       - ./rust_pipeline/pipeline_logs:/app/logs:rw # Adjusted path
+      - ./rust_pipeline/data_pipeline/output:/app/output:rw
     depends_on:
       redis:
         condition: service_started
@@ -46,6 +47,8 @@ services:
     environment:
       POSTGRES_USER: "postgres"
       POSTGRES_PASSWORD: "postgres"
+    ports:
+      - "5432:5432"
     volumes:
       # Mount main init script first (for sensor_data table)
       - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro # Adjusted path
@@ -93,6 +96,7 @@ services:
       - PREFECT_LOGGING_LEVEL=DEBUG
       - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
       - PYTHONPATH=/app # Add project root to Python path
+      - SKIP_GE_VALIDATION=true # Skip Great Expectations validation
       # Pass through host environment variables
       # - USE_GPU=${USE_GPU:-false} # Example, passed from host
       # - PARALLEL_EXECUTION=${PARALLEL_EXECUTION:-true} # Example
@@ -146,13 +150,17 @@ services:
     build:
       context: ./simulation_data_prep # Adjusted build context
       dockerfile: mlflow.Dockerfile # Relative path from context
+    # Reverted command to use default filesystem artifact root
     command: >
-      mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow --default-artifact-root /mlflow/artifacts
+      mlflow server --host 0.0.0.0 --port 5000  --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow  --default-artifact-root /mlflow/artifacts 
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+    # Re-enabled volume mount for artifacts
     volumes:
-      - mlflow_data:/mlflow/artifacts
+      - mlflow_data:/mlflow/artifacts:rw
+    ports:
+      - "5001:5000"
     depends_on:
       db:
         condition: service_healthy
@@ -167,17 +175,22 @@ services:
     working_dir: /app # Set working directory for consistency
     env_file:
       - ./.env # Load from the same directory as this docker-compose.yml
+    # Add PYTHONPATH to help with module discovery
+    environment:
+      - PYTHONPATH=/app
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: [ "pytest", "src/tests", "--maxfail=1" ]
+    entrypoint: [ "pytest", "--maxfail=1" ]
     volumes:
-      # Mount source code needed for tests
+      # Mount source code needed for tests (read-only is fine for code)
       - ./simulation_data_prep/src:/app/src:ro
       - ./simulation_data_prep/dao:/app/dao:ro
       - ./simulation_data_prep/transforms:/app/transforms:ro
-      - ./simulation_data_prep/loading:/app/loading:ro # If needed by imports
-      - ./simulation_data_prep/validation:/app/validation:ro # If needed by imports
+      - ./simulation_data_prep/loading:/app/loading:ro
+      - ./simulation_data_prep/validation:/app/validation:ro
+      # Mount the tests directory read-write to allow log file creation
+      - ./simulation_data_prep/src/tests:/app/src/tests:rw
       # Mount config file needed by tests
       - ./simulation_data_prep/plant_config.json:/app/plant_config.json:ro
       # Mount sample data needed by tests (relative to docker-compose.yml location)
@@ -197,31 +210,137 @@ services:
       - ./.env
     environment:
       - PREFECT_API_URL=http://orion:4200/api
-    command: [ "echo", "Deployer container ready, awaiting command..." ]
+    # Restore original command 
+    command: [ "echo", "Deployer container ready, awaiting command..." ] # Was: ["sleep", "infinity"]
     volumes:
-      - ./simulation_data_prep/src:/app/src
-      - ./simulation_data_prep/dao:/app/dao
-      - ./simulation_data_prep/transforms:/app/transforms
-      - ./simulation_data_prep/loading:/app/loading
-      - ./simulation_data_prep/validation:/app/validation
-      - ./simulation_data_prep/prefect.yaml:/app/prefect.yaml # Mount the Prefect config file
-    working_dir: /app # Ensure this matches the target path, or adjust target path if WORKDIR is different
+      # Mount the entire simulation_data_prep directory
+      - ./simulation_data_prep:/app
+    working_dir: /app
+    depends_on:
+      orion:
+        condition: service_healthy
 
   model_builder:
-    image: rapidsai/base:25.04-cuda12.8-py3.12
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilites: [ gpu, utilities ]
+    build:
+      context: ./model_builder # NEW → use the Dockerfile you just wrote
+    runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility # Ensure capabilities are set here if needed by runtime
+      - GPU_TAG=gtx1660super # Example: Set the tag for the specific GPU being used
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000 # Explicitly set URI
     volumes:
-      - simulation_data_prep/output:/data:ro
+      - ./simulation_data_prep/output:/data:ro
       - ./model_builder/models:/models
-    command: [ "python", "-m", "src.train_surrogate" ]
+      - ./model_builder/model_builder_mlflow_staging:/mlflow
+    command: [ "python", "-m", "src.training.train_surrogate", "--epochs", "50", "--data-dir", "/data", "--model-dir", "/models" ]
+    depends_on:
+      mlflow-server:
+        condition: service_started # Wait for mlflow server (adjust if healthcheck added)
+      db:
+        # MLflow server itself depends on DB being healthy
+        condition: service_healthy
+    # Add the service to the user-defined network
+    networks:
+      - ingestion-net
+
+  # --- Feature Extraction Pipeline Services (Era 1 MVP) ---
+  preprocess_feat:
+    build:
+      context: ./feature_extraction/pre_process # Context is where preprocess.dockerfile and preprocess.py live
+      dockerfile: preprocess.dockerfile # Name of the Dockerfile in that context
+    container_name: preprocess_feat
+    volumes:
+      # Mount input data (read-only)
+      - ./feature_extraction/data/input:/app/data/input:ro
+      # Mount output directory for processed data (read-write)
+      - ./feature_extraction/data/processed:/app/data/output:rw
+      # Mount config directory (read-only)
+      - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
+    command: uv run python preprocess.py
+    depends_on:
+      rust_pipeline:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      # feature_analysis:
+      #   # Wait for feature_analysis to complete
+      #   condition: service_completed_successfully
+    environment:
+      - PROCESSED_ERA_IDENTIFIER=Era1
+    networks:
+      - ingestion-net
+
+  feature_extraction:
+    build:
+      context: ./feature_extraction/feature
+      dockerfile: feature.dockerfile
+    container_name: feature_extraction
+    volumes:
+      - ./feature_extraction/data/processed:/app/data/processed:ro
+      - ./feature_extraction/data/output:/app/data/output:rw
+      - ./feature_extraction/config:/app/config:ro
+    command: uv run python extract_features.py
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+    depends_on:
+      db:
+        condition: service_healthy
+      # preprocess_feat:
+      #   condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  feature_extraction_gpu:
+    build:
+      context: ./feature_extraction/feature-gpu
+      dockerfile: feature_gpu.dockerfile
+    runtime: nvidia # <-- key line to enable GPU
+    container_name: feature_extraction_gpu
+    volumes:
+      - ./feature_extraction/data/processed:/app/data/processed:ro
+      - ./feature_extraction/data/output:/app/data/output:rw
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+    depends_on:
+      db:
+        condition: service_healthy
+      preprocess_feat:
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  feature_analysis:
+    build:
+      context: ./feature_extraction # Changed context to the parent directory
+      dockerfile: ./data_analysis/analysis.dockerfile # Path to Dockerfile from new context
+    # CMD from Dockerfile will be used
+    volumes:
+      # Mount the specific input config file to a specific location in the container
+      - ./feature_extraction/data_processing_config.json:/app/input_config/data_processing_config.json:ro
+      # Mount the host output directory to a specific output location in the container
+      - ./feature_extraction/data/analysis:/app/output_data:rw
+    depends_on:
+      rust_pipeline:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=postgres
+      - PYTHONUNBUFFERED=1 # Good for seeing prints immediately
+    networks:
+      - ingestion-net
 
 # --- Volumes ---
 volumes:
@@ -231,8 +350,7 @@ volumes:
   prefect_data:
   prefect_db:
   mlflow_data:
-
-    # --- Network ---
+  model_builder_mlflow_staging: {} # --- Network ---
 networks:
   ingestion-net:
     name: ingestion-net

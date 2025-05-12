@@ -1,138 +1,132 @@
 import pandas as pd
 import logging
 from datetime import datetime
-from typing import Optional, Any
-import psycopg
-from psycopg.rows import dict_row
+from typing import Optional, List, Any
+from sqlalchemy.engine import Engine
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
 
 def retrieve_data(
-    conn: Optional[psycopg.Connection],
+    engine: Optional[Engine],
     start_time: Optional[datetime],
     end_time: Optional[datetime],
-    columns: Optional[list[str]] = None,
+    columns: Optional[List[str]] = None,
+    table_name: str = "public.sensor_data_merged"
 ) -> Optional[pd.DataFrame]:
-    """Retrieves data from the sensor_data table, optionally filtering by time.
+    """Retrieves data from the specified table, optionally filtering by time.
 
-    Connects to the database using the provided psycopg connection and fetches
-    data based on the specified time window and columns. If start_time and
-    end_time are None, retrieves all data. Converts the results fetched as
-    dictionaries into a pandas DataFrame.
+    Connects to the database using the provided SQLAlchemy engine and fetches
+    data based on the specified time window and columns.
 
     Args:
-        conn: An active psycopg database connection object.
+        engine: An active SQLAlchemy Engine object.
         start_time: The start of the time window (UTC, inclusive).
-                    If None (along with end_time=None), no lower time bound is applied.
         end_time: The end of the time window (UTC, exclusive).
-                  If None (along with start_time=None), no upper time bound is applied.
-        columns: An optional list of column names to retrieve. If None or empty,
-                 retrieves all columns ('SELECT *'). The 'time' column is always
-                 added if specific columns are requested and it's not present.
+        columns: Optional list of column names. If None, retrieves all ('*').
+                 'time' is always included if specific columns are requested.
+        table_name: The name of the table to query (defaults to sensor_data_merged).
 
     Returns:
-        Optional[pd.DataFrame]: A pandas DataFrame containing the requested data,
-            correctly indexed by 'time' (converted to datetime objects).
-            Returns an empty DataFrame if no records match the criteria.
-            Returns None if a database connection error occurs, the connection is
-            invalid, or if start_time and end_time define an invalid range.
-
-    Raises:
-        Catches psycopg.Error and general Exceptions during query execution,
-        logs them, and returns None.
+        Optional[pd.DataFrame]: DataFrame with data, indexed by 'time'.
+            Returns empty DataFrame if no records match.
+            Returns None on critical errors (e.g., invalid engine).
     """
-    if not conn or conn.closed:
-        logger.error("Database connection is not valid or closed.")
+    if engine is None:
+        logger.error("Database engine is not valid.")
         return None
 
-    # Determine selected columns
-    if not columns:
-        select_cols = "*"
-        logger.debug("No specific columns requested, selecting all columns (*).")
-    else:
-        # Ensure 'time' column is always included if specific columns are requested
-        # Make check case-insensitive and handle potential extra whitespace
+    selected_cols_str = "*"
+    if columns:
         clean_columns = [col.strip() for col in columns if col and col.strip()]
         if "time" not in [c.lower() for c in clean_columns]:
-            logger.debug("'time' column not in requested list, adding it.")
             clean_columns.insert(0, "time")
-        # Quote column names to handle potential spaces or special characters safely
-        select_cols = ", ".join([f'"{col}"' for col in clean_columns])
-        logger.debug(f"Selecting specific columns: {select_cols}")
+        selected_cols_str = ", ".join([f'"{col}"' for col in clean_columns])
+        logger.debug(f"Selecting specific columns: {selected_cols_str} from {table_name}")
+    else:
+        logger.debug(f"No specific columns requested, selecting all columns (*) from {table_name}.")
 
-    # Build the query dynamically
-    query_base = f"SELECT {select_cols} FROM sensor_data"
+    query_base = f"SELECT {selected_cols_str} FROM {table_name}"
     where_clauses = []
-    params = []
+    params = {}
 
     if start_time is not None and end_time is not None:
         if start_time >= end_time:
-             logger.error(f"Start time ({start_time}) must be before end time ({end_time}). Cannot retrieve data.")
-             return None # Return None for invalid range
-        where_clauses.append("\"time\" >= %s AND \"time\" < %s") # Quote time column
-        params.extend([start_time, end_time])
-        logger.info(f"Retrieving data from {start_time} to {end_time}")
+            logger.error(f"Start time ({start_time}) must be before end time ({end_time}). Cannot retrieve data.")
+            return pd.DataFrame()
+        where_clauses.append("\"time\" >= :start_time AND \"time\" < :end_time")
+        params["start_time"] = start_time
+        params["end_time"] = end_time
+        logger.info(f"Retrieving data from {table_name} between {start_time} and {end_time}")
     elif start_time is not None or end_time is not None:
-        # Allow filtering by only start OR end time?
-        # For now, require both or neither as per previous logic.
-        logger.warning("Both start_time and end_time must be provided for time window filtering. Retrieving all data.")
-        logger.info("Retrieving all data from the table.")
+        logger.warning(f"Partial time window specified for {table_name}. Both start and end time required for filtering. Retrieving all data.")
+        logger.info(f"Retrieving all data from {table_name}.")
     else:
-        # Both start_time and end_time are None
-        logger.info("Retrieving all data from the table.")
+        logger.info(f"Retrieving all data from {table_name}.")
 
-    # Construct the final query
     if where_clauses:
-        query = f"{query_base} WHERE {' AND '.join(where_clauses)} ORDER BY \"time\" ASC;" # Quote time
+        query_final_str = f"{query_base} WHERE {' AND '.join(where_clauses)} ORDER BY \"time\" ASC;"
     else:
-        # No WHERE clauses, fetch all data ordered by time
-        query = f"{query_base} ORDER BY \"time\" ASC;" # Quote time
+        query_final_str = f"{query_base} ORDER BY \"time\" ASC;"
 
     try:
-        logger.info(f"Executing query: {query}") # Params logging might be too verbose/sensitive
+        logger.info(f"Executing query: {query_final_str}")
+        df = pd.read_sql_query(sql=text(query_final_str), con=engine, params=params)
+        logger.info(f"Successfully fetched {len(df)} records from {table_name}.")
 
-        # Use a cursor with dict_row factory
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(query, params=params)
-            results: list[dict[str, Any]] = cur.fetchall()
-            logger.info(f"Successfully fetched {len(results)} records as dictionaries.")
+        if df.empty:
+            return pd.DataFrame(columns=columns if columns else [])
 
-            # Get column names from cursor description; needed esp. if results are empty
-            col_names = [desc[0] for desc in cur.description] if cur.description else []
+        if 'time' in df.columns:
+            try:
+                df['time'] = pd.to_datetime(df['time'], errors='coerce')
+                original_len = len(df)
+                df = df.dropna(subset=['time'])
+                if len(df) < original_len:
+                    logger.warning(f"Dropped {original_len - len(df)} rows due to unparseable 'time' values.")
+                df = df.set_index('time', drop=False)
+                df = df.sort_index()
+            except Exception as time_e:
+                logger.error(f"Error converting 'time' column or setting index: {time_e}")
+                return None
+        else:
+            logger.warning("'time' column not found in query results, cannot set DatetimeIndex.")
+        
+        return df
 
-            if not results:
-                # Return empty DataFrame with correct columns if no results
-                logger.info("Query returned no records.")
-                return pd.DataFrame([], columns=col_names)
-            else:
-                # Convert list of dictionaries to DataFrame
-                df = pd.DataFrame(results, columns=col_names) # Ensure column order matches query
-                # Ensure the 'time' column is datetime type and set as index
-                if 'time' in df.columns:
-                    try:
-                         # Use errors='coerce' to handle potential parsing issues
-                         df['time'] = pd.to_datetime(df['time'], errors='coerce')
-                         # Drop rows where time could not be parsed
-                         original_len = len(df)
-                         df = df.dropna(subset=['time']) 
-                         if len(df) < original_len:
-                             logger.warning(f"Dropped {original_len - len(df)} rows due to unparseable 'time' values.")
-                         df = df.set_index('time', drop=False) # Keep time column
-                         df = df.sort_index() # Ensure index is sorted
-                    except Exception as time_e:
-                         logger.error(f"Error converting 'time' column to datetime or setting index: {time_e}")
-                         # Decide on behavior: return None, or return df without time index?
-                         # Returning None might be safer if time index is critical downstream.
-                         return None
-                else:
-                    logger.warning("'time' column not found in query results, cannot set DatetimeIndex.")
-
-                return df
-
-    except psycopg.Error as db_e:
-        logger.error(f"Database error during data retrieval: {db_e}")
-        return None
     except Exception as e:
-        logger.exception(f"An unexpected error occurred during data retrieval: {e}")
-        return None 
+        logger.exception(f"An unexpected error occurred during data retrieval from {table_name}: {e}")
+        return None
+
+# Example of how it might be called (for testing)
+if __name__ == '__main__':
+    from .db_connector import get_db_engine, close_db_connection
+
+    logging.basicConfig(level=logging.DEBUG)
+    logger.info(f"Testing retriever.py standalone...")
+
+    print(f"Attempting to get engine via db_connector (relies on its config/env var logic)...")
+    test_engine = None
+    try:
+        test_engine = get_db_engine()
+
+        if test_engine:
+            logger.info("Engine obtained. Testing data retrieval...")
+            
+            start_date_test = datetime(2014, 1, 1, 0, 0, 0)
+            end_date_test = datetime(2014, 1, 2, 0, 0, 0)
+            df_test1 = retrieve_data(test_engine, start_date_test, end_date_test)
+            if df_test1 is not None:
+                print(f"\nTest 1: Retrieved {len(df_test1)} rows from {start_date_test} to {end_date_test}.")
+                print(df_test1.head())
+
+        else:
+            logger.error("Failed to obtain database engine for testing.")
+
+    except Exception as e_main:
+        logger.exception(f"Error in retriever.py __main__ block: {e_main}")
+    finally:
+        if test_engine:
+            test_engine.dispose()
+            logger.info("Test engine disposed.") 

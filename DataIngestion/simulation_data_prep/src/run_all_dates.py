@@ -3,7 +3,8 @@
 import os
 import asyncio
 import logging
-from datetime import date, timedelta, datetime # Added datetime
+import argparse # <-- Import argparse
+from datetime import date, timedelta, datetime
 
 import psycopg
 from psycopg.rows import tuple_row
@@ -128,27 +129,49 @@ async def submit_daily_flow_runs(start_date: date, end_date: date, deployment_na
 
 # --- Script Entry Point --- #
 if __name__ == "__main__":
-    # --- Get Date Range from DB (Original Logic) ---
-    # 1. Get Database Connection
-    db_conn = get_db_connection_sync()
-    if not db_conn:
-        exit(1)
-    #
-    # 2. Find Date Range
-    min_sensor_date, max_sensor_date = get_date_range(db_conn)
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(description="Trigger Prefect flow runs for a date range or a single date.")
+    parser.add_argument(
+        "--date",
+        type=str,
+        help="Optional: Specific date to run for (YYYY-MM-DD). Overrides DB range lookup."
+    )
+    args = parser.parse_args()
+
+    min_sensor_date = None
+    max_sensor_date = None
+
+    if args.date:
+        # --- Use Specific Date from Argument ---
+        try:
+            parsed_date = datetime.strptime(args.date, "%Y-%m-%d").date()
+            min_sensor_date = parsed_date
+            max_sensor_date = parsed_date
+            logger.info(f"Processing single date specified via argument: {args.date}")
+        except ValueError:
+            logger.error(f"Invalid date format for --date argument: '{args.date}'. Please use YYYY-MM-DD.")
+            exit(1)
+    else:
+        # --- Get Date Range from DB (Original Logic) ---
+        logger.info("No specific date provided, determining date range from database...")
+        db_conn = get_db_connection_sync()
+        if not db_conn:
+            exit(1)
+        min_sensor_date, max_sensor_date = get_date_range(db_conn) # db connection closed inside function
+
+    # --- Proceed if we have a valid date range/single date ---
     if not min_sensor_date or not max_sensor_date:
-        logger.error("Exiting: Could not determine date range.")
+        logger.error("Exiting: Could not determine date range or parse provided date.")
         exit(1)
 
-    # --- Hardcoded Date Range for Testing (COMMENTED OUT) ---
+    # --- Hardcoded Date Range for Testing (Keep commented out or remove) ---
     # min_sensor_date = date(2013, 12, 21) # Use earliest date
     # max_sensor_date = date(2013, 12, 23) # Limit to three days
     # logger.info(f"Using hardcoded date range for testing: {min_sensor_date} to {max_sensor_date}")
     # --- End Hardcoded Date Range ---
 
     # 3. Define Target Deployment
-    #    *** IMPORTANT: VERIFY AND ADJUST THIS NAME ***
-    target_deployment_name = "main-feature-flow/feature-etl-deployment" # Default - ADJUST IF NEEDED
+    target_deployment_name = "main-feature-flow/feature-etl-deployment"
 
     # 4. Trigger Flow Runs Asynchronously
     logger.info(f"Starting submission loop for dates {min_sensor_date} to {max_sensor_date}")
@@ -161,5 +184,5 @@ if __name__ == "__main__":
              loop = asyncio.get_event_loop()
              loop.run_until_complete(submit_daily_flow_runs(min_sensor_date, max_sensor_date, target_deployment_name))
         else:
-             raise e # Re-raise other RuntimeError
+             raise e
     logger.info("Finished submitting all flow runs.") 
