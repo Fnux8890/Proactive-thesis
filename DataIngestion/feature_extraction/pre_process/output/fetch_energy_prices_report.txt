@@ -1,0 +1,43 @@
+--- Script Start Time ---
+2025-05-13T12:23:05.111648+00:00
+
+--- Fetching Parameters ---
+Price Areas: DK1, DK2
+Start Date: 2013-11-01
+End Date: 2016-10-31
+Dataset: Elspotprices
+
+--- Table Drop Status ---
+Success or Did Not Exist
+
+--- Table Creation Status ---
+Success
+
+--- Fetched Records Count ---
+52554
+
+--- Data Save to DB Status ---
+Success
+
+--- Sample of Fetched Data (Head) ---
+                    HourUTC PriceArea  SpotPriceDKK
+0 2013-10-31 22:00:00+00:00       DK1    221.220001
+1 2013-10-31 22:00:00+00:00       DK2    221.220001
+2 2013-10-31 23:00:00+00:00       DK1    208.539993
+3 2013-10-31 23:00:00+00:00       DK2    208.539993
+4 2013-11-01 00:00:00+00:00       DK1    186.240005
+
+--- Basic Stats of Fetched Data (Describe) ---
+       SpotPriceDKK
+count  52554.000000
+mean     206.248332
+std       85.180379
+min     -462.839996
+25%      161.682495
+50%      202.455002
+75%      244.619995
+max     1598.839966
+
+--- Script End Time ---
+2025-05-13T12:23:11.967960+00:00
+

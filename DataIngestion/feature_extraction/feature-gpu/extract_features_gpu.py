@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import cudf                          # GPU DataFrame
-import cupy as cp
+# import cupy as cp # This also appears unused
 import numpy as np
-from tsflex.features import FeatureCollection, MultipleFeatureDescriptors
-from tsflex.processing import DataFrameFunctionExtraction
-from tsflex.helpers import get_window_centers
+# from tsflex.features import FeatureCollection, MultipleFeatureDescriptors # Removing unused import
+# from tsflex.features import FeatureExtractor  # Removing unused import
+# from tsflex.helpers import get_window_centers # Removing unused import
 import pandas as pd
 from db_utils import SQLAlchemyPostgresConnector
 
@@ -54,8 +54,8 @@ def fetch_to_cudf() -> cudf.DataFrame:
     if pdf.empty:
         raise RuntimeError("Empty fetch")
 
-    # explode JSONB → columns
-    feat_pdf = pd.json_normalize(pdf["features"].apply(json.loads))
+    # explode JSONB → columns (pdf["features"] is already a Series of dicts)
+    feat_pdf = pd.json_normalize(pdf["features"])
     full_pdf = pd.concat([pdf[["time", "era_identifier"]], feat_pdf], axis=1)
     logging.info("Loaded %s rows, %s columns", *full_pdf.shape)
 
@@ -78,7 +78,6 @@ def compute_rolling_features(cdf: cudf.DataFrame, sensor_cols: list[str]) -> cud
 
     base_freq_min = infer_base_freq(cdf)
 
-    # Mapping window label → window size in rows
     window_map = {
         "30m": max(1, 30 // base_freq_min),
         "2h": max(1, 120 // base_freq_min),
@@ -86,37 +85,64 @@ def compute_rolling_features(cdf: cudf.DataFrame, sensor_cols: list[str]) -> cud
 
     stride_rows = max(1, 15 // base_freq_min)  # 15-minute stride
 
-    feat_frames = []
+    # Initialize the final DataFrame with the original DatetimeIndex, strided
+    # This ensures the index is consistently datetime for all merges.
+    all_times_strided = cdf.index[::stride_rows]
+    merged_features_df = cudf.DataFrame(index=all_times_strided)
+    # Create the 'time' column directly from the DatetimeIndex values
+    # The new Series will naturally align with merged_features_df's index
+    merged_features_df["time"] = merged_features_df.index.to_arrow().to_pylist() # Or simply merged_features_df.index.values for a CuPy array if direct assignment works
 
     for label, win in window_map.items():
         logging.info("Computing rolling stats for window %s (%s rows)…", label, win)
 
-        roll_df = cudf.DataFrame()
-        roll_df["time"] = cdf.index
-
+        # Calculate features on the original cdf which has a DatetimeIndex
         for col in sensor_cols:
-            s = cdf[col]
+            s = cdf[col] # cdf has DatetimeIndex
             roll_mean = s.rolling(window=win, min_periods=1).mean()
             roll_std = s.rolling(window=win, min_periods=1).std()
             roll_min = s.rolling(window=win, min_periods=1).min()
             roll_max = s.rolling(window=win, min_periods=1).max()
 
-            roll_df[f"{col}_mean_{label}"] = roll_mean
-            roll_df[f"{col}_std_{label}"] = roll_std
-            roll_df[f"{col}_min_{label}"] = roll_min
-            roll_df[f"{col}_max_{label}"] = roll_max
+            # Create a temporary DataFrame for these new features, strided
+            # Its index will match the original cdf's index initially
+            temp_feature_df = cudf.DataFrame(index=cdf.index)
+            temp_feature_df[f"{col}_mean_{label}"] = roll_mean
+            temp_feature_df[f"{col}_std_{label}"] = roll_std
+            temp_feature_df[f"{col}_min_{label}"] = roll_min
+            temp_feature_df[f"{col}_max_{label}"] = roll_max
 
-        # stride sampling
-        roll_df = roll_df.iloc[::stride_rows]
-        feat_frames.append(roll_df.reset_index(drop=True))
+            # Apply stride and ensure it aligns with merged_features_df's index
+            temp_feature_df_strided = temp_feature_df.iloc[::stride_rows]
+            
+            # Merge into the main DataFrame using their common DatetimeIndex
+            # Use suffixes to avoid column name collisions if features are re-calculated with same name (though unlikely here)
+            merged_features_df = merged_features_df.merge(
+                temp_feature_df_strided, 
+                left_index=True, 
+                right_index=True, 
+                how="outer",
+                suffixes=("", f"_dup_{col}_{label}") # Add suffix for safety, though ideally not needed
+            )
 
-    # Concatenate on rows then drop duplicate time columns by merge on time
-    merged = feat_frames[0]
-    for frame in feat_frames[1:]:
-        merged = merged.merge(frame, on="time", how="outer")
+    # The "time" column might be duplicated if any merge added it back despite left_index=True, right_index=True
+    # Let's ensure only one 'time' column from the index remains if needed as a column.
+    # If "time" column is not part of merged_features_df.columns from the merge, this won't error.
+    # Best to reset index to make 'time' a column, then drop duplicates, then sort.
+    
+    merged_features_df = merged_features_df.reset_index() # 'time' (original index name) becomes a column
+    
+    # If merges created duplicate 'time' columns (e.g. time_x, time_y), handle them.
+    # However, with index-based merge, this should be less of an issue.
+    # The main 'time' column is from reset_index().
+    # Drop other columns that might be named 'time_x' or 'time_y' if they were created.
+    cols_to_drop = [c for c in merged_features_df.columns if c.startswith('time_') and c != 'time']
+    if cols_to_drop:
+        merged_features_df = merged_features_df.drop(columns=cols_to_drop)
 
-    merged = merged.sort_values("time").reset_index(drop=True)
-    return merged
+    # Ensure it's sorted by time and has a clean default RangeIndex for final output
+    merged_features_df = merged_features_df.sort_values("time").reset_index(drop=True)
+    return merged_features_df
 
 
 def main() -> None:

@@ -1,3 +1,8 @@
+#!/usr/bin/env -S uv run --isolated
+# /// script
+# dependencies = ["pandas", "psycopg2-binary", "SQLAlchemy", "pyarrow", "fastparquet", "scikit-learn", "joblib"] # Corrected: only external packages
+# ///
+
 import pandas as pd
 import json
 import os
@@ -10,6 +15,8 @@ import joblib # For saving scalers
 from typing import Any, Tuple, Dict, List # Added Tuple, Dict, List
 from sqlalchemy import text
 from sqlalchemy import create_engine
+import re
+import numpy as np
 
 # Define paths (these will correspond to paths inside the Docker container)
 CONFIG_PATH = os.getenv('APP_CONFIG_PATH', '/app/config/data_processing_config.json')
@@ -166,6 +173,31 @@ def sort_and_prepare_df(df: pd.DataFrame, config: Dict[str, Any], era_identifier
                     print(f"  Warning: Column '{col}' intended for bool->int conversion has unhandled dtype: {df[col].dtype}. Skipping conversion for this column.")
             else:
                 print(f"  Warning: Column '{col}' for bool->int conversion not found in DataFrame.")
+    
+    # --- Specific handling for co2_status --- START ---
+    if 'co2_status' in df.columns:
+        print(f"(Era: {era_identifier}) Applying specific mapping for 'co2_status' column.")
+        # Define a mapping: 0 maps to 0 (OFF/inactive)
+        # Positive values (0.1 to 1.0) map to 1 (ON/active)
+        # Large negative values (errors) and unmapped fractional values map to NaN to be imputed
+        # NaNs will remain NaNs to be imputed by subsequent steps
+        
+        conditions = [
+            df['co2_status'] == 0.0,
+            (df['co2_status'] > 0) & (df['co2_status'] <= 1.0), # Assumes positive fractions up to 1 are ON
+            (df['co2_status'] < 0) # Negative values are errors
+        ]
+        choices = [
+            0,    # OFF
+            1,    # ON
+            np.nan # Error state, to be imputed (np.nan is float compatible)
+        ]
+        
+        # default=np.nan will handle any other original values not covered by conditions
+        df['co2_status'] = pd.Series(np.select(conditions, choices, default=np.nan), index=df.index).astype(float).astype(pd.Int64Dtype())
+        print(f"  'co2_status' mapped. Non-NaN value counts after mapping:\n{df['co2_status'].value_counts(dropna=False)}")
+    # --- Specific handling for co2_status --- END ---
+    
     return df
 
 def save_data(df: pd.DataFrame, path: Path): # Ensure path is Path object
@@ -217,26 +249,41 @@ def resample_data_for_era(df: pd.DataFrame, era_identifier: str, era_config: dic
         print(f"(Era: {era_identifier}) No target_frequency defined. Skipping resampling.")
         return df
 
-    if time_col not in df.columns:
-        print(f"(Era: {era_identifier}) Time column '{time_col}' not found. Cannot resample.")
-        return df # Or raise error
-    if not pd.api.types.is_datetime64_any_dtype(df[time_col]):
-        print(f"(Era: {era_identifier}) Time column '{time_col}' is not datetime. Cannot resample.")
-        return df
-
     print(f"\n--- Resampling Data for Era: {era_identifier} to frequency: {target_freq} ---")
     
-    # Ensure time column is the index
-    if df.index.name != time_col:
-        print(f"Setting '{time_col}' as index for resampling...")
-        df = df.set_index(time_col)
-    elif not isinstance(df.index, pd.DatetimeIndex):
-         print(f"Index is '{time_col}' but not DatetimeIndex. Converting...")
-         df.index = pd.to_datetime(df.index, utc=True)
+    current_df = df.copy() # Work on a copy
+
+    # Check if time_col is the index and is a DatetimeIndex
+    if isinstance(current_df.index, pd.DatetimeIndex) and current_df.index.name == time_col:
+        print(f"  Data already has '{time_col}' as DatetimeIndex.")
+    # Check if time_col is a column and needs to be set as index
+    elif time_col in current_df.columns:
+        if not pd.api.types.is_datetime64_any_dtype(current_df[time_col]):
+            print(f"  (Era: {era_identifier}) Time column '{time_col}' is not datetime. Attempting conversion.")
+            current_df[time_col] = pd.to_datetime(current_df[time_col], errors='coerce', utc=True)
+            current_df.dropna(subset=[time_col], inplace=True) # Drop if conversion failed
+            if current_df.empty:
+                print(f"  (Era: {era_identifier}) DataFrame became empty after failed time conversion for '{time_col}'. Cannot resample.")
+                return current_df
+
+        print(f"  Setting '{time_col}' as index for resampling...")
+        current_df = current_df.set_index(time_col)
+        if not isinstance(current_df.index, pd.DatetimeIndex):
+             # This case should ideally not be hit if previous conversions worked
+             print(f"  Warning: Index is '{time_col}' but not DatetimeIndex after set_index. Attempting final conversion.")
+             current_df.index = pd.to_datetime(current_df.index, utc=True)
+    else:
+        print(f"  Error (Era: {era_identifier}): Time column '{time_col}' not found as column or index. Cannot resample.")
+        return df # Return original df
+
+    # At this point, current_df should have a DatetimeIndex named as time_col
+    if not isinstance(current_df.index, pd.DatetimeIndex):
+        print(f"  Error (Era: {era_identifier}): Index is not DatetimeIndex before resample call. Resampling may fail or be incorrect.")
+        return df # Return original df
 
     try:
-        df_resampled = df.resample(target_freq).asfreq()
-        print(f"Resampling complete. Shape before: {df.shape}, Shape after: {df_resampled.shape}")
+        df_resampled = current_df.resample(target_freq).asfreq()
+        print(f"Resampling complete. Shape before: {current_df.shape}, Shape after: {df_resampled.shape}")
         if not df_resampled.empty:
             print(f"Data range after resampling: {df_resampled.index.min()} to {df_resampled.index.max()}")
         else:
@@ -244,7 +291,12 @@ def resample_data_for_era(df: pd.DataFrame, era_identifier: str, era_config: dic
         return df_resampled
     except Exception as e:
         print(f"Error during resampling for Era '{era_identifier}': {e}")
-        return df.reset_index() # Return original with reset index on error
+        # If an error occurs, return the DataFrame with its index reset if it was set from a column
+        # If it was already indexed by time_col, it might be better to return it as is, or with reset.
+        # For safety, reset if time_col was originally a column and got set as index in this function.
+        if time_col in df.columns: # Check original df passed to function
+            return df
+        return current_df.reset_index() # If index was set from column within this func, reset it
 
 def scale_data_for_era(df: pd.DataFrame, era_identifier: str, era_config: Dict[str, Any], global_config: Dict[str, Any], fit_scalers: bool = True, existing_scalers: Dict[str, MinMaxScaler] = None) -> Tuple[pd.DataFrame, Dict[str, MinMaxScaler]]:
     """Scales numerical data for the given era and saves/loads scalers."""
@@ -336,7 +388,6 @@ def run_sql_script(engine, script_path: Path) -> bool:
             sql = f.read()
             
         # Split on semicolons but respect those within quotes/comments
-        import re
         statements = []
         current_statement = ""
         for line in sql.splitlines():
@@ -467,6 +518,100 @@ def save_to_timescaledb(df: pd.DataFrame, era_identifier: str, engine, time_col:
         print(f"Error saving data to TimescaleDB for era '{era_identifier}': {e}")
         return False
 
+def fetch_and_prepare_external_weather_for_era(era_start_date_str: str, era_end_date_str: str, target_frequency: str, time_col_name: str, engine) -> pd.DataFrame:
+    """Fetches weather data from public.external_weather_aarhus, sets DatetimeIndex, and resamples."""
+    print(f"  Fetching external weather data for range: {era_start_date_str} to {era_end_date_str}")
+    
+    query = f"""
+    SELECT *
+    FROM public.external_weather_aarhus
+    WHERE time >= :start_date AND time <= :end_date
+    ORDER BY time ASC;
+    """
+    params = {'start_date': era_start_date_str, 'end_date': era_end_date_str}
+    
+    try:
+        from sqlalchemy import text as sql_text # Local import for clarity
+        weather_df = pd.read_sql_query(sql=sql_text(query).bindparams(**params), con=engine)
+        print(f"  Successfully fetched {len(weather_df)} raw external weather records.")
+
+        if weather_df.empty:
+            return pd.DataFrame()
+
+        if time_col_name not in weather_df.columns:
+            print(f"  Error: Time column '{time_col_name}' not found in external weather data.")
+            return pd.DataFrame()
+        
+        weather_df[time_col_name] = pd.to_datetime(weather_df[time_col_name], utc=True)
+        weather_df = weather_df.set_index(time_col_name)
+        
+        if not weather_df.index.is_unique:
+            print(f"  Warning: Duplicate timestamps found in external weather data. Keeping first occurrence.")
+            weather_df = weather_df[~weather_df.index.duplicated(keep='first')]
+
+        print(f"  Resampling external weather data to target frequency: {target_frequency}")
+        weather_df_resampled = weather_df.resample(target_frequency).ffill() # Forward fill hourly data to target freq
+        print(f"  Resampled external weather data shape: {weather_df_resampled.shape}")
+        return weather_df_resampled
+        
+    except Exception as e:
+        print(f"  Error fetching or preparing external weather data: {e}")
+        return pd.DataFrame()
+
+def fetch_and_prepare_energy_prices_for_era(era_start_date_str: str, era_end_date_str: str, target_frequency: str, common_config: Dict[str, Any], engine) -> pd.DataFrame:
+    """Fetches energy prices from the database, filters by area, sets DatetimeIndex, and resamples."""
+    
+    energy_db_table = common_config.get("energy_db_table", "public.external_energy_prices_dk")
+    energy_time_col = common_config.get("energy_time_col", "HourUTC")
+    energy_price_area_col = common_config.get("energy_price_area_col", "PriceArea")
+    energy_spot_price_col = common_config.get("energy_spot_price_col", "SpotPriceDKK")
+    target_price_area = common_config.get("target_price_area", "DK1") # e.g., DK1
+    # Define a standard output column name for the spot price after processing
+    output_spot_price_col_name = "spot_price_dkk_mwh" 
+
+    print(f"  Fetching external energy prices for range: {era_start_date_str} to {era_end_date_str} for area {target_price_area}")
+    
+    query = f"""
+    SELECT "{energy_time_col}" AS time, "{energy_spot_price_col}" AS {output_spot_price_col_name}
+    FROM {energy_db_table}
+    WHERE "{energy_time_col}" >= :start_date AND "{energy_time_col}" <= :end_date
+    AND "{energy_price_area_col}" = :price_area
+    ORDER BY "{energy_time_col}" ASC;
+    """
+    params = {
+        'start_date': era_start_date_str, 
+        'end_date': era_end_date_str,
+        'price_area': target_price_area
+    }
+    
+    try:
+        from sqlalchemy import text as sql_text
+        energy_df = pd.read_sql_query(sql=sql_text(query).bindparams(**params), con=engine)
+        print(f"  Successfully fetched {len(energy_df)} raw external energy price records for {target_price_area}.")
+
+        if energy_df.empty:
+            return pd.DataFrame()
+
+        if 'time' not in energy_df.columns: # 'time' is used due to AS in query
+            print(f"  Error: Standardized time column 'time' not found in fetched energy prices.")
+            return pd.DataFrame()
+        
+        energy_df['time'] = pd.to_datetime(energy_df['time'], utc=True)
+        energy_df = energy_df.set_index('time')
+        
+        if not energy_df.index.is_unique:
+            print(f"  Warning: Duplicate timestamps found in external energy prices for {target_price_area}. Keeping first occurrence.")
+            energy_df = energy_df[~energy_df.index.duplicated(keep='first')]
+
+        print(f"  Resampling energy prices to target frequency: {target_frequency}")
+        energy_df_resampled = energy_df.resample(target_frequency).ffill() # Forward fill hourly prices
+        print(f"  Resampled energy prices shape: {energy_df_resampled.shape}")
+        return energy_df_resampled
+        
+    except Exception as e:
+        print(f"  Error fetching or preparing external energy prices: {e}")
+        return pd.DataFrame()
+
 if __name__ == "__main__":
     print("--- Starting Preprocessing Stage --- ")
     OUTPUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -532,92 +677,184 @@ if __name__ == "__main__":
     for era_id in eras_to_run_keys:
         era_conf_details = eras_to_process_config[era_id]
         print(f"\n===== PROCESSING ERA: {era_id} =====")
-        current_era_summary_items = [] # Summary items specific to this era
+        current_era_summary_items = [] 
         current_era_summary_items.append(("Era Identifier", era_id))
         current_era_summary_items.append(("Era Configuration", json.dumps(era_conf_details, indent=4)))
         
-        # Pass the engine to fetch_source_data
         source_df = fetch_source_data(era_identifier=era_id, era_config=era_conf_details, global_config=app_config, engine=engine)
-        current_era_summary_items.append((f"Era {era_id} - Initial Data Shape", source_df.shape))
+        current_era_summary_items.append((f"Era {era_id} - Initial Greenhouse Data Shape", source_df.shape))
         if source_df.empty:
-            print(f"No data fetched for Era '{era_id}'. Skipping further processing for this era.")
+            print(f"No greenhouse data fetched for Era '{era_id}'. Skipping further processing for this era.")
             generate_summary_report(current_era_summary_items, OUTPUT_DATA_DIR, SUMMARY_REPORT_FILENAME_TEMPLATE.format(era_identifier=era_id))
             continue
 
         prepared_df = sort_and_prepare_df(source_df, app_config, era_identifier=era_id)
-        current_era_summary_items.append((f"Era {era_id} - Shape After Sorting, ID & Type Prep", prepared_df.shape))
+        current_era_summary_items.append((f"Era {era_id} - Shape After Sorting Greenhouse Data", prepared_df.shape))
         if prepared_df.empty: 
-            print(f"Data became empty after sorting/ID prep for Era '{era_id}'. Skipping.")
+            print(f"Greenhouse data became empty after sorting/ID prep for Era '{era_id}'. Skipping.")
             generate_summary_report(current_era_summary_items, OUTPUT_DATA_DIR, SUMMARY_REPORT_FILENAME_TEMPLATE.format(era_identifier=era_id))
             continue
 
-        # --- Resampling --- 
-        df_resampled = resample_data_for_era(prepared_df, era_id, era_conf_details, app_config.get('common_settings',{}))
-        current_era_summary_items.append((f"Era {era_id} - Shape After Resampling to {era_conf_details.get('target_frequency')}", df_resampled.shape))
+        # --- Fetch and Merge External Weather Data --- START ---
+        time_col_name_common = app_config.get('common_settings',{}).get('time_col', 'time')
+        target_freq_common = era_conf_details.get('target_frequency', '5T') # Use target_frequency from era_config
+        
+        external_weather_df = pd.DataFrame() # Initialize as empty
+        if engine: # Only try if DB engine is available
+            external_weather_df = fetch_and_prepare_external_weather_for_era(
+                era_start_date_str=era_conf_details.get("start_date"),
+                era_end_date_str=era_conf_details.get("end_date"),
+                target_frequency=target_freq_common,
+                time_col_name=time_col_name_common, # Assuming same 'time' column name
+                engine=engine
+            )
+        current_era_summary_items.append((f"Era {era_id} - Fetched External Weather Data Shape (resampled to {target_freq_common})", external_weather_df.shape))
+
+        df_merged_with_weather = prepared_df # Start with prepared greenhouse data
+        if not external_weather_df.empty:
+            print(f"  Merging greenhouse data with external weather data for Era '{era_id}'...")
+            # Ensure prepared_df has DatetimeIndex for merge
+            if prepared_df.index.name != time_col_name_common or not isinstance(prepared_df.index, pd.DatetimeIndex):
+                if time_col_name_common in prepared_df.columns:
+                    prepared_df = prepared_df.set_index(time_col_name_common)
+                    if not isinstance(prepared_df.index, pd.DatetimeIndex): # If it was object type after set_index
+                        prepared_df.index = pd.to_datetime(prepared_df.index, utc=True)
+                else:
+                    print(f"  Warning: Time column '{time_col_name_common}' not in prepared_df for index setting before weather merge.")
+            
+            # External weather df should already have DatetimeIndex from fetch_and_prepare_external_weather_for_era
+            df_merged_with_weather = pd.merge(
+                prepared_df, 
+                external_weather_df, 
+                left_index=True, 
+                right_index=True, 
+                how='left' # Keep all greenhouse data, add weather where available
+            )
+            current_era_summary_items.append((f"Era {era_id} - Shape After Merging with Weather Data", df_merged_with_weather.shape))
+            print(f"  Shape after merging with weather: {df_merged_with_weather.shape}")
+        else:
+            print(f"  No external weather data fetched or prepared for Era '{era_id}'. Proceeding with greenhouse data only.")
+        # --- Fetch and Merge External Weather Data --- END ---
+
+        # --- Fetch and Merge External Energy Prices --- START ---
+        common_settings = app_config.get('common_settings', {})
+        target_freq_for_era = era_conf_details.get('target_frequency', '5T')
+
+        external_energy_df = pd.DataFrame()
+        if engine and common_settings.get("energy_db_table"): # Check if configured
+            external_energy_df = fetch_and_prepare_energy_prices_for_era(
+                era_start_date_str=era_conf_details.get("start_date"),
+                era_end_date_str=era_conf_details.get("end_date"),
+                target_frequency=target_freq_for_era,
+                common_config=common_settings,
+                engine=engine
+            )
+        current_era_summary_items.append((f"Era {era_id} - Fetched External Energy Prices Shape (resampled to {target_freq_for_era})", external_energy_df.shape))
+        
+        df_final_merged = df_merged_with_weather # Start with the df that has greenhouse + weather data
+        if not external_energy_df.empty:
+            print(f"  Merging with external energy prices for Era '{era_id}'...")
+            df_final_merged = pd.merge(
+                df_merged_with_weather, 
+                external_energy_df, 
+                left_index=True, 
+                right_index=True, 
+                how='left'
+            )
+            current_era_summary_items.append((f"Era {era_id} - Shape After Merging Energy Prices", df_final_merged.shape))
+            print(f"  Shape after merging energy prices: {df_final_merged.shape}")
+        else:
+            print(f"  No external energy price data fetched or prepared for Era '{era_id}'.")
+        # --- Fetch and Merge External Energy Prices --- END ---
+
+        # Resample the combined DataFrame (this will mainly regularize the index if already at target_freq)
+        df_resampled = resample_data_for_era(df_final_merged, era_id, era_conf_details, app_config.get('common_settings',{}))
+        current_era_summary_items.append((f"Era {era_id} - Shape After Resampling ALL Combined Data to {era_conf_details.get('target_frequency')}", df_resampled.shape))
         if df_resampled.empty:
-            print(f"Data became empty after resampling for Era '{era_id}'. Skipping.")
+            print(f"Data became empty after resampling combined data for Era '{era_id}'. Skipping.")
             generate_summary_report(current_era_summary_items, OUTPUT_DATA_DIR, SUMMARY_REPORT_FILENAME_TEMPLATE.format(era_identifier=era_id))
             continue
 
-        # Get specific preprocessing rules for the era
+        # Outlier handling, Segmentation, Imputation, Lamp Feature Calc, Scaling will now operate on df_resampled (which includes weather columns)
         era_outlier_rules_ref = era_conf_details.get('outlier_rules_ref', 'default_outlier_rules')
         outlier_rules = app_config.get('preprocessing_rules', {}).get(era_outlier_rules_ref, [])
         outlier_handler = OutlierHandler(outlier_rules)
-        df_after_outliers = outlier_handler.clip_outliers(df_resampled) # Apply to resampled data
-        current_era_summary_items.append((f"Era {era_id} - Shape After Outlier Clipping", df_after_outliers.shape))
+        df_after_outliers = outlier_handler.clip_outliers(df_resampled) 
+        current_era_summary_items.append((f"Era {era_id} - Shape After Outlier Clipping on Combined Data", df_after_outliers.shape))
 
-        # Segmentation (operates on resampled, outlier-handled data)
-        segmentation_config_base = app_config.get('segmentation', { 'min_gap_hours': 24 })
-        segmentation_config_actual = segmentation_config_base.copy() # Avoid modifying global config
-        if 'time_col' not in segmentation_config_actual:
-             segmentation_config_actual['time_col'] = app_config.get('common_settings',{}).get('time_col', 'timestamp')
-        # Pass era_conf_details if DataSegmenter needs more era-specific segmentation params
         segmenter = DataSegmenter(era_conf_details, common_config=app_config.get('common_settings',{}))
         data_segments = segmenter.segment_by_availability(df_after_outliers)
-        current_era_summary_items.append((f"Era {era_id} - Number of Segments Found", len(data_segments)))
+        current_era_summary_items.append((f"Era {era_id} - Number of Segments Found in Combined Data", len(data_segments)))
 
         if not data_segments:
-            print(f"No data segments found for Era '{era_id}' after segmentation. Skipping saving.")
+            print(f"No data segments found for Era '{era_id}' after segmentation of combined data. Skipping saving.")
             generate_summary_report(current_era_summary_items, OUTPUT_DATA_DIR, SUMMARY_REPORT_FILENAME_TEMPLATE.format(era_identifier=era_id))
             continue
-
+        
         processed_segment_paths_era = []
         for i, segment_df_original in enumerate(data_segments):
-            segment_label = f"Era {era_id} - Segment {i+1}/{len(data_segments)}"
+            segment_label = f"Era {era_id} - Segment {i+1}/{len(data_segments)} (Combined Data)"
             current_era_summary_items.append((f"{segment_label} - Initial Shape", segment_df_original.shape))
             if segment_df_original.empty: continue
 
-            # Imputation per segment
             era_imputation_rules_ref = era_conf_details.get('imputation_rules_ref', 'default_imputation_rules')
             imputation_rules = app_config.get('preprocessing_rules', {}).get(era_imputation_rules_ref, [])
             imputation_handler = ImputationHandler(imputation_rules)
             df_after_imputation = imputation_handler.impute_data(segment_df_original)
             current_era_summary_items.append((f"{segment_label} - Shape After Imputation", df_after_imputation.shape))
+            
+            # Lamp feature calculation (as implemented before)
+            if not df_after_imputation.empty and isinstance(df_after_imputation.index, pd.DatetimeIndex):
+                all_possible_lamp_cols = [
+                    "lamp_grp1_no3_status", "lamp_grp1_no4_status",
+                    "lamp_grp2_no3_status", "lamp_grp2_no4_status",
+                    "lamp_grp3_no3_status", "lamp_grp4_no3_status"
+                ]
+                active_lamp_cols_for_segment = [
+                    col for col in all_possible_lamp_cols if col in df_after_imputation.columns
+                ]
+                target_frequency_str_lamp = era_conf_details.get('target_frequency', '5T') 
+                interval_minutes_lamp = None
+                try:
+                    parsed_offset_lamp = pd.tseries.frequencies.to_offset(target_frequency_str_lamp)
+                    if parsed_offset_lamp:
+                        interval_minutes_lamp = parsed_offset_lamp.n * parsed_offset_lamp.kwds.get('minutes', 0)
+                        if interval_minutes_lamp == 0: interval_minutes_lamp = parsed_offset_lamp.n * parsed_offset_lamp.kwds.get('hours', 0) * 60
+                        if interval_minutes_lamp == 0: 
+                            if 'T' in parsed_offset_lamp.name.upper() or 'MIN' in parsed_offset_lamp.name.upper(): interval_minutes_lamp = parsed_offset_lamp.n
+                            elif 'H' in parsed_offset_lamp.name.upper(): interval_minutes_lamp = parsed_offset_lamp.n * 60
+                    if interval_minutes_lamp == 0: interval_minutes_lamp = None
+                except Exception as e_lamp:
+                    print(f"Warning (Era {era_id}, Segment {i+1}): Lamp feature freq parse error '{target_frequency_str_lamp}' due to: {e_lamp}.")
+                
+                if active_lamp_cols_for_segment:
+                    print(f"  Calculating daily lamp activity features for Era '{era_id}', Segment {i+1}...")
+                    for lamp_col in active_lamp_cols_for_segment:
+                        if not pd.api.types.is_numeric_dtype(df_after_imputation[lamp_col]): continue
+                        df_after_imputation[lamp_col] = df_after_imputation[lamp_col].fillna(0).astype(int)
+                        daily_sum_transformer = df_after_imputation.groupby(df_after_imputation.index.normalize())[lamp_col]
+                        daily_on_intervals = daily_sum_transformer.transform('sum')
+                        daily_is_on_flag = daily_sum_transformer.transform('max') 
+                        df_after_imputation[f'{lamp_col}_daily_total_on_intervals'] = daily_on_intervals.astype(int)
+                        df_after_imputation[f'{lamp_col}_daily_is_on_any_time'] = daily_is_on_flag.astype(int)
+                        if interval_minutes_lamp and interval_minutes_lamp > 0:
+                            df_after_imputation[f'{lamp_col}_daily_total_on_hours'] = daily_on_intervals * (interval_minutes_lamp / 60.0)
+                        else:
+                            df_after_imputation[f'{lamp_col}_daily_total_on_hours'] = pd.NA
+            
             nan_counts_segment = df_after_imputation.isnull().sum()
-            current_era_summary_items.append((f"{segment_label} - NaN Counts Post-Imputation", nan_counts_segment[nan_counts_segment > 0].to_dict() or "No NaNs"))
+            current_era_summary_items.append((f"{segment_label} - NaN Counts Post-Imputation (and lamp features)", nan_counts_segment[nan_counts_segment > 0].to_dict() or "No NaNs"))
 
-            # Scaling per segment (or per Era before segmentation - chose per segment for now if scalers differ)
-            # For GANs, typically you fit scalers on the whole training set of an Era, then transform segments.
-            # Let's assume we fit scalers once per Era and apply to segments.
-            # This requires a decision: fit scalers on df_after_outliers (pre-segmentation) for the whole Era, 
-            # or fit on the first segment and reuse, or pass all segments to a combined scaling step.
-            # For simplicity, let's scale the imputed segment directly here. 
-            # If training a GAN, scalers should be fit on training data only.
-            # This example scales each segment independently for demonstration of the function.
-            # A more robust approach would be to scale the entire era data (df_after_outliers or df_after_imputation if imputation is done globally for an era first)
-            # and then segment, or pass all segments to a function that scales them based on combined stats.
-            # For now, this shows the function call per segment.
-            df_scaled, _ = scale_data_for_era(df_after_imputation, era_id, era_conf_details, app_config, fit_scalers=True) # fit_scalers=True for each segment here is likely NOT for GAN training set
+            df_scaled, _ = scale_data_for_era(df_after_imputation, era_id, era_conf_details, app_config, fit_scalers=True)
             current_era_summary_items.append((f"{segment_label} - Shape After Scaling", df_scaled.shape))
             
             output_filename = OUTPUT_FILENAME_TEMPLATE.format(era_identifier=era_id, segment_num=i+1)
             output_path = OUTPUT_DATA_DIR / output_filename 
-            save_data(df_scaled, output_path) # Save scaled data
+            save_data(df_scaled, output_path)
             processed_segment_paths_era.append(str(output_path))
             current_era_summary_items.append((f"{segment_label} - Saved To", str(output_path)))
             
-            # Also save to TimescaleDB if available
-            if 'engine' in locals() and verify_table_exists(engine, "preprocessed_features"):
+            if engine and verify_table_exists(engine, "preprocessed_features"):
                 success = save_to_timescaledb(
                     df=df_scaled, 
                     era_identifier=era_id, 

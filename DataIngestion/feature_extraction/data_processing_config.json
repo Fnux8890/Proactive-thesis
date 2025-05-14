@@ -12,9 +12,13 @@
             "lamp_grp3_no3_status",
             "lamp_grp4_no3_status",
             "co2_dosing_status",
-            "co2_status",
             "measured_status_bool"
-        ]
+        ],
+        "energy_db_table": "public.external_energy_prices_dk",
+        "energy_time_col": "HourUTC",
+        "energy_price_area_col": "PriceArea",
+        "energy_spot_price_col": "SpotPriceDKK",
+        "target_price_area": "DK1"
     },
     "database_connection": {
         "user": "postgres",
@@ -357,6 +361,186 @@
                 "column": "flow_temp_2_c",
                 "strategy": "linear",
                 "limit": 12
+            },
+            {
+                "column": "temperature_2m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "temperature_2m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "relative_humidity_2m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "relative_humidity_2m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "precipitation",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "precipitation",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "rain",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "rain",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "snowfall",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "snowfall",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "weathercode",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "weathercode",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "pressure_msl",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "pressure_msl",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "surface_pressure",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "surface_pressure",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover_low",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover_low",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover_mid",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover_mid",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover_high",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover_high",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "shortwave_radiation",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "shortwave_radiation",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "direct_normal_irradiance",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "direct_normal_irradiance",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "diffuse_radiation",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "diffuse_radiation",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "wind_speed_10m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "wind_speed_10m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "wind_direction_10m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "wind_direction_10m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "spot_price_dkk_mwh",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "spot_price_dkk_mwh",
+                "strategy": "backward_fill",
+                "limit": 3
             }
         ],
         "era2_imputation_rules": [
@@ -471,6 +655,186 @@
                 "column": "humidity_deficit_afd4_g_m3",
                 "strategy": "linear",
                 "limit": 12
+            },
+            {
+                "column": "temperature_2m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "temperature_2m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "relative_humidity_2m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "relative_humidity_2m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "precipitation",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "precipitation",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "rain",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "rain",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "snowfall",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "snowfall",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "weathercode",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "weathercode",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "pressure_msl",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "pressure_msl",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "surface_pressure",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "surface_pressure",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover_low",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover_low",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover_mid",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover_mid",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "cloud_cover_high",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "cloud_cover_high",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "shortwave_radiation",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "shortwave_radiation",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "direct_normal_irradiance",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "direct_normal_irradiance",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "diffuse_radiation",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "diffuse_radiation",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "wind_speed_10m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "wind_speed_10m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "wind_direction_10m",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "wind_direction_10m",
+                "strategy": "backward_fill",
+                "limit": 3
+            },
+            {
+                "column": "spot_price_dkk_mwh",
+                "strategy": "forward_fill",
+                "limit": 12
+            },
+            {
+                "column": "spot_price_dkk_mwh",
+                "strategy": "backward_fill",
+                "limit": 3
             }
         ]
     },

@@ -39,22 +39,27 @@ class ImputationHandler:
                 if strategy == 'forward_fill':
                     limit = rule.get('limit')
                     df_processed[col] = df_processed[col].ffill(limit=limit)
-                elif strategy == 'linear':
-                    limit_val = rule.get('limit')
-                    df_processed[col] = df_processed[col].interpolate(method='linear', limit_direction='both', limit=limit_val)
-                elif strategy == 'mean':
-                    df_processed[col] = df_processed[col].fillna(df_processed[col].mean())
-                elif strategy == 'median':
-                    df_processed[col] = df_processed[col].fillna(df_processed[col].median())
-                elif strategy == 'bfill':
+                elif strategy == 'backward_fill' or strategy == 'bfill':
                     limit = rule.get('limit')
                     df_processed[col] = df_processed[col].bfill(limit=limit)
+                elif strategy == 'linear':
+                    limit_val = rule.get('limit')
+                    if pd.api.types.is_numeric_dtype(df_processed[col]):
+                        df_processed[col] = df_processed[col].interpolate(method='linear', limit_direction='both', limit=limit_val)
+                    else:
+                        print(f"    Warning: Column '{col}' is not numeric (dtype: {df_processed[col].dtype}). Skipping linear interpolation.")
+                elif strategy == 'mean':
+                    if pd.api.types.is_numeric_dtype(df_processed[col]):
+                        df_processed[col] = df_processed[col].fillna(df_processed[col].mean())
+                    else:
+                        print(f"    Warning: Column '{col}' is not numeric. Skipping mean imputation.")
+                elif strategy == 'median':
+                    if pd.api.types.is_numeric_dtype(df_processed[col]):
+                        df_processed[col] = df_processed[col].fillna(df_processed[col].median())
+                    else:
+                        print(f"    Warning: Column '{col}' is not numeric. Skipping median imputation.")
                 else:
                     print(f"Warning: Unknown imputation strategy '{strategy}' for column '{col}'. Skipping.")
-                
-                # Optional: A final global bfill/ffill for any remaining NaNs after specific strategy
-                # Consider if this is universally desired or should be a specific rule
-                # df_processed[col] = df_processed[col].bfill().ffill() 
             else:
                 print(f"Warning: Column '{col}' for imputation rule not found in DataFrame.")
         print("Data imputation completed.")
