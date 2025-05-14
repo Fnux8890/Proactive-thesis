@@ -1,11 +1,12 @@
 #!/usr/bin/env -S uv run --isolated
 # /// script
-# dependencies = ["pandas", "psycopg2-binary"]
+# dependencies = ["pandas", "psycopg2-binary", "sqlalchemy"]
 # ///
 
-import psycopg2
+import psycopg2 # Still needed by SQLAlchemy for postgresql+psycopg2 dialect
 import pandas as pd
-import os # Keep os for potential future use, though not strictly needed for hardcoded values
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 # Database parameters are now HARDCODED below.
 # >>>>>>>>>>>> EDIT THE VALUES BELOW WITH YOUR ACTUAL DATABASE DETAILS <<<<<<<<<<<<
@@ -16,8 +17,8 @@ HARDCODED_DB_PASSWORD = "postgres" # Your specific password
 HARDCODED_DB_NAME = "postgres" # e.g., "postgres"
 # >>>>>>>>>>>> FINISH EDITING YOUR DATABASE DETAILS HERE <<<<<<<<<<<<
 
-def get_db_connection():
-    """Establishes a connection to the PostgreSQL database using hardcoded parameters."""
+def get_db_engine():
+    """Creates and returns a SQLAlchemy engine using hardcoded PostgreSQL parameters."""
     db_params = {
         "host": HARDCODED_DB_HOST,
         "port": HARDCODED_DB_PORT,
@@ -26,71 +27,66 @@ def get_db_connection():
         "dbname": HARDCODED_DB_NAME
     }
     
-    print(f"Attempting connection with HARDCODED parameters: host='{db_params['host']}', port={db_params['port']}, user='{db_params['user']}', dbname='{db_params['dbname']}'")
+    db_url = f"postgresql+psycopg2://{db_params['user']}:{db_params['password']}@{db_params['host']}:{db_params['port']}/{db_params['dbname']}"
+    
+    print(f"Attempting to create SQLAlchemy engine for URL: postgresql+psycopg2://{db_params['user']}@***:{db_params['port']}/{db_params['dbname']}")
     
     try:
-        conn = psycopg2.connect(**db_params)
-        # It's good practice to check the actual client encoding the connection settled on.
-        # This can be influenced by server settings, environment variables like PGCLIENTENCODING, or driver defaults.
-        try:
-            print(f"Connection successful. Actual client encoding for this connection: {conn.encoding}")
-        except Exception as enc_e:
-            print(f"Connection successful. Could not determine client encoding directly: {enc_e}")
-        
-        # === Encoding settings remain available if needed ===
-        # conn.set_client_encoding('LATIN1')
-        # print(f"Client encoding MANUALLY SET TO: {conn.encoding}")
-        
-        return conn
-    except psycopg2.OperationalError as e:
-        print(f"Error connecting to the database: {e}")
+        engine = create_engine(db_url)
+        # Test the connection - typically, engine creation is lazy.
+        # A simple way to test is to try to connect and execute a trivial query.
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1")) # sqlalchemy.text is used for literal SQL
+        print("SQLAlchemy engine created and connection tested successfully.")
+        return engine
+    except SQLAlchemyError as e:
+        print(f"Error creating SQLAlchemy engine or testing connection: {e}")
         print("Please ensure database is running and connection details are correctly hardcoded in db_utils.py.")
         raise
     except Exception as e:
-        print(f"An unexpected error occurred during connection: {e}")
+        print(f"An unexpected error occurred during SQLAlchemy engine creation: {e}")
         raise
 
-def load_data_from_db(query: str, conn) -> pd.DataFrame:
-    """Loads data from the database using the given query and psycopg2 connection."""
-    if conn is None or conn.closed:
-        print("Database connection is closed or invalid.")
+def load_data_from_db(query: str, engine) -> pd.DataFrame:
+    """Loads data from the database using the given query and SQLAlchemy engine."""
+    if engine is None:
+        print("SQLAlchemy engine is None.")
         return pd.DataFrame()
         
     try:
-        # For psycopg2, it's good to know what encoding the connection is using before pandas reads from it.
-        # The previous print in get_db_connection covers this.
-        print(f"Executing query (db_utils.py with psycopg2) - encoding: {conn.encoding if not conn.closed else 'N/A (closed)'}")
-        df = pd.read_sql_query(query, conn)
+        print(f"Executing query (db_utils.py with SQLAlchemy engine: {engine.url.drivername})")
+        df = pd.read_sql_query(sql=text(query), con=engine)
         return df
+    except SQLAlchemyError as e:
+        print(f"SQLAlchemyError loading data from database: {e}")
+        raise
     except Exception as e:
-        print(f"Error loading data from database: {e}")
+        print(f"Error loading data from database with SQLAlchemy: {e}")
         raise
 
 if __name__ == '__main__':
-    print("Attempting to connect to the database using HARDCODED values (db_utils.py test)...")
-    connection = None 
+    print("Attempting to connect to the database using SQLAlchemy (db_utils.py test)...")
+    engine = None 
     try:
         print(f"Using hardcoded parameters for test: host='{HARDCODED_DB_HOST}', etc.")
         
-        connection = get_db_connection()
-        if connection:
-            print(f"Connection successful! (db_utils.py test) Client encoding: {connection.encoding}")
+        engine = get_db_engine()
+        if engine:
+            print(f"SQLAlchemy engine created successfully for test! Driver: {engine.url.drivername}")
             
             test_query = "SELECT * FROM public.sensor_data_merged LIMIT 2;"
             print(f"Executing test query: {test_query}")
-            df_test = load_data_from_db(test_query, connection)
-            print("Test data loaded successfully (db_utils.py test):")
+            df_test = load_data_from_db(test_query, engine)
+            print("Test data loaded successfully (db_utils.py with SQLAlchemy test):")
             print(df_test.head())
         else:
-            print("Failed to establish database connection in test.")
+            print("Failed to create SQLAlchemy engine in test.")
             
     except Exception as e:
-        print(f"An error occurred during the db_utils.py test: {e}")
+        print(f"An error occurred during the db_utils.py SQLAlchemy test: {e}")
     finally:
-        if connection is not None and not connection.closed:
-            connection.close()
-            print("Connection closed (db_utils.py test).")
-        elif connection is None:
-            print("Connection was not established in test.")
-        else: # Connection was closed before finally block
-            print("Connection was already closed before final check in test.") 
+        if engine is not None:
+            engine.dispose()
+            print("SQLAlchemy engine disposed (db_utils.py test).")
+        else:
+            print("SQLAlchemy engine was not established in test.") 

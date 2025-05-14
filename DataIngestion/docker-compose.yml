@@ -290,8 +290,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # preprocess_feat:
-      #   condition: service_completed_successfully
+      rust_pipeline:
+        condition: service_completed_successfully
+      preprocess_feat:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ] # modern device request:contentReference[oaicite:14]{index=14}
+              driver: nvidia
     networks:
       - ingestion-net
 
@@ -299,7 +307,12 @@ services:
     build:
       context: ./feature_extraction/feature-gpu
       dockerfile: feature_gpu.dockerfile
-    runtime: nvidia # <-- key line to enable GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ] # modern device request:contentReference[oaicite:14]{index=14}
+              driver: nvidia
     container_name: feature_extraction_gpu
     volumes:
       - ./feature_extraction/data/processed:/app/data/processed:ro
