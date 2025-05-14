@@ -290,15 +290,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # preprocess_feat:
-      #   condition: service_completed_successfullyy:
+      rust_pipeline:
+        condition: service_completed_successfully
+      preprocess_feat:
+        condition: service_completed_successfully
     deploy:
       resources:
         reservations:
           devices:
             - capabilities: [ gpu ] # modern device request:contentReference[oaicite:14]{index=14}
               driver: nvidia
-
     networks:
       - ingestion-net
 

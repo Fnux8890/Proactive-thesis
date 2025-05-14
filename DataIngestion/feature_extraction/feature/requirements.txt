@@ -2,6 +2,4 @@ tsfresh
 sqlalchemy
 psycopg2-binary
 pandas
-uv
 numpy
-# ...other libs as needed
