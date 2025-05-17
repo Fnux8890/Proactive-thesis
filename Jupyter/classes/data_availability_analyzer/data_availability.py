@@ -233,6 +233,64 @@ def plot_stacked_area_availability(df: pd.DataFrame, data_columns: List[str], ou
         print(f"Error saving stacked area availability plot: {e_save}", file=sys.stderr)
     plt.close()
 
+def plot_value_distribution_barchart(df: pd.DataFrame, column_name: str, output_dir: str, top_n_threshold: int = 30, top_n_display: int = 20):
+    """Plots a bar chart of the value distribution for a single column."""
+    if column_name not in df.columns:
+        print(f"Warning: Column '{column_name}' not found in DataFrame. Skipping bar chart.", file=sys.stderr)
+        return
+    if column_name in ['time', 'uuid']: # 'time' is usually index, 'uuid' is identifier
+        print(f"Skipping bar chart for unsuitable column: {column_name}", file=sys.stderr)
+        return
+
+    plt.figure(figsize=(12, 7))
+    counts = df[column_name].value_counts(dropna=False) # include NaNs
+    
+    num_unique_values = len(counts)
+    title = f'Value Distribution for: {column_name}'
+
+    if num_unique_values == 0:
+        print(f"Warning: Column '{column_name}' has no values to plot. Skipping bar chart.", file=sys.stderr)
+        plt.close()
+        return
+
+    # Prepare data for plotting
+    if num_unique_values > top_n_threshold:
+        counts_to_plot = counts.nlargest(top_n_display) # Already sorted by frequency
+        title += f' (Top {top_n_display} of {num_unique_values} Unique Values)'
+        plot_index = [str(idx) if pd.notna(idx) else '<NaN>' for idx in counts_to_plot.index]
+        plot_values = counts_to_plot.values
+    else:
+        counts_sorted = counts.sort_index() # Sort by value/category name
+        plot_index = [str(idx) if pd.notna(idx) else '<NaN>' for idx in counts_sorted.index]
+        plot_values = counts_sorted.values
+    
+    try:
+        sns.barplot(x=plot_index, y=plot_values, palette="viridis", order=plot_index)
+    except Exception as e_barplot:
+        print(f"Error during barplot for {column_name}: {e_barplot}. Skipping.", file=sys.stderr)
+        plt.close()
+        return
+
+    plt.title(title, fontsize=10)
+    plt.ylabel('Frequency Count', fontsize=8)
+    plt.xlabel(f'Value in {column_name}', fontsize=8)
+    
+    current_xticks, _ = plt.xticks()
+    if len(current_xticks) > 15 or any(len(str(lab.get_text())) > 10 for lab in plt.gca().get_xticklabels()):
+        plt.xticks(rotation=45, ha="right", fontsize=8)
+    else:
+        plt.xticks(rotation=0, ha="center", fontsize=8)
+    
+    plt.yticks(fontsize=8)
+    plt.tight_layout()
+    
+    plot_filename = os.path.join(output_dir, f"barchart_dist_{column_name.replace('/', '_').replace('%', 'pct').replace(' ', '_')}.png")
+    try:
+        plt.savefig(plot_filename, dpi=150)
+    except Exception as e_save:
+        print(f"Error saving bar chart for {column_name}: {e_save}", file=sys.stderr)
+    plt.close()
+
 
 if __name__ == '__main__':
     # print("Running Data Availability Analysis Script...") # Reduced print
@@ -307,5 +365,35 @@ if __name__ == '__main__':
     else:
         for col_name in existing_key_cols:
             plot_data_availability(df_full_data, col_name, output_image_dir)
+
+    # --- Generate Value Distribution Bar Charts ---
+    print(f"\n--- Generating Value Distribution Bar Charts ---")
+    
+    all_potential_barchart_cols = [
+        "source_system", "source_file", "format_type", "lamp_group", "air_temp_c", 
+        "air_temp_middle_c", "outside_temp_c", "relative_humidity_percent", 
+        "humidity_deficit_g_m3", "radiation_w_m2", "light_intensity_lux", 
+        "light_intensity_umol", "outside_light_w_m2", "co2_measured_ppm", 
+        "co2_required_ppm", "co2_dosing_status", "co2_status", "rain_status", 
+        "vent_pos_1_percent", "vent_pos_2_percent", "vent_lee_afd3_percent", 
+        "vent_wind_afd3_percent", "vent_lee_afd4_percent", "vent_wind_afd4_percent", 
+        "curtain_1_percent", "curtain_2_percent", "curtain_3_percent", "curtain_4_percent", 
+        "window_1_percent", "window_2_percent", "lamp_grp1_no3_status", 
+        "lamp_grp2_no3_status", "lamp_grp3_no3_status", "lamp_grp4_no3_status", 
+        "lamp_grp1_no4_status", "lamp_grp2_no4_status", "measured_status_bool", 
+        "heating_setpoint_c", "pipe_temp_1_c", "pipe_temp_2_c", "flow_temp_1_c", 
+        "flow_temp_2_c", "temperature_forecast_c", "sun_radiation_forecast_w_m2", 
+        "temperature_actual_c", "sun_radiation_actual_w_m2", "vpd_hpa", 
+        "humidity_deficit_afd3_g_m3", "relative_humidity_afd3_percent", 
+        "humidity_deficit_afd4_g_m3", "relative_humidity_afd4_percent", "dli_sum"
+    ]
+
+    actual_cols_for_barchart = [col for col in all_potential_barchart_cols if col in df_full_data.columns]
+    
+    if not actual_cols_for_barchart:
+        print("Warning: No suitable columns found or specified for bar chart generation from the provided list.", file=sys.stderr)
+    else:
+        for col_name in actual_cols_for_barchart:
+            plot_value_distribution_barchart(df_full_data, col_name, output_image_dir)
 
     # print("\nData availability analysis script finished.") # Reduced print 
