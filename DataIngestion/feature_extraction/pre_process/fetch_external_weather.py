@@ -10,6 +10,25 @@ from sqlalchemy.exc import SQLAlchemyError
 from pathlib import Path
 import os
 import time as py_time # To avoid conflict with 'time' column
+import json # Added for fetch_open_meteo_data if it needs to print full JSON on error
+
+# --- Database Utilities Import ---
+# Assuming db_utils.py is in the same directory or accessible via PYTHONPATH
+try:
+    from db_utils import SQLAlchemyPostgresConnector
+except ImportError:
+    # Fallback if running in a context where db_utils isn't directly in path,
+    # though for consistent Docker execution, it should be.
+    print("Warning: Could not import SQLAlchemyPostgresConnector from db_utils.py.")
+    print("Ensure db_utils.py is in the same directory or PYTHONPATH.")
+    # Define a dummy class or exit if it's critical and not found
+    class SQLAlchemyPostgresConnector:
+        def __init__(self, *args, **kwargs):
+            self.engine = None
+            print("ERROR: db_utils.SQLAlchemyPostgresConnector not available.")
+        def dispose(self): # Add dispose method to dummy
+            pass
+
 
 # --- Configuration ---
 QUEENS_LAT: float = 56.16
@@ -56,19 +75,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 DB_HOST = os.getenv("DB_HOST", "localhost") # Default to localhost for local script runs
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "postgres")
-DB_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-def get_db_engine():
-    """Creates and returns a SQLAlchemy engine."""
-    try:
-        engine = create_engine(DB_URL)
-        # Test connection
-        with engine.connect() as connection:
-            print(f"Successfully connected to PostgreSQL database: {DB_NAME} for weather data script.")
-        return engine
-    except Exception as e:
-        print(f"Error creating database engine: {e}")
-        raise
+# DB_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}" # Will be handled by connector
 
 def create_weather_table_if_not_exists(engine, table_name: str):
     """Creates the weather data table in the database if it doesn't exist."""
@@ -195,13 +202,27 @@ def main():
         "Hourly Variables": ", ".join(HOURLY_WEATHER_VARS)
     }))
     
-    engine = None
+    db_connector = None
+    engine = None # Explicitly define engine, will be set from connector
     table_created_successfully = False
     data_saved_successfully = False
     weather_df_for_report = pd.DataFrame() # For report sample
 
     try:
-        engine = get_db_engine()
+        # engine = get_db_engine() # OLD WAY
+        print(f"Attempting to connect to DB: User={DB_USER}, Host={DB_HOST}, Port={DB_PORT}, DBName={DB_NAME}")
+        db_connector = SQLAlchemyPostgresConnector(
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            db_name=DB_NAME
+        )
+        if not db_connector.engine: # Check if connection failed in connector's __init__
+            raise ConnectionError("Failed to create database engine via SQLAlchemyPostgresConnector.")
+        
+        engine = db_connector.engine # Use the engine from the connector
+        print("Database engine obtained from connector.")
         
         # --- Drop table before creating --- START ---
         print(f"Attempting to drop table '{DB_TABLE_NAME}' if it exists for a clean run...")
@@ -219,7 +240,7 @@ def main():
         report_data.append(("Table Creation Status", "Success" if table_created_successfully else "Failed (check logs)"))
         
         table_exists_check = False
-        if engine: # Check if engine was successfully created
+        if engine: # Check if engine was successfully created/obtained
             with engine.connect() as conn_check:
                 table_exists_check = engine.dialect.has_table(conn_check, DB_TABLE_NAME, schema='public')
 
@@ -251,8 +272,8 @@ def main():
         print(f"An error occurred in the main execution: {e}")
         report_data.append(("Overall Execution Error", str(e)))
     finally:
-        if engine:
-            engine.dispose()
+        if db_connector and db_connector.engine: # Dispose engine via connector
+            db_connector.engine.dispose()
             print("Database engine disposed.")
     
     report_data.append(("Script End Time", pd.Timestamp.now(tz='UTC').isoformat()))

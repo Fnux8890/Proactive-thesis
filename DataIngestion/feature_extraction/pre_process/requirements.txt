@@ -7,3 +7,9 @@ fastparquet # For Parquet file support
 # python-dotenv # For local testing if you use .env files for credentials 
 scikit-learn
 joblib 
+ijson # For streaming JSON parsing
+sktime
+ruptures
+pyro-ppl
+torch
+requests

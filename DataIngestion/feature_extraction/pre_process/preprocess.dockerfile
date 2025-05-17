@@ -17,7 +17,15 @@ RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/ap
 # Copy all application python files from the pre_process directory
 COPY db_utils.py .
 COPY processing_steps.py .
+COPY database_operations.py .
+COPY data_preparation_utils.py .
+COPY data_enrichment_utils.py .
 COPY preprocess.py .
+COPY fetch_external_weather.py .
+COPY fetch_energy.py .
+COPY phenotype_ingest.py .
+COPY phenotype.json .
+COPY phenotype.schema.json .
 COPY create_preprocessed_hypertable.sql /app/create_preprocessed_hypertable.sql
 
 # Config will be mounted via volume in docker-compose

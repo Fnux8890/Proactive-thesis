@@ -13,6 +13,18 @@ import time as py_time # To avoid conflict with 'time' column
 from typing import List, Dict, Any # For type hinting
 import json
 
+# --- Database Utilities Import ---
+try:
+    from db_utils import SQLAlchemyPostgresConnector
+except ImportError:
+    print("Warning: Could not import SQLAlchemyPostgresConnector from db_utils.py.")
+    class SQLAlchemyPostgresConnector:
+        def __init__(self, *args, **kwargs):
+            self.engine = None
+            print("ERROR: db_utils.SQLAlchemyPostgresConnector not available.")
+        def dispose(self): 
+            pass
+
 # --- Configuration ---
 # IMPORTANT: Verify these dataset and column names from energidataservice.dk
 EDS_API_BASE_URL = "https://api.energidataservice.dk/dataset"
@@ -41,18 +53,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 DB_HOST = os.getenv("DB_HOST", "localhost") # Default to localhost for local script runs
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "postgres")
-DB_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-def get_db_engine():
-    """Creates and returns a SQLAlchemy engine."""
-    try:
-        engine = create_engine(DB_URL)
-        with engine.connect() as connection:
-            print(f"Successfully connected to PostgreSQL database: {DB_NAME} for energy price script.")
-        return engine
-    except Exception as e:
-        print(f"Error creating database engine: {e}")
-        raise
+# DB_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}" # Handled by connector
 
 def create_energy_price_table_if_not_exists(engine, table_name: str):
     """Creates the energy price data table in the database if it doesn't exist."""
@@ -247,14 +248,27 @@ def main():
         "Dataset": EDS_DATASET_NAME
     }))
     
-    engine = None
+    db_connector = None
+    engine = None # Explicitly define engine
     table_created_successfully = False
     data_saved_successfully = False
     energy_df_for_report = pd.DataFrame()
 
     try:
-        engine = get_db_engine()
+        print(f"Attempting to connect to DB: User={DB_USER}, Host={DB_HOST}, Port={DB_PORT}, DBName={DB_NAME}")
+        db_connector = SQLAlchemyPostgresConnector(
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            db_name=DB_NAME
+        )
+        if not db_connector.engine:
+            raise ConnectionError("Failed to create database engine via SQLAlchemyPostgresConnector.")
         
+        engine = db_connector.engine
+        print("Database engine obtained from connector.")
+
         print(f"Attempting to drop table '{DB_TABLE_NAME}' if it exists for a clean run...")
         try:
             with engine.begin() as connection:
@@ -302,8 +316,8 @@ def main():
         print(f"An error occurred in the main energy price execution: {e}")
         report_data.append(("Overall Execution Error", str(e)))
     finally:
-        if engine:
-            engine.dispose()
+        if db_connector and db_connector.engine: # Dispose engine via connector
+            db_connector.engine.dispose()
             print("Database engine disposed.")
     
     report_data.append(("Script End Time", pd.Timestamp.now(tz='UTC').isoformat()))
