@@ -58,12 +58,6 @@
                 "air_temp_middle_c",
                 "pipe_temp_1_c",
                 "pipe_temp_2_c",
-                "lamp_grp1_no3_status",
-                "lamp_grp1_no4_status",
-                "lamp_grp2_no3_status",
-                "lamp_grp2_no4_status",
-                "lamp_grp3_no3_status",
-                "lamp_grp4_no3_status",
                 "vent_pos_1_percent",
                 "vent_pos_2_percent",
                 "vent_lee_afd3_percent",
@@ -116,12 +110,6 @@
                 "air_temp_middle_c",
                 "pipe_temp_1_c",
                 "pipe_temp_2_c",
-                "lamp_grp1_no3_status",
-                "lamp_grp1_no4_status",
-                "lamp_grp2_no3_status",
-                "lamp_grp2_no4_status",
-                "lamp_grp3_no3_status",
-                "lamp_grp4_no3_status",
                 "vent_pos_1_percent",
                 "vent_pos_2_percent",
                 "vent_lee_afd3_percent",
@@ -191,6 +179,19 @@
             "target_frequency": "5min",
             "outlier_rules_ref": "default_outlier_rules",
             "imputation_rules_ref": "era2_imputation_rules"
+        },
+        "MegaEra_All_Data": {
+            "description": "Full dataset for initial raw preparation and era detection input",
+            "db_table": "public.sensor_data_merged",
+            "start_date": "2013-11-01T00:00:00Z",
+            "end_date": "2016-10-31T23:59:59Z",
+            "target_frequency": "5T",
+            "outlier_rules_ref": "default_outlier_rules",
+            "imputation_rules_ref": "default_imputation_rules",
+            "boolean_columns_to_int": [
+                "co2_status"
+            ],
+            "dead_columns_to_drop": []
         }
     },
     "preprocessing_rules": {

@@ -1,0 +1,29 @@
+# ---------- build stage ----------
+FROM rust:1.85 AS builder
+WORKDIR /app
+
+# copy manifests first (cache dependencies)
+COPY Cargo.toml Cargo.lock ./
+# Create a dummy src/main.rs to allow `cargo fetch` to work before actual source is copied
+RUN mkdir src && echo "fn main(){}" > src/main.rs
+# Fetch dependencies based on Cargo.lock (if present) or resolve and fetch
+RUN cargo fetch
+
+# now copy the real source
+COPY src ./src
+# Build the application, using cached dependencies
+RUN cargo build --release --bin era_detector
+
+# ---------- runtime stage ----------
+FROM debian:bookworm-slim
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/era_detector /usr/local/bin/era_detector
+
+# Set output directory consistently if needed by the app (though CLI arg is better)
+# ENV APP_OUTPUT_DIR=/app/data/processed 
+# WORKDIR /app # The binary can be called from anywhere if it's in PATH
+
+ENTRYPOINT ["era_detector"]
+# CMD ["--help"] # Good default if no args are provided to `docker run`

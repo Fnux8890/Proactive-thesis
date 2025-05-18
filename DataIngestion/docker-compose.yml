@@ -54,6 +54,11 @@ services:
       - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro # Adjusted path
       # Mount script to create extra DBs needed by Python pipeline services
       - ./simulation_data_prep/create_extra_dbs.sql:/docker-entrypoint-initdb.d/01_create_extra_dbs.sql:ro # Adjusted path
+      # Volume for pre_process SQL script (if not already handled by preprocess_feat service CMD)
+      - ./feature_extraction/pre_process/create_preprocessed_hypertable.sql:/docker-entrypoint-initdb.d/02_create_preprocessed_hypertable.sql:ro
+      - ./feature_extraction/pre_process/phenotype_ingest.py:/app/phenotype_ingest.py:ro # Make accessible if needed by init
+      - ./feature_extraction/pre_process/phenotype.json:/app/phenotype.json:ro
+      - ./feature_extraction/pre_process/db_utils.py:/app/db_utils.py:ro
       - postgres-data:/var/lib/postgresql/data
     networks:
       - ingestion-net
@@ -244,114 +249,198 @@ services:
     networks:
       - ingestion-net
 
-  # --- Feature Extraction Pipeline Services (Era 1 MVP) ---
-  preprocess_feat:
+  # --- Feature Extraction Pipeline Services (Modified and New) ---
+  # Stage A: Raw-Prep Lite (Uses preprocess.py with specific config)
+  raw_prep_lite:
     build:
-      context: ./feature_extraction/pre_process # Context is where preprocess.dockerfile and preprocess.py live
-      dockerfile: preprocess.dockerfile # Name of the Dockerfile in that context
-    container_name: preprocess_feat
+      context: ./feature_extraction/pre_process
+      dockerfile: preprocess.dockerfile
+    container_name: raw_prep_lite
     volumes:
-      # Mount input data (read-only)
       - ./feature_extraction/data/input:/app/data/input:ro
-      # Mount output directory for processed data (read-write)
       - ./feature_extraction/data/processed:/app/data/output:rw
-      # Mount config directory (read-only)
       - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
+    # preprocess.py now handles calling other ingestion scripts internally
     command: uv run python preprocess.py
+    environment:
+      - SKIP_ERA_FEATURE=true
+      - PROCESS_ERA_IDENTIFIER=MegaEra_All_Data
+      - APP_CONFIG_PATH=/app/config/data_processing_config.json
+      - APP_OUTPUT_DIR=/app/data/output
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
     depends_on:
-      rust_pipeline:
-        condition: service_completed_successfully
       db:
         condition: service_healthy
-      # feature_analysis:
-      #   # Wait for feature_analysis to complete
+      # rust_pipeline:
       #   condition: service_completed_successfully
-    environment:
-      - PROCESSED_ERA_IDENTIFIER=Era1
     networks:
       - ingestion-net
 
+  # Stage B: Dynamic Era Discovery
+  era_detector:
+    build:
+      context: ./feature_extraction/era_detection_rust
+      dockerfile: Dockerfile
+    image: era_detector_rs:latest
+    container_name: era_detector
+    volumes:
+      # Input for era_detector is output from raw_prep_lite
+      - ./feature_extraction/data/processed:/app_data/processed:rw
+    command: >
+      --input-parquet /app_data/processed/MegaEra_All_Data_processed_segment_1.parquet --output-dir /app_data/processed/ --output-suffix MegaEra_All_Data_Segment1_Rust --pelt-signal-col dli_sum --pelt-min-size 48 --bocpd-lambda 200 --b-level-signal-col dli_sum --hmm-states 5 --hmm-iterations 20 --c-level-signal-col dli_sum --quant-max-val 250
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    depends_on:
+      raw_prep_lite:
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  # Stage C: Auto-Era-Config Generator
+  auto_era_gen:
+    build:
+      context: ./feature_extraction/era_detection # Dockerfile can be simple, just needs python and pandas
+      dockerfile: auto_era_gen.dockerfile # NEW Dockerfile for this tiny script
+    container_name: auto_era_generator
+    volumes:
+      # Input is the Level C labels from era_detector, output is the JSON config
+      - ./feature_extraction/data/processed:/app/data/processed:rw
+    # Command to run auto_era_config_gen.py
+    # Input: <output_suffix_from_era_detector>_era_labels_levelC.parquet
+    # Output: auto_era_definitions.json (placed in /app/data/processed for full_preprocess to access)
+    command: >
+      uv run python auto_era_config_gen.py  /app/data/processed/MegaEra_All_Data_Segment1_era_labels_levelC.parquet  /app/data/processed/auto_era_definitions.json 
+    depends_on:
+      era_detector:
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  # Stage D: Full Pre-processing Per Era (Manual + Auto)
+  # This service reuses the preprocess.dockerfile but with different ENV settings
+  full_preprocess:
+    build:
+      context: ./feature_extraction/pre_process
+      dockerfile: preprocess.dockerfile
+    container_name: full_preprocess
+    volumes:
+      - ./feature_extraction/data/input:/app/data/input:ro
+      - ./feature_extraction/data/processed:/app/data/output:rw # Main output for processed era segments
+      - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
+      # Mount the auto-generated era config for merging
+      - ./feature_extraction/data/processed/auto_era_definitions.json:/app/data/processed/auto_era_definitions.json:ro
+    command: >
+      sh -c " uv run python phenotype_ingest.py && \ uv run python fetch_external_weather.py && \ uv run python fetch_energy.py && \ uv run python preprocess.py"
+    environment:
+      - SKIP_ERA_FEATURE=false # Ensure EraFeatureGenerator runs in this stage
+      - EXTRA_ERA_CONFIG=/app/data/processed/auto_era_definitions.json # Path to auto-generated eras
+      - APP_CONFIG_PATH=/app/config/data_processing_config.json
+      - APP_OUTPUT_DIR=/app/data/output
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
+      # PROCESS_ERA_IDENTIFIER is NOT set here, so preprocess.py processes all eras found in merged config
+    depends_on:
+      auto_era_gen:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy # preprocess.py interacts with DB
+    networks:
+      - ingestion-net
+
+  # Stage E: Feature Extraction (Modified dependencies)
+  # (Existing preprocess_feat service might be replaced by raw_prep_lite + full_preprocess)
+  # The original preprocess_feat is more like Stage D if PROCESS_ERA_IDENTIFIER was set for a specific era.
+  # We will keep feature_extraction, feature_extraction_gpu, feature_analysis and adjust their dependencies.
+
+  # Delete or comment out original preprocess_feat if its role is fully covered by raw_prep_lite & full_preprocess
+  # preprocess_feat:
+  #   ...
+
   feature_extraction:
+    # Existing, but depends on full_preprocess now
     build:
       context: ./feature_extraction/feature
       dockerfile: feature.dockerfile
     container_name: feature_extraction
     volumes:
-      - ./feature_extraction/data/processed:/app/data/processed:ro
-      - ./feature_extraction/data/output:/app/data/output:rw
+      - ./feature_extraction/data/processed:/app/data/processed:ro # Input from full_preprocess
+      - ./feature_extraction/data/output:/app/data/output:rw # Output for feature_extraction service itself
       - ./feature_extraction/config:/app/config:ro
     command: uv run python extract_features.py
     environment:
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
       - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=postgres
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
     depends_on:
+      full_preprocess:
+        condition: service_completed_successfully
       db:
+        # If extract_features.py also connects to DB
         condition: service_healthy
-      rust_pipeline:
-        condition: service_completed_successfully
-      preprocess_feat:
-        condition: service_completed_successfully
     deploy:
       resources:
         reservations:
-          devices:
-            - capabilities: [ gpu ] # modern device request:contentReference[oaicite:14]{index=14}
-              driver: nvidia
+          devices: [ { capabilities: [ gpu ], driver: nvidia } ]
     networks:
       - ingestion-net
 
   feature_extraction_gpu:
+    # Existing, but depends on full_preprocess
     build:
       context: ./feature_extraction/feature-gpu
       dockerfile: feature_gpu.dockerfile
     deploy:
       resources:
         reservations:
-          devices:
-            - capabilities: [ gpu ] # modern device request:contentReference[oaicite:14]{index=14}
-              driver: nvidia
+          devices: [ { capabilities: [ gpu ], driver: nvidia } ]
     container_name: feature_extraction_gpu
     volumes:
       - ./feature_extraction/data/processed:/app/data/processed:ro
       - ./feature_extraction/data/output:/app/data/output:rw
     environment:
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
       - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=postgres
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
     depends_on:
+      full_preprocess:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
-      preprocess_feat:
-        condition: service_completed_successfully
     networks:
       - ingestion-net
 
   feature_analysis:
+    # Existing, could depend on rust_pipeline or full_preprocess output
     build:
       context: ./feature_extraction # Changed context to the parent directory
       dockerfile: ./data_analysis/analysis.dockerfile # Path to Dockerfile from new context
-    # CMD from Dockerfile will be used
     volumes:
-      # Mount the specific input config file to a specific location in the container
       - ./feature_extraction/data_processing_config.json:/app/input_config/data_processing_config.json:ro
-      # Mount the host output directory to a specific output location in the container
       - ./feature_extraction/data/analysis:/app/output_data:rw
     depends_on:
-      rust_pipeline:
+      # Choose dependency: rust_pipeline for raw analysis, or full_preprocess if it needs cleaned data
+      full_preprocess:
         condition: service_completed_successfully
       db:
         condition: service_healthy
     environment:
       - DB_HOST=db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=postgres
-      - PYTHONUNBUFFERED=1 # Good for seeing prints immediately
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-postgres}
+      - PYTHONUNBUFFERED=1
     networks:
       - ingestion-net
 
