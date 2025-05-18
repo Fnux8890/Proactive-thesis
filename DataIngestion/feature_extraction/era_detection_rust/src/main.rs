@@ -89,7 +89,7 @@ fn main() -> Result<()> {
     let pelt_signal_column = feature_df
         .column(&cli.pelt_signal_col)
         .with_context(|| format!("PELT signal column '{}' not found", cli.pelt_signal_col))?;
-    let pelt_signal_vec = io::series_to_vec_f64(pelt_signal_column.as_series())?;
+    let pelt_signal_vec = io::series_to_vec_f64(pelt_signal_column.as_series().expect("Pelt signal series not found"))?;
     let level_a_bocpd_threshold = 0.5;
     let pelt_bkps_indices = level_a::detect_changepoints_level_a(
         &pelt_signal_vec, 
@@ -124,7 +124,7 @@ fn main() -> Result<()> {
     let bocpd_signal_column = feature_df
         .column(&cli.b_level_signal_col)
         .with_context(|| format!("BOCPD signal column '{}' not found", cli.b_level_signal_col))?;
-    let bocpd_signal_vec = io::series_to_vec_f64(bocpd_signal_column.as_series())?;
+    let bocpd_signal_vec = io::series_to_vec_f64(bocpd_signal_column.as_series().expect("BOCPD signal series not found"))?;
     let cp_probs_b = level_b::bocpd_probabilities(&bocpd_signal_vec, cli.bocpd_lambda)?;
     println!("BOCPD probabilities calculated. Time: {:.2?}", bocpd_start_time.elapsed());
     

@@ -5,6 +5,7 @@
 use anyhow::{Result};
 // use ndarray::Array1;
 
+#[allow(dead_code)]
 pub fn viterbi_path_from_observations(
     _observations: &[u8],
     _num_states: usize,

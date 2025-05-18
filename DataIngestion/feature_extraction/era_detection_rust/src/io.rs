@@ -27,6 +27,7 @@ pub fn series_to_vec_f64(series: &Series) -> Result<Vec<f64>> {
     Ok(ca.into_iter().filter_map(|opt_val| opt_val).collect())
 }
 
+#[allow(dead_code)]
 pub fn series_to_vec_u8(series: &Series) -> Result<Vec<u8>> {
     let s_u8 = series.cast(&DataType::UInt8)
         .with_context(|| format!("Failed to cast series '{}' to UInt8. Ensure values are in 0-255 range.", series.name()))?;
@@ -34,6 +35,7 @@ pub fn series_to_vec_u8(series: &Series) -> Result<Vec<u8>> {
     Ok(ca.into_iter().filter_map(|opt_val| opt_val).collect())
 }
 
+#[allow(dead_code)]
 pub fn quantize_series_to_u8(series: &Series, max_val_u8: u8) -> Result<Series> {
     let series_name = series.name().clone();
     if series.null_count() == series.len() || series.len() == 0 {

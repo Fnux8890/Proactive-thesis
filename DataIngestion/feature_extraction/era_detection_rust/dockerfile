@@ -1,12 +1,13 @@
 # ---------- build stage ----------
-FROM rust:1.85 AS builder
+FROM rust:1.85-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache build-base musl-dev
 
 # copy manifests first (cache dependencies)
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 # Create a dummy src/main.rs to allow `cargo fetch` to work before actual source is copied
 RUN mkdir src && echo "fn main(){}" > src/main.rs
-# Fetch dependencies based on Cargo.lock (if present) or resolve and fetch
+# Fetch dependencies based on Cargo.toml
 RUN cargo fetch
 
 # now copy the real source
