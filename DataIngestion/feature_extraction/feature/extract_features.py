@@ -33,7 +33,7 @@ import sys # For checking loaded modules
 # Local helper for DB access
 from db_utils import SQLAlchemyPostgresConnector
 from tsfresh import extract_features
-from tsfresh.feature_extraction.settings import EfficientFCParameters
+from tsfresh.feature_extraction.settings import EfficientFCParameters, MinimalFCParameters
 
 # Conditionally import and alias pd
 if os.getenv("USE_GPU", "false").lower() == "true":
@@ -82,138 +82,132 @@ DEFAULT_OUTPUT_PATH = Path("/app/data/output/tsfresh_features.parquet")
 OUTPUT_PATH = Path(_env("OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH)))
 
 # Optional: only process a single era, useful during debugging
-# FILTER_ERA: str | None = os.getenv("ERA_IDENTIFIER")
+# FILTER_ERA: str | None = os.getenv("ERA_IDENTIFIER") # This might be re-purposed for filtering loaded era definitions
+
+# Paths for input files (to be set via env vars or args)
+CONSOLIDATED_DATA_PATH_ENV = "CONSOLIDATED_DATA_PATH"
+ERA_DEFINITIONS_PATH_ENV = "ERA_DEFINITIONS_PATH"
+ERA_ID_COLUMN_KEY_ENV = "ERA_ID_COLUMN_KEY" # Env var to specify which 'era_level_X' to use
+
+DEFAULT_CONSOLIDATED_DATA_PATH = "/app/data/processed/consolidated_data.jsonl"  # Example path
+DEFAULT_ERA_DEFINITIONS_PATH = "/app/data/era_definitions/"    # Example: directory containing era JSONL files
+DEFAULT_ERA_ID_COLUMN_KEY = "era_level_B" # Default key for era identifier in JSONL
 
 # Global constant for reporting the feature set used
-FC_PARAMS_NAME = "EfficientFCParameters"
+FC_PARAMS_NAME = "MinimalFCParameters"  # Updated to MinimalFCParameters
 
 
 # -----------------------------------------------------------------------------
 # Data loading & preparation helpers
 # -----------------------------------------------------------------------------
 
+def load_era_definitions(era_definitions_dir_path: str, era_id_key: str) -> pd.DataFrame | None:
+    """Load era definitions from all JSONL and Parquet files in a directory, calculate end times, and return a DataFrame."""
+    jsonl_files = list(Path(era_definitions_dir_path).glob('*.jsonl'))
+    parquet_files = list(Path(era_definitions_dir_path).glob('*.parquet'))
+    
+    if not jsonl_files and not parquet_files:
+        logging.error(f"No JSONL or Parquet files found in era definitions directory: {era_definitions_dir_path}")
+        return None
 
-def _get_connector() -> SQLAlchemyPostgresConnector:
-    """Return an instance of *SQLAlchemyPostgresConnector* using env credentials."""
+    all_era_dfs = []
 
-    return SQLAlchemyPostgresConnector(
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT,
-        db_name=DB_NAME,
-    )
+    # Process JSONL files
+    for file_path in jsonl_files:
+        logging.info(f"Loading era definitions from JSONL: {file_path}")
+        current_raw_eras = []
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line_number, line in enumerate(f, 1):
+                    try:
+                        record = json.loads(line)
+                        if 'time' not in record or era_id_key not in record:
+                            logging.warning(f"Skipping record in {file_path} line {line_number}: missing 'time' or '{era_id_key}'. Record: {record}")
+                            continue
+                        current_raw_eras.append(record)
+                    except json.JSONDecodeError:
+                        logging.warning(f"Skipping invalid JSON in {file_path} line {line_number}: {line.strip()}")
+            if current_raw_eras:
+                df = original_pandas.DataFrame(current_raw_eras)
+                 # For JSONL, assume 'time' might be ms epoch. Try parsing, then fallback.
+                try:
+                    df['start_time'] = original_pandas.to_datetime(df['time'], unit='ms', errors='raise')
+                except (ValueError, TypeError):
+                    logging.warning(f"Could not parse 'time' as ms epoch in {file_path}, trying default parsing.")
+                    df['start_time'] = original_pandas.to_datetime(df['time'], errors='coerce')
+                all_era_dfs.append(df)
+        except Exception as e:
+            logging.error(f"Error reading or parsing JSONL file {file_path}: {e}")
+            continue
 
-
-def get_unique_eras(connector: SQLAlchemyPostgresConnector) -> list[str]:
-    """Fetch the list of unique era identifiers from the database."""
-    logging.info("Fetching unique era identifiers...")
-    query = "SELECT DISTINCT era_identifier FROM preprocessed_features ORDER BY era_identifier;"
-    # Execute the query and fetch results directly using the connector's engine
-    try:
-        with connector.engine.connect() as connection:
-            result = connection.execute(sqlalchemy.text(query))
-            eras = [row[0] for row in result]
-    except Exception as e:
-        logging.error(f"Failed to fetch unique eras: {e}")
-        raise
-
-    if not eras:
-        raise RuntimeError("No era identifiers found in preprocessed_features table.")
-
-    logging.info(f"Found {len(eras)} unique eras: {eras}")
-    return eras
-
-
-def fetch_preprocessed_data_for_era(connector: SQLAlchemyPostgresConnector, era_identifier: str) -> pd.DataFrame:
-    """Load rows from *preprocessed_features* and unpack the JSONB column.*"""
-
-    query = "SELECT time, era_identifier, features FROM preprocessed_features WHERE era_identifier = :era_identifier"
-    params = {"era_identifier": era_identifier}
-
-    logging.info(f"Executing query for era: {era_identifier}")
-    # Ensure fetch_data_to_pandas can handle raw SQL execution with parameters
-    # Assuming fetch_data_to_pandas executes the query and returns a DataFrame
-    try:
-         # Pass the text object and params correctly
-        # Bind parameters to the text query object
-        prepared_query = sqlalchemy.text(query).bindparams(**params)
-        # Pass the prepared query object to the fetch method
-        df_host = connector.fetch_data_to_pandas(query=prepared_query) # Fetches as Pandas DF
-
-        if os.getenv("USE_GPU", "false").lower() == "true" and 'cudf' in sys.modules:
-            if not df_host.empty:
-                logging.info("Converting fetched pandas DataFrame to cuDF DataFrame...")
-                df = cudf.DataFrame.from_pandas(df_host)   # lives in VRAM
-                logging.info("Conversion to cuDF DataFrame complete.")
+    # Process Parquet files
+    for file_path in parquet_files:
+        logging.info(f"Loading era definitions from Parquet: {file_path}")
+        try:
+            if USE_GPU_FLAG and 'cudf' in sys.modules:
+                df = cudf.read_parquet(file_path) 
+                # Convert to pandas for consistent processing initially, then convert back if needed
+                # This simplifies handling diverse Parquet contents before final cuDF conversion
+                df = df.to_pandas() 
             else:
-                df = cudf.DataFrame(columns=df_host.columns) # Empty cuDF DataFrame with same columns
-        else:
-            df = df_host # Use the host pandas DataFrame directly
+                df = original_pandas.read_parquet(file_path)
+            
+            if 'time' not in df.columns or era_id_key not in df.columns:
+                logging.warning(f"Skipping Parquet file {file_path}: missing 'time' or '{era_id_key}' column. Found columns: {df.columns.tolist()}")
+                continue
+            # For Parquet, assume 'time' is likely a standard datetime string or object. Fallback to ms epoch if direct fails.
+            try:
+                 df['start_time'] = original_pandas.to_datetime(df['time'], errors='raise')
+            except (ValueError, TypeError):
+                logging.warning(f"Could not parse 'time' directly in Parquet {file_path}, trying as ms epoch.")
+                df['start_time'] = original_pandas.to_datetime(df['time'], unit='ms', errors='coerce')
+            all_era_dfs.append(df)
+        except Exception as e:
+            logging.error(f"Error reading or parsing Parquet file {file_path}: {e}")
+            continue
 
-    except Exception as e:
-        logging.error(f"Database query failed for era {era_identifier}: {e}")
-        raise
-        
-    if df.empty:
-        logging.warning(f"Fetched DataFrame for era '{era_identifier}' is empty.")
-        # Return an empty DataFrame with expected base columns to avoid downstream errors if needed,
-        # or handle this case more explicitly in the main loop.
-        # For now, let's return it and handle potential issues later.
-        return pd.DataFrame(columns=["time", "era_identifier", "features"]) # Return empty df with expected columns
+    if not all_era_dfs:
+        logging.error("No valid era definitions loaded from any JSONL or Parquet file.")
+        return None
 
-    logging.info(f"Fetched {len(df)} rows for era '{era_identifier}'")
+    # Concatenate all loaded DataFrames
+    eras_df = original_pandas.concat(all_era_dfs, ignore_index=True)
+    logging.info(f"Loaded a total of {len(eras_df)} raw era records from {len(jsonl_files) + len(parquet_files)} files.")
 
-    # Parse JSONB column into real columns
-    logging.info("Unpacking JSONB features → columns …")
+    # Ensure 'start_time' (derived from 'time') and the specified era_id_key column exist
+    if 'start_time' not in eras_df.columns or era_id_key not in eras_df.columns:
+        logging.error(f"'start_time' (from 'time') or '{era_id_key}' column not found after loading all era files. Available columns: {eras_df.columns.tolist()}")
+        return None
 
-    if os.getenv("USE_GPU", "false").lower() == "true" and 'cudf' in sys.modules and isinstance(df, cudf.DataFrame):
-        if not df["features"].empty:
-            logging.info("GPU Mode: Using original_pandas for JSON normalization.")
-            # 1. Convert cuDF Series to original_pandas Series
-            original_pandas_features_series = df["features"].to_pandas()
-            # 2. Normalize using original_pandas
-            normalized_original_pandas_df = original_pandas.json_normalize(original_pandas_features_series)
-            # 3. Convert resulting original_pandas DataFrame back to cuDF DataFrame
-            feature_cols = cudf.DataFrame.from_pandas(normalized_original_pandas_df)
-        else:
-            logging.warning("GPU Mode: 'features' column is empty. Creating empty cuDF feature_cols.")
-            feature_cols = cudf.DataFrame(index=df.index) # df.index is a cuDF index here
-    else: # CPU mode or df is an original_pandas DataFrame
-        if not df["features"].empty:
-            # In CPU mode, pd is original_pandas. df["features"] is an original_pandas Series.
-            # So, pd.json_normalize is effectively original_pandas.json_normalize
-            feature_cols = pd.json_normalize(df["features"])
-        else:
-            logging.warning("CPU Mode: 'features' column is empty. Creating empty original_pandas feature_cols.")
-            # In CPU mode, pd is original_pandas. df.index is an original_pandas index.
-            feature_cols = pd.DataFrame(index=df.index)
+    eras_df.rename(columns={era_id_key: 'era_id'}, inplace=True)
 
-    # Align indices. df.index should be appropriate for pd (cudf or pandas type based on mode)
-    # This handles cases where feature_cols might be empty but df was not.
-    if not df.empty:
-        feature_cols.index = df.index
-    elif feature_cols.empty and df.empty: # Both empty, ensure index consistency if any schema known
-        pass # Default empty indices are usually fine
+    # Drop rows where start_time could not be parsed or era_id is missing/NaN
+    eras_df.dropna(subset=['start_time', 'era_id'], inplace=True)
+    if eras_df.empty:
+        logging.error("No valid eras remaining after datetime conversion and NA drop.")
+        return None
 
-    if os.getenv("USE_GPU", "false").lower() == "true" and 'cudf' in sys.modules and isinstance(df, cudf.DataFrame):
-        # Ensure both parts are cudf DataFrames
-        df_time_era = df[["time", "era_identifier"]]
-        # feature_cols should already be a cudf.DataFrame if in GPU mode from previous step
-        wide_df = cudf.concat([df_time_era, feature_cols], axis=1)
-    else:
-        # Ensure both parts are original_pandas DataFrames for concatenation
-        df_time_era = df[["time", "era_identifier"]]
-        current_feature_cols = feature_cols
-        if 'cudf' in sys.modules and isinstance(df_time_era, cudf.DataFrame):
-            df_time_era = df_time_era.to_pandas()
-        if 'cudf' in sys.modules and isinstance(current_feature_cols, cudf.DataFrame):
-            current_feature_cols = current_feature_cols.to_pandas()
-        wide_df = original_pandas.concat([df_time_era, current_feature_cols], axis=1)
+    # Sort by start_time to correctly determine end_times
+    eras_df.sort_values('start_time', inplace=True)
+    eras_df.reset_index(drop=True, inplace=True)
 
-    logging.info("Wide DataFrame shape after unpack: %s", wide_df.shape)
+    # Calculate end_time: the start_time of the next era
+    eras_df['end_time'] = eras_df['start_time'].shift(-1)
 
-    return wide_df
+    # Select and reorder columns
+    final_eras_df = eras_df[['era_id', 'start_time', 'end_time']].copy()
+    
+    # If GPU mode is active, convert the resulting pandas DataFrame to cuDF
+    if USE_GPU_FLAG and 'cudf' in sys.modules:
+        logging.info("Converting final loaded era definitions DataFrame to cuDF.")
+        try:
+            final_eras_df = cudf.DataFrame.from_pandas(final_eras_df)
+        except Exception as e_cudf_conv:
+            logging.error(f"Failed to convert final era definitions DataFrame to cuDF: {e_cudf_conv}. Returning pandas DataFrame.")
+            # Fallback to returning pandas DataFrame if conversion fails
+
+    logging.info(f"Processed {len(final_eras_df)} era definitions. Columns: {final_eras_df.columns.tolist()}")
+    return final_eras_df
 
 
 def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
@@ -221,7 +215,7 @@ def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
 
     logging.info("Converting to long (tidy) format for tsfresh …")
 
-    id_columns = ["era_identifier", "time"]
+    id_columns = ["id", "time"] # Expect 'id' column directly from main
     # Select only numeric columns for melting, excluding the ID columns
     # In cuDF, select_dtypes(include=np.number) might not work as robustly as iterating and checking.
     # Let's refine the numeric column selection for both pandas and cudf.
@@ -277,10 +271,12 @@ def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
         .dropna(subset=["value"])
     )
 
-    long_df.rename(
-        columns={"era_identifier": "id"},  # tsfresh default column name is short: `id`
-        inplace=True,
-    )
+        # No longer renaming 'era_identifier' to 'id' here, as 'id' is expected directly.
+    # if "era_identifier" in long_df.columns:
+    #     long_df.rename(
+    #         columns={"era_identifier": "id"}, 
+    #         inplace=True,
+    #     )
 
     logging.info("Long DataFrame shape: %s", long_df.shape)
 
@@ -291,156 +287,181 @@ def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
 # Feature extraction
 # -----------------------------------------------------------------------------
 
-# tsfresh monkey-patching for GPU - REMOVED as it was ineffective and problematic
-# def _patch_tsfresh_gpu():
-#     ...
-
-# The run_tsfresh function will be removed as its logic is integrated into the main loop with per-variable processing.
-# def run_tsfresh(long_df: pd.DataFrame) -> pd.DataFrame:
-#     logging.info("Running tsfresh feature extraction (this can take a while) …")
-# 
-#     features = extract_features(
-#         long_df,
-#         column_id="id",
-#         column_sort="time",
-#         column_kind="variable",
-#         column_value="value",
-#         disable_progressbar=True,
-#         n_jobs=0,  # use all CPUs available in container
-#     )
-# 
-#     logging.info("tsfresh generated %s features", features.shape[1])
-#     return features
-
-
-# -----------------------------------------------------------------------------
-# Main
-# -----------------------------------------------------------------------------
-
-
 def main() -> None:
-    # Create connector once
-    connector = _get_connector()
-    eras_to_process = get_unique_eras(connector)
-
-    all_era_features: list[pd.DataFrame] = []
-    total_rows_processed = 0
-    all_sensor_cols = set()
-
+    """Main execution function."""
+    logging.info("Starting feature extraction with file-based inputs...")
     USE_GPU_FLAG = os.getenv("USE_GPU", "false").lower() == "true"
 
-    # REMOVED: _patch_tsfresh_gpu() call, as the patching was not working and causing issues.
-    # if USE_GPU_FLAG:
-    #     _patch_tsfresh_gpu()
+    # Get file paths from environment variables or use defaults
+    consolidated_data_file_path = _env(CONSOLIDATED_DATA_PATH_ENV, DEFAULT_CONSOLIDATED_DATA_PATH)
+    era_definitions_dir_path = _env(ERA_DEFINITIONS_PATH_ENV, DEFAULT_ERA_DEFINITIONS_PATH)
+    era_id_key_from_json = _env(ERA_ID_COLUMN_KEY_ENV, DEFAULT_ERA_ID_COLUMN_KEY)
 
-    for i, era in enumerate(eras_to_process):
-        logging.info(f"--- Processing Era {i+1}/{len(eras_to_process)}: {era} ---")
+    logging.info(f"Loading consolidated data from: {consolidated_data_file_path}")
+    try:
+        # Determine if using GPU for pandas operations
+        # pd is already aliased to cudf.pandas or original_pandas at the top of the script
+        # Determine if using GPU for pandas operations
+        if USE_GPU_FLAG and 'cudf' in sys.modules:
+            # Load with original_pandas then convert to cuDF for robust JSONL parsing
+            temp_pandas_df = original_pandas.read_json(consolidated_data_file_path, lines=True, orient='records')
+            if temp_pandas_df.empty:
+                logging.error(f"Consolidated data file is empty: {consolidated_data_file_path}. Exiting.")
+                return
+            consolidated_df = cudf.DataFrame.from_pandas(temp_pandas_df)
+            del temp_pandas_df # Free memory
+            logging.info("Loaded consolidated data into cuDF DataFrame.")
+        else:
+            consolidated_df = original_pandas.read_json(consolidated_data_file_path, lines=True, orient='records')
+            if consolidated_df.empty:
+                logging.error(f"Consolidated data file is empty: {consolidated_data_file_path}. Exiting.")
+                return
+            logging.info("Loaded consolidated data into pandas DataFrame.")
+            
+        logging.info(f"Consolidated data shape: {consolidated_df.shape}")
+
+        # Convert 'time' column to datetime objects using the appropriate pandas module (pd could be cudf.pandas or original_pandas)
+        if 'time' in consolidated_df.columns:
+            consolidated_df['time'] = pd.to_datetime(consolidated_df['time'], unit='ms', errors='coerce') # Assuming time is ms epoch
+            consolidated_df.dropna(subset=['time'], inplace=True) # Drop rows where time conversion failed
+            if consolidated_df.empty:
+                logging.error("Consolidated data became empty after 'time' conversion/NA drop. Exiting.")
+                return
+            # Sort by time, essential for time-series operations and correct slicing later
+            consolidated_df.sort_values('time', inplace=True)
+            consolidated_df.reset_index(drop=True, inplace=True)
+        else:
+            logging.error("'time' column not found in consolidated data. Exiting.")
+            return
+
+        # --- Handle -1 as NaN using list from memory --- 
+        # MEMORY a3c1c22a-cbf9-437d-bed1-382773fd58e3
+        columns_to_clean_neg_one = ['dli_sum', 'air_temp_c', 'relative_humidity_percent', 'co2_measured_ppm', 'radiation_w_m2', 'light_intensity_umol']
+        for col in columns_to_clean_neg_one:
+            if col in consolidated_df.columns:
+                # Check if column is numeric before attempting replace -1
+                if pd.api.types.is_numeric_dtype(consolidated_df[col]):
+                    logging.info(f"Replacing -1 with NaN in numeric column: {col}")
+                    if USE_GPU_FLAG and 'cudf' in sys.modules and isinstance(consolidated_df, cudf.DataFrame):
+                        # cuDF replace method
+                        consolidated_df[col] = consolidated_df[col].replace(-1, cudf.NA) # cudf.NA for nullable int/float types
+                    else:
+                        consolidated_df[col] = consolidated_df[col].replace(-1, np.nan)
+                else:
+                    logging.warning(f"Column {col} is not numeric, skipping -1 replacement.")        
+            else:
+                logging.warning(f"Column {col} (for -1 to NaN) not found in consolidated data.")
+
+    except FileNotFoundError:
+        logging.error(f"Consolidated data file not found: {consolidated_data_file_path}. Exiting.")
+        return
+    except Exception as e:
+        logging.error(f"Error loading consolidated data from {consolidated_data_file_path}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return
+
+    # Load era definitions using the new function that returns a DataFrame
+    eras_df = load_era_definitions(era_definitions_dir_path, era_id_key_from_json)
+    if eras_df is None or eras_df.empty:
+        logging.error("No era definitions loaded or DataFrame is empty. Exiting.")
+        return
+
+    # Optional filtering of eras (can adapt FILTER_ERA logic here if needed)
+    # filter_era_id = os.getenv("ERA_IDENTIFIER")
+    # if filter_era_id:
+    #     eras_definitions = [e for e in eras_definitions if e.get('era_level_B') == filter_era_id] # Adjust key as needed
+    #     logging.info(f"Filtered to process {len(eras_definitions)} eras based on ERA_IDENTIFIER: {filter_era_id}")
+    #     if not eras_definitions:
+    #         logging.error(f"Specified ERA_IDENTIFIER '{filter_era_id}' not found in loaded era definitions. Exiting.")
+    #         return
+
+    all_era_features = []
+    total_rows_processed = 0
+    all_sensor_cols = set() # To store all unique sensor columns encountered
+
+    # Define the ID column from era definitions (e.g., 'era_level_B')
+    # This will be used as the 'id' for tsfresh grouping.
+    # ERA_ID_KEY_IN_DEFINITION is now handled by load_era_definitions returning 'era_id' column
+
+    # Iterate through the eras DataFrame from load_era_definitions
+    for index, era_row in eras_df.iterrows():
+        era_identifier = era_row['era_id']
+        start_time = era_row['start_time']
+        end_time = era_row['end_time'] # This can be pd.NaT for the last era
+
+        logging.info(f"Processing era: {era_identifier}, Start: {start_time}, End: {end_time}")
+
+        # Filter consolidated_df for the current era's time window
+        if pd.isna(end_time): # Handle the last era (end_time is NaT)
+            era_data_slice_mask = (consolidated_df['time'] >= start_time)
+        else:
+            era_data_slice_mask = (consolidated_df['time'] >= start_time) & (consolidated_df['time'] < end_time)
+        
+        # Apply mask and copy to avoid SettingWithCopyWarning, and to ensure 'id' column assignment doesn't affect original df
+        # Use .loc for boolean indexing for both pandas and cudf compatibility
+        wide_df_era_slice = consolidated_df.loc[era_data_slice_mask].copy()
+
+        if wide_df_era_slice.empty:
+            logging.warning(f"Skipping era {era_identifier} as no data falls within its time window [{start_time} - {end_time}).")
+            continue
+        
+        # Add the 'id' column for tsfresh (using the era_identifier for this segment)
+        # Use assign for better chaining and cudf compatibility if pd is cudf.pandas
+        if hasattr(wide_df_era_slice, 'assign'): # Check if 'assign' method exists (for cudf or pandas)
+            wide_df = wide_df_era_slice.assign(id=str(era_identifier)) # Ensure era_identifier is string for id
+        else: # Fallback if 'assign' is not available (should not happen with modern pandas/cudf)
+            wide_df = wide_df_era_slice.copy() # Ensure it's a copy
+            wide_df['id'] = str(era_identifier)
+
+        if wide_df.empty:
+            logging.warning("Skipping era %s due to missing or empty data after slicing.", era_identifier)
+            continue
+
+        total_rows_processed += len(wide_df) 
+        
+        # Identify sensor columns to melt. Exclude 'time', 'id', and other metadata columns from era_def or main_df.
+        # Example of potential metadata columns in wide_df if not careful: 'source_system', 'format_type', etc.
+        # We need a definitive list of SENSOR columns to use or a way to exclude metadata.
+        # For now, assume all numeric columns except 'time', 'id' are sensors.
+        sensor_columns_for_melt = [col for col in wide_df.columns if pd.api.types.is_numeric_dtype(wide_df[col]) and col not in ['time', 'id']]
+        # Filter to desired horticultural columns based on MEMORY A3C1C22A
+        desired_sensors = ['air_temp_c', 'relative_humidity_percent', 'co2_measured_ppm', 'radiation_w_m2', 'light_intensity_umol', 'dli_sum']
+        sensor_columns_for_melt = [col for col in sensor_columns_for_melt if col in desired_sensors]
+        all_sensor_cols.update(sensor_columns_for_melt)
+
+        if not sensor_columns_for_melt:
+            logging.warning(f"No sensor columns identified for melting for era {era_identifier}. Skipping.")
+            continue
+            
+        # Create a DataFrame with only 'id', 'time', and the selected sensor columns for melting.
+        df_to_melt = wide_df[['id', 'time'] + sensor_columns_for_melt]
+
+        long_df = melt_for_tsfresh(df_to_melt) # Pass the filtered df_to_melt
+        if long_df is None or long_df.empty:
+            logging.warning("Skipping era %s due to empty data after melting.", era_identifier)
+            continue
+
+        logging.info("Extracting features for era %s with %s (%d kinds from %d sensors)...", 
+                     era_identifier, FC_PARAMS_NAME, len(long_df['kind'].unique()), len(sensor_columns_for_melt))
+
         try:
-            wide_df_era = fetch_preprocessed_data_for_era(connector, era)
-            if wide_df_era.empty:
-                 logging.warning(f"Skipping era '{era}' due to empty data after fetch/unpack.")
-                 continue # Skip to the next era
-
-            total_rows_processed += len(wide_df_era)
-            # Using .name attribute for series if pd is cudf.pandas
-            current_sensor_cols = {c.name if hasattr(c, 'name') else c for c in wide_df_era.columns if (c.name if hasattr(c, 'name') else c) not in {"time", "era_identifier"}}
-            all_sensor_cols.update(current_sensor_cols)
-            
-            long_df_era = melt_for_tsfresh(wide_df_era)
-            if long_df_era.empty:
-                logging.warning(f"Skipping era '{era}' because long DataFrame became empty after melting (e.g., all numeric values were NaN).")
-                continue
-
-            if USE_GPU_FLAG and 'cudf' in sys.modules:
-                logging.info(f"GPU Mode: Preparing cuDF DataFrame for era '{era}' for direct tsfresh processing...")
-                # long_df_era is already a cuDF DataFrame from melt_for_tsfresh
-                
-                logging.info(f"GPU Mode: Converting cuDF DataFrame to pandas DataFrame before calling tsfresh for era '{era}' (shape: {long_df_era.shape})...")
-                long_df_era_pandas = long_df_era.to_pandas() # Convert to pandas
-
-                logging.info(f"GPU Mode: Running tsfresh on pandas DataFrame (converted from cuDF) for era '{era}' (shape: {long_df_era_pandas.shape})...")
-                try:
-                    # Call tsfresh.extract_features directly on the pandas DataFrame.
-                    # n_jobs=1 is still a good practice here as underlying data might have GPU origins,
-                    # and we want to control parallelism.
-                    current_era_all_var_features = extract_features(
-                        long_df_era_pandas, # Pass the pandas DataFrame
-                        column_id="id",
-                        column_sort="time",
-                        column_kind="variable",
-                        column_value="value",
-                        default_fc_parameters=EfficientFCParameters(), # Use EfficientFCParameters
-                        disable_progressbar=True,
-                        n_jobs=1 # Use 1 job
-                        # pivot=True is default and usually desired here
-                    )
-                    # The result current_era_all_var_features will be a pandas DataFrame.
-                    # The final concatenation logic will handle converting it back to cuDF if needed.
-                    logging.info(f"GPU Mode: tsfresh completed for era '{era}'. Features shape (pandas): {current_era_all_var_features.shape}")
-                except Exception as e_tsfresh_gpu:
-                    logging.error(f"GPU Mode: tsfresh extraction failed for era '{era}': {e_tsfresh_gpu}", exc_info=True)
-                    continue # Skip this era on failure
-
-                if current_era_all_var_features.empty:
-                    logging.warning(f"GPU Mode: tsfresh returned no features for era '{era}'.")
-                    continue
-                
-                all_era_features.append(current_era_all_var_features)
-
-            else: # CPU Path - existing logic
-                # New logic: Process tsfresh per variable
-                unique_variables = long_df_era['variable'].unique()
-                era_specific_features_list: list[pd.DataFrame] = []
-                logging.info(f"CPU Mode: Found {len(unique_variables)} variables to process for era '{era}'.")
-
-                for var_idx, var_name in enumerate(unique_variables):
-                    logging.info(f"--- CPU Mode: Processing Era '{era}', Variable {var_idx+1}/{len(unique_variables)}: {var_name} ---")
-                    # Use .copy() to avoid potential SettingWithCopyWarning later
-                    df_single_variable = long_df_era[long_df_era['variable'] == var_name].copy()
-
-                    # tsfresh expects columns: id, time, value for basic operation per kind
-                    df_to_extract = df_single_variable[['id', 'time', 'value']]
-
-                    if df_to_extract.empty or df_to_extract['value'].isnull().all():
-                        logging.warning(f"CPU Mode: Data for variable '{var_name}' in era '{era}' is empty or all NaNs. Skipping this variable.")
-                        continue
-
-                    logging.info(f"CPU Mode: Running tsfresh for variable '{var_name}' in era '{era}' (data shape: {df_to_extract.shape})...")
-                    try:
-                        var_features = extract_features(
-                            df_to_extract,
-                            column_id="id",
-                            column_sort="time",
-                            column_value="value",
-                            default_fc_parameters=EfficientFCParameters(), # Use EfficientFCParameters
-                            disable_progressbar=True,
-                            n_jobs=1,  # Reduce parallelism to 1 for CPU
-                            # show_warnings=False, # Consider adding if matrix_profile warning is noisy and stumpy won't be installed
-                        )
-                    except Exception as e_tsfresh:
-                        logging.error(f"CPU Mode: tsfresh extraction failed for variable '{var_name}' in era '{era}': {e_tsfresh}", exc_info=True)
-                        continue # Skip this variable
-
-                    if var_features.empty:
-                        logging.warning(f"CPU Mode: tsfresh returned no features for variable '{var_name}' in era '{era}'.")
-                        continue
-                    
-                    # Prepend variable name to feature names to ensure uniqueness
-                    var_features.columns = [f"{var_name}__{col}" for col in var_features.columns]
-                    era_specific_features_list.append(var_features)
-                    logging.info(f"CPU Mode: Generated {var_features.shape[1]} features for variable '{var_name}' in era '{era}'.")
-
-                if not era_specific_features_list:
-                    logging.warning(f"CPU Mode: No features generated for any variable in era '{era}'. Skipping this era.")
-                    continue
-
-                # Concatenate features for all variables for the current era
-                current_era_all_var_features = pd.concat(era_specific_features_list, axis=1)
-                all_era_features.append(current_era_all_var_features)
-            
-            logging.info(f"--- Completed processing for Era: {era}. Total features for era: {current_era_all_var_features.shape[1]} ---")
-
+            tsfresh_features = extract_features(
+                long_df, 
+                column_id="id", 
+                column_sort="time", 
+                column_kind="kind", 
+                column_value="value", 
+                default_fc_parameters=MinimalFCParameters(), # Updated to MinimalFCParameters
+                n_jobs=0 if USE_GPU_FLAG and 'cudf' in sys.modules else os.cpu_count()
+            )
+            all_era_features.append(tsfresh_features)
+            logging.info("Successfully extracted %d features for era %s.", len(tsfresh_features.columns), era_identifier)
         except Exception as e:
+            logging.error("Failed to extract features for era %s: %s", era_identifier, e)
+            import traceback
+            logging.error(traceback.format_exc())
+            continue
             logging.error(f"Failed processing era '{era}': {e}. Skipping this era.", exc_info=True)
             # Decide if you want to stop completely or continue with other eras
             # For now, we log and continue

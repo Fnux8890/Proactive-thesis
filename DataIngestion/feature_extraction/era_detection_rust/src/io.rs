@@ -3,7 +3,7 @@ use polars::prelude::{RoundSeries, RoundMode};
 use std::path::Path;
 use anyhow::{Result, Context};
 use std::fs::File;
-
+// just for rode rabbit
 pub fn read_parquet_to_polars_df(file_path: &Path) -> Result<DataFrame> {
     let file = File::open(file_path).with_context(|| format!("Failed to open parquet file: {:?}", file_path))?;
     ParquetReader::new(file)

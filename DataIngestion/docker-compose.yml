@@ -275,8 +275,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # rust_pipeline:
-      #   condition: service_completed_successfully
+      rust_pipeline:
+        condition: service_completed_successfully
     networks:
       - ingestion-net
 
@@ -288,13 +288,28 @@ services:
     image: era_detector_rs:latest
     container_name: era_detector
     volumes:
-      # Input for era_detector is output from raw_prep_lite
-      - ./feature_extraction/data/processed:/app_data/processed:rw
-    command: >
-      --input-parquet /app_data/processed/MegaEra_All_Data_processed_segment_1.parquet --output-dir /app_data/processed/ --output-suffix MegaEra_All_Data_Segment1_Rust --pelt-signal-col dli_sum --pelt-min-size 48 --bocpd-lambda 200 --b-level-signal-col dli_sum --hmm-states 5 --hmm-iterations 20 --c-level-signal-col dli_sum --quant-max-val 250
+      # Input for era_detector is output from raw_prep_lite.
+      # The internal path /app/data/shared_processed matches the CMD in the era_detector Dockerfile.
+      - ./feature_extraction/data/processed:/app/data/shared_processed:rw
+    # The command is now defined by the CMD in the Dockerfile for era_detector.
+    # This allows easy overriding via `docker-compose run era_detector --arg value` or by re-adding a command here.
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=trace # Changed from info to trace
       - RUST_BACKTRACE=1
+    command: [
+        "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
+        "--output-dir", "/app/data/shared_processed/era_labels",
+        "--output-suffix", "docker_debug_run_single_signal",
+        "--signal-cols", "dli_sum",
+        "--resample-every", "5m",
+        "--min-coverage", "0.9",
+        "--include-time", "true",
+        "--pelt-min-size", "48",
+        "--bocpd-lambda", "200.0",
+        "--hmm-states", "5",
+        "--hmm-iterations", "20",
+        "--quant-max-val", "250"
+    ]
     depends_on:
       raw_prep_lite:
         condition: service_completed_successfully

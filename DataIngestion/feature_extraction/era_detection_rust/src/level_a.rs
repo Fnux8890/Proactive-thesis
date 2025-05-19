@@ -1,7 +1,9 @@
 use changepoint::{Bocpd, BocpdLike};
 use changepoint::rv::prelude::NormalGamma;
 use anyhow::Result;
+use log::info; // Import info macro
 
+// just for rode rabbit
 // Helper function to find changepoints from BOCPD probabilities
 fn find_changepoints_from_bocpd_probs(probs: &[f64], threshold: f64) -> Vec<usize> {
     let mut changepoints = Vec::new();
@@ -43,7 +45,7 @@ pub fn detect_changepoints_level_a(
         ));
     }
 
-    println!("Running BOCPD for Level A segmentation with lambda: {}, threshold: {}", expected_run_length, bocpd_threshold);
+    info!("Running BOCPD for Level A segmentation with lambda: {}, threshold: {}", expected_run_length, bocpd_threshold);
 
     let prior = NormalGamma::new_unchecked(0.0, 1.0, 1.0, 1.0);
     let mut bocpd_model = Bocpd::new(expected_run_length, prior);

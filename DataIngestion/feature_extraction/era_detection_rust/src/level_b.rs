@@ -2,7 +2,7 @@ use changepoint::{Bocpd, BocpdLike};
 use changepoint::rv::prelude::NormalGamma;
 use anyhow::Result;
 
-
+// just for rode rabbit
 pub fn bocpd_probabilities(signal: &[f64], expected_run_length: f64) -> Result<Vec<f64>> {
     if signal.is_empty() {
         return Ok(Vec::new());

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rayon = "1.10"
 log = "0.4"
 env_logger = "0.11"
 # ---------- data ----------
@@ -30,14 +31,14 @@ polars = { version = "0.47.1", features = [
     "pct_change",
     "propagate_nans"
 ] }
-ndarray = "0.15"
+ndarray = "0.13.1"
 
 # ---------- models ----------
 changepoint = "0.14.2"
 hmmm        = { version = "0.2.0" }
 
 # ---------- utils ----------
-rand   = "0.8"
+rand   = "0.7.3"
 clap   = { version = "4.5.38", features = ["derive"] }
 anyhow = "1.0"
 
