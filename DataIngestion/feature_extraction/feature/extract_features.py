@@ -101,7 +101,7 @@ FC_PARAMS_NAME = "MinimalFCParameters"  # Updated to MinimalFCParameters
 # Data loading & preparation helpers
 # -----------------------------------------------------------------------------
 
-def load_era_definitions(era_definitions_dir_path: str, era_id_key: str) -> pd.DataFrame | None:
+def load_era_definitions(era_definitions_dir_path: str, era_id_key: str, USE_GPU_FLAG: bool) -> pd.DataFrame | None:
     """Load era definitions from all JSONL and Parquet files in a directory, calculate end times, and return a DataFrame."""
     jsonl_files = list(Path(era_definitions_dir_path).glob('*.jsonl'))
     parquet_files = list(Path(era_definitions_dir_path).glob('*.parquet'))
@@ -226,7 +226,7 @@ def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
             if col not in id_columns and cudf.api.types.is_numeric_dtype(wide_df[col].dtype):
                 numeric_cols.append(col)
     else: # Assuming original_pandas DataFrame
-        numeric_cols = wide_df.select_dtypes(include=original_pandas.api.types.is_number).columns.tolist()
+        numeric_cols = wide_df.select_dtypes(include=[np.number]).columns.tolist()
 
     value_columns = [col for col in numeric_cols if col not in id_columns]
 
@@ -270,6 +270,7 @@ def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
         )
         .dropna(subset=["value"])
     )
+    long_df.rename(columns={"variable": "kind"}, inplace=True)
 
         # No longer renaming 'era_identifier' to 'id' here, as 'id' is expected directly.
     # if "era_identifier" in long_df.columns:
@@ -362,7 +363,7 @@ def main() -> None:
         return
 
     # Load era definitions using the new function that returns a DataFrame
-    eras_df = load_era_definitions(era_definitions_dir_path, era_id_key_from_json)
+    eras_df = load_era_definitions(era_definitions_dir_path, era_id_key_from_json, USE_GPU_FLAG)
     if eras_df is None or eras_df.empty:
         logging.error("No era definitions loaded or DataFrame is empty. Exiting.")
         return
@@ -542,8 +543,7 @@ def main() -> None:
         rep.write(f"Feature settings used : {FC_PARAMS_NAME}\n")
         rep.write(f"Eras processed        : {n_eras_processed} / {len(eras_to_process)}\n")
         rep.write(f"Total rows processed  : {total_rows_processed:,}\n") # From original wide_df rows
-        rep.write(f"Sensors considered    : {n_sensors:,}\n")
-        rep.write(f"Total feature columns : {df_cols:,}\n\n") # Use df_cols from shape
+        rep.write(f"Total feature columns : {n_features:,}\n\n")
 
         rep.write(f"Output Parquet file   : {parquet_file_path_str}\n")
         rep.write(f"Parquet file size (MB): {parquet_file_size_mb:.2f}\n")

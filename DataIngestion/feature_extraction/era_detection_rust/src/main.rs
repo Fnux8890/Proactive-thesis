@@ -1,12 +1,14 @@
 use clap::Parser;
-use polars::prelude::*;
-use polars::prelude::FillNullStrategy;
 use std::path::PathBuf;
 use anyhow::{Result, Context};
 use rayon::prelude::*;
 
 use std::collections::HashSet;
-use polars::prelude::{Label, StartBy};
+use std::sync::Arc;
+use polars::prelude::{
+    DataFrame, Series, DataType, Expr, Duration, ClosedWindow, FillNullStrategy, Label, StartBy,
+    col,
+};
 
 mod io;
 mod level_a;
@@ -119,24 +121,23 @@ fn main() -> Result<()> {
         selected_columns_intermediate = df_main
             .get_columns()
             .par_iter()
-            .filter_map(|s: &Column| { // s is &polars::prelude::Column
+            .filter_map(|s: &Series| { // s is &Series
                 // First, check the overall dtype reported by the Column enum itself
                 match s.dtype() {
                     DataType::Float32 | DataType::Float64 |
                     DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64 |
                     DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => {
                         // If dtype is numeric, use as_materialized_series() for coverage check
-                        // This method on the Column enum should provide a &Series.
-                        let series_for_coverage = s.as_materialized_series();
+                        // If dtype is numeric, directly use the &Series for coverage check
 
-                        if coverage(&series_for_coverage) >= cli.min_coverage {
+                        if coverage(s) >= cli.min_coverage {
                             Some(s.name().to_string()) // Use s.name() for the original column name
                         } else {
                             log::debug!(
                                 "Column '{}' (dtype: {:?}) excluded due to coverage: {:.2} < {}",
                                 s.name(),
-                                s.dtype(), // s.dtype() refers to the Column enum's reported dtype
-                                coverage(&series_for_coverage),
+                                s.dtype(), // s.dtype() refers to the Series's dtype
+                                coverage(s),
                                 cli.min_coverage
                             );
                             None
@@ -271,8 +272,10 @@ fn main() -> Result<()> {
     log::info!("Filled nulls in resampled feature_df. Shape: {:?}, Fill time: {:.2?}", feature_df.shape(), fill_start_time.elapsed()); // Corrected time to fill_start_time
     // --- End: Fill Nulls ---
 
-    // Update time_col_series from the FINAL feature_df (resampled and null-filled)
-    let time_col_series = feature_df.column("time")?.clone();
+    // Wrap feature_df in Arc for thread-safe sharing
+    let feature_df_arc = Arc::new(feature_df);
+    // Update time_col_series from the FINAL feature_df (resampled and null-filled) and wrap in Arc
+    let time_col_series_arc = Arc::new(feature_df_arc.column("time")?.clone());
 
     // Ensure the main output directory exists
     // Check if output_dir is a directory. If not, try to create it.
@@ -286,7 +289,9 @@ fn main() -> Result<()> {
         log::info!("Output directory already exists: {:?}", &cli.output_dir);
     }
 
-    final_selected_cols.par_iter().filter(|&name| name.as_str() != "time").for_each(|signal_name_to_process| {
+    final_selected_cols.par_iter().filter(|&name| name.as_str() != "time").for_each(move |signal_name_to_process| {
+        let feature_df_task_local = Arc::clone(&feature_df_arc);
+        let time_col_series_task_local = Arc::clone(&time_col_series_arc);
         // Define a closure that can return a Result, to keep error handling with '?' clean within the processing logic for a single signal.
         let process_signal_task = || -> Result<()> {
             log::info!("\n\n=== Processing signal: '{}' ===", signal_name_to_process);
@@ -294,7 +299,7 @@ fn main() -> Result<()> {
             // --- Level A: PELT Segmentation for current signal ---
             let pelt_start_time = std::time::Instant::now();
             log::info!("\n--- Level A: PELT Segmentation on '{}' ---", signal_name_to_process);
-            let pelt_signal_column = feature_df
+            let pelt_signal_column = feature_df_task_local
                 .column(signal_name_to_process)
                 .with_context(|| format!("PELT signal column '{}' not found in feature_df", signal_name_to_process))?;
             let pelt_signal_vec = io::series_to_vec_f64(pelt_signal_column.as_series().expect("Series conversion failed for PELT"))?;
@@ -308,21 +313,21 @@ fn main() -> Result<()> {
             log::info!("Level A for '{}': PELT-like (BOCPD based) detected {} breakpoints. Indices: {:?}. Time: {:.2?}", 
                 signal_name_to_process, pelt_bkps_indices.len(), pelt_bkps_indices, pelt_start_time.elapsed());
 
-            let mut era_a_values = vec![0i32; feature_df.height()];
+            let mut era_a_values = vec![0i32; feature_df_task_local.height()];
             let mut current_era_a = 0;
             let mut last_idx_a = 0;
             for &bkp_idx in &pelt_bkps_indices {
-                if bkp_idx > last_idx_a && bkp_idx <= feature_df.height() {
+                if bkp_idx > last_idx_a && bkp_idx <= feature_df_task_local.height() {
                     for i in last_idx_a..bkp_idx { era_a_values[i] = current_era_a; }
                 }
                 last_idx_a = bkp_idx;
                 current_era_a += 1;
             }
-            if last_idx_a < feature_df.height() { 
-                for i in last_idx_a..feature_df.height() { era_a_values[i] = current_era_a; }
+            if last_idx_a < feature_df_task_local.height() { 
+                for i in last_idx_a..feature_df_task_local.height() { era_a_values[i] = current_era_a; }
             }
             let era_a_series = Series::new("era_level_A".into(), era_a_values);
-            let mut df_out_a = DataFrame::new(vec![time_col_series.clone(), era_a_series.into()])?;
+            let mut df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
             let path_a = cli.output_dir.join(format!("{}_{}_era_labels_levelA.parquet", cli.output_suffix, signal_name_to_process));
             io::write_polars_df_to_parquet(&mut df_out_a, &path_a)?;
             log::info!("Saved Level A labels for '{}' to {:?}", signal_name_to_process, path_a);
@@ -330,7 +335,7 @@ fn main() -> Result<()> {
             // --- Level B: BOCPD for current signal ---
             let bocpd_start_time = std::time::Instant::now();
             log::info!("\n--- Level B: BOCPD on '{}' ---", signal_name_to_process);
-            let bocpd_signal_column = feature_df
+            let bocpd_signal_column = feature_df_task_local
                 .column(signal_name_to_process)
                 .with_context(|| format!("BOCPD signal column '{}' not found in feature_df", signal_name_to_process))?;
             let bocpd_signal_vec = io::series_to_vec_f64(bocpd_signal_column.as_series().expect("Series conversion failed for BOCPD"))?;
@@ -350,7 +355,7 @@ fn main() -> Result<()> {
                 })
                 .collect();
             let era_b_series = Series::new("era_level_B".into(), era_labels);
-            let mut df_out_b = DataFrame::new(vec![time_col_series.clone(), cp_probs_b_series.into(), era_b_series.into()])?;
+            let mut df_out_b = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), cp_probs_b_series.into(), era_b_series.into()])?;
             let path_b = cli.output_dir.join(format!("{}_{}_era_labels_levelB.parquet", cli.output_suffix, signal_name_to_process));
             io::write_polars_df_to_parquet(&mut df_out_b, &path_b)?;
             log::info!("Saved Level B labels for '{}' to {:?}", signal_name_to_process, path_b);
@@ -358,7 +363,7 @@ fn main() -> Result<()> {
             // --- Level C: HMM Viterbi for current signal ---
             let hmm_start_time = std::time::Instant::now();
             log::info!("\n--- Level C: HMM Viterbi on '{}' (Quantized up to max value: {}) ---", signal_name_to_process, cli.quant_max_val);
-            let hmm_signal_series_cont = feature_df.column(signal_name_to_process)
+            let hmm_signal_series_cont = feature_df_task_local.column(signal_name_to_process)
                 .with_context(|| format!("HMM signal column '{}' not found in feature_df", signal_name_to_process))?;
             let hmm_signal_series_materialized = hmm_signal_series_cont.as_materialized_series();
             let hmm_signal_series_discrete = io::quantize_series_to_u8(&hmm_signal_series_materialized, cli.quant_max_val)?;
@@ -379,7 +384,7 @@ fn main() -> Result<()> {
                 hmm_start_time.elapsed()
             );
             let era_c_series = Series::new("era_level_C".into(), viterbi_states_c.iter().map(|&x| x as i32).collect::<Vec<i32>>());
-            let mut df_out_c = DataFrame::new(vec![time_col_series.clone(), era_c_series.into()])?;
+            let mut df_out_c = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_c_series.into()])?;
             let path_c = cli.output_dir.join(format!("{}_{}_era_labels_levelC.parquet", cli.output_suffix, signal_name_to_process));
             io::write_polars_df_to_parquet(&mut df_out_c, &path_c)?;
             log::info!("Saved Level C labels for '{}' to {:?}", signal_name_to_process, path_c);
