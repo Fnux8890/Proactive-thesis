@@ -1,0 +1,103 @@
+# Basic Expectation Suite for Engineered Greenhouse Features
+# File: great_expectations/expectations/greenhouse_features.yml
+
+expectation_suite_name: greenhouse_features # Match the filename
+data_asset_type: null # Set dynamically when validating in-memory
+
+expectations:
+  # VPD Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: vpd_kpa
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: vpd_kpa
+      mostly: 0.98 # Allow a small percentage of nulls if needed
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: vpd_kpa
+      min_value: 0 # VPD cannot be negative
+      max_value: 7 # Practical upper limit in kPa, adjust if needed
+      mostly: 0.99
+  - expectation_type: expect_column_mean_to_be_between
+    kwargs:
+      column: vpd_kpa
+      min_value: 0.1
+      max_value: 4.0 # Sensible range for mean VPD
+
+  # DLI Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: DLI_mol_m2_d
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: DLI_mol_m2_d
+      mostly: 0.95 # DLI might be null if PAR data is missing for a day
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: DLI_mol_m2_d
+      min_value: 0
+      max_value: 80 # High upper bound for DLI (mol/m2/day)
+
+  # GDD Checks (Daily)
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: GDD_daily
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: GDD_daily
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: GDD_daily
+      min_value: 0
+      max_value: 50 # Reasonable upper limit for daily GDD
+
+  # DIF Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: DIF_daily
+  - expectation_type: expect_column_values_to_be_between
+    # Allow nulls as DIF might not be calculable if only day/night data exists
+    kwargs:
+      column: DIF_daily
+      min_value: -20 # Allow negative DIF
+      max_value: 20  # Allow positive DIF
+      allow_cross_type_comparisons: true # Needed if column sometimes has None
+      mostly: 0.95 # Expect mostly non-null if day/night periods exist
+
+  # Add expectations for other key engineered columns as needed...
+  # Example: Night Stress Flag
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: heat_delay_onset_risk # Example flag name from config
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: heat_delay_onset_risk
+      value_set: [0, 1, null] # Allow 0, 1, or potentially null if not calculable
+
+  # Lamp Energy Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: Lamp_kWh_daily
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: Lamp_kWh_daily
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: Lamp_kWh_daily
+      min_value: 0
+      max_value: 200  # generous upper bound per day; adjust as real data accrues
+
+  # Supplemental DLI Checks
+  - expectation_type: expect_column_to_exist
+    kwargs:
+      column: DLI_suppl_mol_m2_d
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: DLI_suppl_mol_m2_d
+      mostly: 0.95 # Allow nulls if supplemental light was never on
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: DLI_suppl_mol_m2_d
+      min_value: 0
+      max_value: 70 # High upper bound for supplemental DLI (mol/m2/day) 

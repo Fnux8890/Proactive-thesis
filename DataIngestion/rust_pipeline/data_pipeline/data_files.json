@@ -5,6 +5,7 @@
         "status": "pending",
         "format_type": "KnudJepsenNO3Lamp",
         "source_system": "KnudJepsen",
+        "lamp_group_id": "KNUD_NO3_LAMP_GRP1",
         "delimiter": ";",
         "quoting": true,
         "header_rows": 3,
@@ -89,6 +90,7 @@
         "status": "pending",
         "format_type": "KnudjepsenNO3NO4Extra",
         "source_system": "KnudJepsen",
+        "lamp_group_id": "KNUD_NO3NO4_EXTRA",
         "delimiter": ";",
         "quoting": true,
         "header_rows": 3,
@@ -187,6 +189,7 @@
         "status": "pending",
         "format_type": "KnudJepsenNO4Lamp",
         "source_system": "KnudJepsen",
+        "lamp_group_id": "KNUD_NO4_LAMP_GRP1",
         "delimiter": ";",
         "quoting": true,
         "header_rows": 3,
@@ -295,6 +298,7 @@
         "status": "pending",
         "format_type": "KnudJepsenLighting",
         "source_system": "KnudJepsen",
+        "lamp_group_id": "KNUD_NO3NO4_BELYSNING_GRP",
         "delimiter": ";",
         "quoting": true,
         "header_rows": 3,
@@ -2735,35 +2739,6 @@
         ]
     },
     {
-        "workspace_path": "Data/aarslev/celle5/output-*.csv.json",
-        "container_path": "/app/data/aarslev/celle5/output-*.csv.json",
-        "status": "pending",
-        "format_type": "JSON",
-        "source_system": "AarslevCelleJSON",
-        "timestamp_info": {
-            "timestamp_columns": [
-                "ts"
-            ],
-            "timestamp_format": "%Y-%m-%dT%H:%M:%S%.f%z",
-            "timezone": "UTC"
-        },
-        "column_map": [
-            {
-                "source_column": "ts",
-                "target_field": "timestamp_utc",
-                "data_type": "datetime"
-            },
-            {
-                "source_column": "status",
-                "target_field": "value",
-                "data_type": "int"
-            }
-        ],
-        "null_markers": [
-            "null"
-        ]
-    },
-    {
         "workspace_path": "Data/aarslev/celle6/output-*.csv",
         "container_path": "/app/data/aarslev/celle6/output-*.csv",
         "status": "pending",
@@ -2893,35 +2868,6 @@
                 "min": 0.0,
                 "max": 100.0
             }
-        ]
-    },
-    {
-        "workspace_path": "Data/aarslev/celle6/output-*.csv.json",
-        "container_path": "/app/data/aarslev/celle6/output-*.csv.json",
-        "status": "pending",
-        "format_type": "JSON",
-        "source_system": "AarslevCelleJSON",
-        "timestamp_info": {
-            "timestamp_columns": [
-                "ts"
-            ],
-            "timestamp_format": "%Y-%m-%dT%H:%M:%S%.f%z",
-            "timezone": "UTC"
-        },
-        "column_map": [
-            {
-                "source_column": "ts",
-                "target_field": "timestamp_utc",
-                "data_type": "datetime"
-            },
-            {
-                "source_column": "status",
-                "target_field": "value",
-                "data_type": "int"
-            }
-        ],
-        "null_markers": [
-            "null"
         ]
     }
 ]

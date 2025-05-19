@@ -1,48 +1,43 @@
 # --- Build Stage ---
-# Use the official Rust image as the builder
-FROM rust:1.78 AS builder
+# We will skip the separate builder stage for now
+# FROM rust:1.78 AS builder
+# ... (rest of builder stage commented out or removed)
+
+# --- Run Stage ---
+# Use a full Rust image temporarily to include cargo
+# FROM debian:bookworm-slim 
+FROM rust:1.86
 
 # Set the working directory
 WORKDIR /usr/src/app
 
-# Copy Cargo.toml and Cargo.lock from the correct subfolder
+# Create directories needed
+RUN mkdir -p /app/config /app/sql_scripts
+
+# Copy configuration first (less likely to change)
+COPY ./data_pipeline/data_files.json /app/config/data_files.json
+COPY ./data_pipeline/sql_scripts/ /app/sql_scripts
+
+# Copy Cargo files 
 COPY data_pipeline/Cargo.toml data_pipeline/Cargo.lock ./
 
-# Build dependencies only (another cache layer)
-# Create a dummy main.rs to allow this step
+# Build dependencies (cache layer)
+# Create dummy src to allow this
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release
-RUN rm -f target/release/deps/data_pipeline* # Adjust dummy artifact name if needed
+RUN rm -rf src target/release/deps/data_pipeline* # Clean up dummy files
 
-# Copy the actual source code from the correct subfolder
+# Copy the actual source code
 COPY data_pipeline/src ./src
 
-# Build the application
+# Build the application IN the final stage
 RUN cargo build --release
 
-# --- Run Stage ---
-# Use a minimal image for the final stage
-FROM debian:bookworm-slim
+# Verify binary exists
+RUN ls -l target/release/data_pipeline
 
-# Set the working directory
-WORKDIR /usr/local/bin
+# Add a volume mount point for logs
+VOLUME /app/logs
 
-# Create a directory for configuration
-RUN mkdir -p /app/config
-
-# Copy the compiled binary from the builder stage
-COPY --from=builder /usr/src/app/target/release/data_pipeline .
-
-# Copy the configuration file from the host (build context) into the image
-# Assumes data_files.json is at data_pipeline/data_files.json relative to build context
-COPY ./data_pipeline/data_files.json /app/config/data_files.json
-
-# === DEBUG STEP: Verify the copied file ===
-RUN ls -l /app/config/
-# === END DEBUG STEP ===
-
-# (Optional) Set permissions if needed, though default should be fine
-# RUN chown nonroot:nonroot /app/config/data_files.json
-
-# Command to run the application (adjust if needed)
-CMD ["./data_pipeline"] 
+# Set the final command to run the newly built binary
+CMD echo "Attempting to execute data_pipeline from final stage build..." && ./target/release/data_pipeline 

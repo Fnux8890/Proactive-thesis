@@ -1,0 +1,49 @@
+# ---------- build stage ----------
+FROM rust:1.87-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache build-base musl-dev
+
+# copy manifests first (cache dependencies)
+COPY Cargo.toml ./
+# Create a dummy src/main.rs to allow `cargo fetch` to work before actual source is copied
+RUN mkdir src && echo "fn main(){}" > src/main.rs
+# Fetch dependencies based on Cargo.toml
+RUN cargo fetch
+
+# now copy the real source
+COPY src ./src
+# Build the application, using cached dependencies
+RUN cargo build --release --bin era_detector
+
+# ---------- runtime stage ----------
+FROM debian:bookworm-slim
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/era_detector /usr/local/bin/era_detector
+
+# Set output directory consistently if needed by the app (though CLI arg is better)
+# ENV APP_OUTPUT_DIR=/app/data/processed 
+# WORKDIR /app # The binary can be called from anywhere if it's in PATH
+
+ENV RUST_LOG=trace
+ENTRYPOINT ["era_detector"]
+
+# Default command to run if no arguments are provided to `docker run`
+# Users can override these by specifying arguments after `docker run <image_name>`
+CMD [ \
+    "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet", \
+    "--output-dir", "/app/data/shared_processed/era_labels", \
+    "--output-suffix", "docker_default_run", \
+    "--signal-cols", "dli_sum,lamp_group,radiation_w_m2,co2_measured_ppm,outside_temp_c", \
+    "--resample-every", "5m", \
+    "--min-coverage", "0.9", \
+    "--include-time", "true", \
+    "--pelt-min-size", "48", \
+    "--bocpd-lambda", "200.0", \
+    "--hmm-states", "5", \
+    "--hmm-iterations", "20", \
+    "--quant-max-val", "250" \
+]
+# Example: To get help, run: docker run <image_name> --help
+# Example: To run with custom input: docker run -v /local/data:/app/data <image_name> --input-parquet /app/data/my_data.parquet --signal-cols "dli_sum,another_col"

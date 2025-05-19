@@ -1,0 +1,190 @@
+{
+    "plant_profile_metadata": {
+        "plant_species": "Kalanchoe blossfeldiana",
+        "profile_name": "Kalanchoe_ReputableSource_v1",
+        "version": "1.0.0",
+        "description": "Configuration based on synthesis of reputable scientific literature discussed in 'Kalanchoe Horticultural Feature Extraction Parameters_.pdf'[cite: 1]. Emphasizes experimental findings and models from cited peer-reviewed articles and Acta Horticulturae.",
+        "source_document_id": "uploaded:Kalanchoe Horticultural Feature Extraction Parameters_.pdf"
+    },
+    "gdd_parameters": {
+        "crop_profile": "kalanchoe_model_specific",
+        "profiles": {
+            "kalanchoe_model_specific": {
+                "t_base_celsius": 6.0,
+                "t_cap_celsius": 24.0
+            },
+            "default_example": {
+                "t_base_celsius": 10.0,
+                "t_cap_celsius": 30.0
+            }
+        }
+    },
+    "optimal_conditions": {
+        "temperature_celsius": {
+            "vegetative_adt_target": {
+                "min": 18.0,
+                "max": 22.0
+            },
+            "flowering_initiation_sd_night_target": {
+                "max": 21.0
+            },
+            "flowering_development_adt_target": {
+                "min": 18.0,
+                "max": 22.0
+            }
+        },
+        "dli_mol_m2_day": {
+            "minimum_growth": 5.0,
+            "vegetative_target": {
+                "min": 12.0,
+                "max": 17.0
+            },
+            "flowering_target": {
+                "min": 15.0,
+                "max": 25.0
+            },
+            "saturation_approx": 25.0
+        },
+        "vpd_kpa": {
+            "target_range": {
+                "min": 0.5,
+                "max": 0.9
+            }
+        }
+    },
+    "photoperiod_parameters": {
+        "classification": "Short Day Plant (Qualitative)",
+        "critical_night_length_hours": 12.0,
+        "inductive_night_length_hours_target": 14.0,
+        "sd_induction_duration_weeks": {
+            "value": null
+        },
+        "night_interruption_inhibits_flowering": true
+    },
+    "dif_parameters": {
+        "day_definition": "lamp_status",
+        "lamp_status_columns": [
+            "lamp_grp1_no3_status",
+            "lamp_grp2_no3_status",
+            "lamp_grp1_no4_status",
+            "lamp_grp2_no4_status"
+        ],
+        "fixed_time_day_start_hour": 6,
+        "fixed_time_day_end_hour": 18,
+        "target_dif_celsius": null
+    },
+    "stress_thresholds": {
+        "heat_delay_night_temp_celsius_sd": {
+            "onset_risk": 21.0,
+            "significant_impact": 24.0
+        },
+        "low_temp_cam_induction_celsius": 12.0
+    },
+    "actuator_summary_parameters": {
+        "percent_columns_for_average": [
+            "vent_pos_1_percent",
+            "vent_pos_2_percent",
+            "vent_lee_afd3_percent",
+            "vent_wind_afd3_percent",
+            "vent_lee_afd4_percent",
+            "vent_wind_afd4_percent",
+            "curtain_1_percent",
+            "curtain_2_percent",
+            "curtain_3_percent",
+            "curtain_4_percent",
+            "window_1_percent",
+            "window_2_percent"
+        ],
+        "percent_columns_for_changes": [
+            "vent_pos_1_percent",
+            "vent_pos_2_percent",
+            "vent_lee_afd3_percent",
+            "vent_wind_afd3_percent",
+            "vent_lee_afd4_percent",
+            "vent_wind_afd4_percent",
+            "curtain_1_percent",
+            "curtain_2_percent",
+            "curtain_3_percent",
+            "curtain_4_percent",
+            "window_1_percent",
+            "window_2_percent"
+        ],
+        "binary_columns_for_on_time": [
+            "lamp_grp1_no3_status",
+            "lamp_grp2_no3_status",
+            "lamp_grp3_no3_status",
+            "lamp_grp4_no3_status",
+            "lamp_grp1_no4_status",
+            "lamp_grp2_no4_status",
+            "measured_status_bool",
+            "rain_status",
+            "climate_cooler_status"
+        ]
+    },
+    "objective_function_parameters": {
+        "energy_power_ratings_kw": {
+            "heating_system_power_kw": null,
+            "ventilation_passive": false,
+            "ventilation_system_power_kw": null,
+            "air_conditioning_power_kw": null,
+            "lamp_group_power_kw": {
+                "lamp_grp1_no3_status": null,
+                "lamp_grp2_no3_status": null,
+                "lamp_grp3_no3_status": null,
+                "lamp_grp4_no3_status": null,
+                "lamp_grp1_no4_status": null,
+                "lamp_grp2_no4_status": null,
+                "...": null
+            }
+        },
+        "fixed_setpoints": {
+            "temperature_celsius": 20.0,
+            "relative_humidity_percent": 75.0,
+            "light_par_umol_m2_s": null
+        },
+        "optimal_ranges": {
+            "temperature_celsius": {
+                "lower": 18.0,
+                "upper": 22.0
+            },
+            "relative_humidity_percent": {
+                "lower": 70.0,
+                "upper": 85.0
+            }
+        }
+    },
+    "lamp_groups": {
+        "lamp_grp1_no3_status": {
+            "count": 24,
+            "ppf_umol_s": 1100,
+            "power_kw": 0.60
+        },
+        "lamp_grp2_no3_status": {
+            "count": 24,
+            "ppf_umol_s": 1100,
+            "power_kw": 0.60
+        },
+        "lamp_grp1_no4_status": {
+            "count": 18,
+            "ppf_umol_s": 1650,
+            "power_kw": 0.65
+        },
+        "lamp_grp2_no4_status": {
+            "count": 18,
+            "ppf_umol_s": 1650,
+            "power_kw": 0.65
+        }
+    },
+    "column_uuid_mapping": {
+        "air_temp_c": [
+            "be3ddbb8-5210-3be3-84d8-904df2da1754"
+        ],
+        "outside_temp_c": [
+            "87178386-1a2d-3b6d-810c-b7f7e2638e99"
+        ],
+        "light_intensity_umol": [
+            "5f893ebd-002c-3708-8e76-bb519336f210"
+        ]
+    },
+    "data_frequency_minutes": 60
+}

@@ -1,0 +1,5 @@
+,CO2 målt,Unnamed: 0,mål FD,mål FD_1,mål FD_2,mål RF_1,mål RF_2,mål gard 1,mål gard 2,mål læ_1,mål læ_2,mål rør 1,mål rør 2,mål temp afd  Mid,mål vind_1,mål vind_2,målt status,målt status_1,målt status_2,målt status_3,målt status_4,målt status_5,målt status_6,stråling,udetemp
+NO3-NO4_belysningsgrp.csv,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0
+NO3NO4.extra.csv,0,1,0,1,1,1,1,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,0,0,0
+NO3_LAMPEGRP_1.csv,1,1,1,0,0,0,0,1,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,1,1
+NO4_LAMPEGRP_1.csv,1,1,1,0,0,0,0,1,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0,1,1

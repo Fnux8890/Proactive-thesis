@@ -1,0 +1,5 @@
+tsfresh
+sqlalchemy
+psycopg2-binary
+pandas
+numpy

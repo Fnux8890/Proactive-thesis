@@ -6,8 +6,9 @@ use crate::parsers;
 /// Processes a single file based on its configuration.
 /// Selects the appropriate parser and returns the parsed data or an error.
 pub fn process_file(config_entry: &FileConfig) -> Result<Vec<ParsedRecord>, PipelineError> {
-    println!("INFO: Processing file: {} with format type: {}", 
-        config_entry.container_path.display(), 
+    println!(
+        "INFO: Processing file: {} with format type: {}",
+        config_entry.container_path.display(),
         config_entry.format_type
     );
 
@@ -26,7 +27,7 @@ pub fn process_file(config_entry: &FileConfig) -> Result<Vec<ParsedRecord>, Pipe
         "KnudjepsenNO3NO4Extra" | 
         "KnudJepsenLighting" | 
         "AarslevDataForecast" | 
-        "AarslevUUIDJsonCSV" => {
+        "AarslevUUIDJsonCSV" | "CSV" => {
             // Use the enhanced generic CSV parser
             parsers::csv_parser::parse_csv(config_entry, &config_entry.container_path)
                 .map_err(|parse_err| PipelineError::Parse(parse_err, config_entry.container_path.clone()))
@@ -40,12 +41,8 @@ pub fn process_file(config_entry: &FileConfig) -> Result<Vec<ParsedRecord>, Pipe
                 .map_err(|parse_err| PipelineError::Parse(parse_err, config_entry.container_path.clone()))
         }
 
-        // Generic CSV handler (for wildcard entries like celle*/output-*.csv)
-        "CSV" => {
-            println!("WARN: Using generic CSV parser for format_type 'CSV'. Ensure config (delimiter, timestamp, columns) is correct for {}", config_entry.container_path.display());
-            parsers::csv_parser::parse_csv(config_entry, &config_entry.container_path)
-                .map_err(|parse_err| PipelineError::Parse(parse_err, config_entry.container_path.clone()))
-        }
+        // Generic CSV handler (handled in the first arm)
+        // "CSV" => { ... }, // REMOVED Unreachable arm
 
         // --- JSON Formats ---
         "AarslevStreamJSON" => {
@@ -77,5 +74,6 @@ pub fn process_file(config_entry: &FileConfig) -> Result<Vec<ParsedRecord>, Pipe
         }
     };
 
-    parsed_result // Return the result from the parser directly
-} 
+    // parsed_result is now Result<Vec<ParsedRecord>, PipelineError>
+    parsed_result
+}

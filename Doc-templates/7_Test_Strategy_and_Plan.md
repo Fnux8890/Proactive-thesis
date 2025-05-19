@@ -2,9 +2,9 @@
 
 ## Document Information
 
-- **Title:** Test Strategy and Test Plan  
-- **Project:** Data-Driven Greenhouse Climate Control System  
-- **Version:** 1.0  
+- **Title:** Test Strategy and Test Plan
+- **Project:** Simulation-Based Greenhouse Control Optimization
+- **Version:** 1.0 (Based on Facilitation Report)
 - **Last Updated:** [Date]
 
 ---
@@ -13,18 +13,19 @@
 
 ### 1.1 Purpose
 
-This document defines the comprehensive testing strategy and detailed test plans for the Data-Driven Greenhouse Climate Control System. It aims to ensure that every component meets the functional, performance, security, and usability requirements through systematic testing.
+This document defines the testing strategy and plan for the Simulation-Based Greenhouse Control Optimization system. It aims to ensure that the core Rust application meets its functional requirements, performs adequately for analysis, and handles data correctly according to the project objectives defined in the Facilitation Report.
 
 ### 1.2 Scope
 
-The test plan covers all testing phases, including:
+This test plan covers the testing phases relevant to the offline, simulation-based nature of the project:
 
-- Unit Testing
-- Integration Testing
-- System Testing (both functional and non-functional)
-- Performance Testing
-- Security Testing
-- User Acceptance Testing (UAT)
+- Unit Testing (Rust components)
+- Integration Testing (Rust module interactions, Database interaction)
+- System Testing (End-to-end workflow validation)
+- Performance Testing (Simulation and Optimization runtime)
+- Robustness Testing (Error handling)
+
+*Note: Testing related to live hardware, real-time control, user interfaces, or extensive external APIs is out of scope.*
 
 ---
 
@@ -32,28 +33,28 @@ The test plan covers all testing phases, including:
 
 ### 2.1 Testing Objectives
 
-- **Validate System Functionality:** Ensure that features meet the design specifications.  
-- **Verify Performance Requirements:** Measure system response times, throughput, and scalability.  
-- **Ensure Reliability and Stability:** Confirm that the system operates continuously under varying conditions.  
-- **Confirm Security Measures:** Validate authentication, authorization, and data protection mechanisms.  
-- **Validate User Experience:** Test for usability and intuitive interface design.
+- **Validate Core Logic:** Ensure simulation model calculations, MOEA objective functions, and data processing logic are correct.
+- **Verify Component Integration:** Confirm that Rust modules (Data Access, Input Prep, Simulation, MOEA, Logging) interact as designed.
+- **Confirm Data Handling:** Validate correct retrieval from TimescaleDB and processing of historical data.
+- **Assess Performance:** Measure the runtime performance of simulation and optimization processes for feasibility.
+- **Ensure Robustness:** Test error handling for database connections, file I/O, and invalid configurations.
+- **Verify Output Correctness:** Ensure logged results and output files accurately reflect the optimization outcomes.
 
 ### 2.2 Testing Types
 
-1. **Unit Testing**  
-2. **Integration Testing**  
-3. **System Testing**  
-4. **Performance Testing**  
-5. **Security Testing**  
-6. **User Acceptance Testing (UAT)**
+1. **Unit Testing**
+2. **Integration Testing**
+3. **System Testing**
+4. **Performance Testing**
+5. **Robustness Testing**
 
 ### 2.3 Testing Approach
 
-- **Test-Driven Development (TDD):** Writing tests prior to code implementation.  
-- **Continuous Integration/Continuous Testing:** Automated triggers on code commits.  
-- **Automated Testing:** Extensive use of automated scripts and frameworks.  
-- **Manual Testing:** Complementary manual tests for user interface and complex scenarios.  
-- **Simulation-Based Testing:** Utilize simulated data and scenarios to validate real-world performance.
+- **Test-Driven Development (TDD) Principles:** Where practical, write tests for Rust functions before or during implementation.
+- **Automated Testing:** Leverage Rust's built-in testing framework (`cargo test`) for unit and integration tests.
+- **Scenario-Based System Testing:** Define specific end-to-end scenarios using historical data subsets to validate the full workflow.
+- **Manual Verification:** Manually inspect output logs and result files for correctness in system tests.
+- **Simulation-Based Validation:** Use controlled input scenarios to qualitatively validate the simulation model's behavior (as per NFR-6).
 
 ---
 
@@ -61,42 +62,36 @@ The test plan covers all testing phases, including:
 
 ### 3.1 Hardware Requirements
 
-- Development and test servers  
-- Test sensors and control devices  
-- Network infrastructure  
-- Mobile devices for UI testing
+- Development machine capable of running Rust compilation, Docker, and the application.
+- Access to a TimescaleDB instance (local Docker container or remote).
 
 ### 3.2 Software Requirements
 
 ```yaml
-Development:
-  - TypeScript (>=5.0)
-  - Bun (runtime, testing, and package management)
-  - bun test (built-in testing framework)
-  - ESLint (static analysis)
-  - Prettier (code formatting)
-  - bun coverage (test coverage tool)
+Development/Testing:
+  - Rust (Compiler & Toolchain >= [Specify Version])
+  - cargo test (Rust's built-in testing framework)
+  - Python (>= [Specify Version, e.g., 3.10+])
+  - uv (Package manager/virtual environment tool)
+  - pytest (Testing framework)
+  - coverage.py (Test coverage measurement)
+  - TimescaleDB (Database instance)
+  - Docker (for environment consistency & potentially DB)
+  - sqlx-cli (Optional, for DB migrations/setup)
+  - Git (Version control)
 
-Testing Tools:
-  - JMeter
-  - Selenium
-  - Postman
-  - Docker
-  - Kubernetes
-
-Monitoring:
-  - Prometheus
-  - Grafana
-  - ELK Stack
+Potentially Useful Crates for Testing:
+  - assert_cmd (for testing CLI behavior if applicable)
+  - insta (for snapshot testing outputs)
+  - mockall / faux (for mocking dependencies)
 ```
 
 ### 3.3 Test Data Requirements
 
-- Realistic sensor data samples  
-- Historical climate records  
-- User profile datasets  
-- Configuration and calibration data  
-- Predefined simulation scenarios
+- Representative samples of historical environmental data (CSV or SQL dump format for TimescaleDB).
+- Sample configuration files (e.g., TOML, YAML) covering valid and invalid scenarios.
+- Predefined simulation parameters and MOEA settings for specific test cases.
+- Expected output structures/formats for validation.
 
 ---
 
@@ -104,39 +99,46 @@ Monitoring:
 
 ### 4.1 Framework
 
-The unit tests are built using Python's pytest framework. An example test case structure is as follows:
+Unit tests will be written using the `pytest` framework and standard Python conventions (e.g., test functions prefixed with `test_`, potentially using test classes).
 
-```typescript
-// Example test case structure using bun test framework
+```python
+# Example test structure using pytest
 
-import { describe, test, beforeEach, expect } from "bun:test";
-import { ClimateController } from "greenhouse/control";
+import pytest
+import numpy as np
+# from your_module import calculate_growth_metric # Import function/class to test
 
-describe("ClimateController", () => {
-  let controller: ClimateController;
+def test_simulation_calculation():
+    # Setup test data and parameters
+    # input_data = ...
+    # params = ...
+    # expected_output = ...
 
-  beforeEach((): void => {
-    controller = new ClimateController();
-  });
+    # Call the function under test
+    # result = calculate_growth_metric(input_data, params)
 
-  test("temperature control", (): void => {
-    // Implementation to test temperature control functionality
-    expect(true).toBe(true);
-  });
+    # Assert expected outcome (using pytest assertions)
+    # assert result == expected_output
+    # For floating point comparisons:
+    # assert result == pytest.approx(expected_output, abs=1e-6)
+    assert True # Placeholder
 
-  test("humidity control", (): void => {
-    // Implementation to test humidity control functionality
-    expect(true).toBe(true);
-  });
-});
+def test_objective_function():
+    # Test MOEA objective function calculation
+    # ...
+    assert True # Placeholder
+
+# Example using a test class
+# class TestSimulation:
+#     def test_some_aspect(self):
+#         assert True
 ```
 
-### 4.2 Test Coverage Requirements
+### 4.2 Test Coverage Goals
 
-- **Minimum Coverage:** 90% overall code coverage  
-- **Critical Path Coverage:** 100%  
-- **Error Handling:** 100% for key error conditions  
-- **Edge Cases:** 95% coverage of unusual and boundary conditions
+- **Target Coverage:** Aim for high coverage (>80%) on critical logic (simulation core, MOEA objectives, data transformations). Use tools like `coverage.py` (often integrated with `pytest-cov`) to measure coverage.
+- **Error Handling:** Ensure exception paths (e.g., invalid data, calculation errors) are tested using `pytest.raises`.
+- **Edge Cases:** Include tests for boundary conditions (e.g., zero/max values, empty inputs).
 
 ---
 
@@ -144,175 +146,76 @@ describe("ClimateController", () => {
 
 ### 5.1 Integration Test Plan
 
-The integration tests verify the interaction between system components, including:
+Integration tests will verify interactions *between* the core Python modules/classes and with the database.
 
-1. **Sensor Integration:**  
-   - Data collection and preprocessing  
-   - Validation of sensor data pipelines  
-2. **Control System Integration:**  
-   - Actuator command execution  
-   - Feedback loops and safety system checks  
-3. **External Systems Integration:**  
-   - Communication with weather services  
-   - Interfacing with energy management systems  
-   - API connectivity with mobile applications
+1. **Data Access <-> TimescaleDB:**
+    - Test database connection logic.
+    - Verify correct data retrieval for specific time ranges/conditions.
+    - Test handling of database errors (e.g., connection refused, table not found).
+2. **Data Access -> Input Preparation:**
+    - Test that Input Prep correctly processes data structures received from Data Access.
+3. **Input Preparation -> Simulation / MOEA:**
+    - Test that Simulation and MOEA modules correctly receive and interpret prepared data and configuration.
+4. **MOEA <-> Simulation:**
+    - Test the invocation loop: MOEA requesting simulation runs, Simulation returning results.
+5. **MOEA / Simulation -> Logging:**
+    - Test that logs are generated in the expected format and location using Python's `logging` handlers.
 
-### 5.2 API Testing
+### 5.2 Database Integration Testing
 
-The following JSON snippet outlines the API test suite structure:
-
-```json
-{
-  "test_suite": {
-    "name": "API Integration Tests",
-    "endpoints": [
-      {
-        "path": "/api/v1/sensors",
-        "method": "POST",
-        "test_cases": [
-          "valid_data",
-          "invalid_data",
-          "missing_fields",
-          "authentication"
-        ]
-      }
-    ]
-  }
-}
-```
+- Use a dedicated test database (potentially ephemeral via Docker).
+- Write tests that insert known data, run a component that reads/writes, and assert the database state or returned data.
+- Utilize Python libraries for database interaction within tests.
 
 ---
 
 ## 6. System Testing
 
-### 6.1 Functional Testing
+### 6.1 End-to-End Workflow Testing
 
-Focuses on key system functionalities:
+Focus on validating the complete process flow from input to output.
 
-- **Climate Control Features:**  
-  - Temperature, humidity, CO₂, and lighting management.  
-- **Monitoring and Reporting:**  
-  - Real-time data visualization  
-  - Historical data analysis and reporting  
-- **Alert and Notification Systems:**  
-  - Timely alerts for anomalies and system failures
+- **Scenario 1: Basic Run:**
+  - Use a small, well-defined historical dataset and configuration.
+  - Run the application.
+  - **Verify:** Correct output files (results, logs) are generated; results seem plausible based on inputs; no crashes or critical errors logged.
+- **Scenario 2: Different Configurations:**
+  - Run with varied simulation parameters or MOEA settings.
+  - **Verify:** Output reflects the change in configuration; system handles different settings correctly.
+- **Scenario 3: Longer Historical Period:**
+  - Use a larger dataset covering a longer time span.
+  - **Verify:** Application completes successfully; performance is acceptable (see Performance Testing).
 
-### 6.2 Non-functional Testing
+### 6.2 Qualitative Simulation Validation (NFR-6 Test)
 
-Covers performance and security aspects:
-
-- **Performance Testing:**  
-  - Response time, throughput, and system scalability  
-- **Security Testing:**  
-  - Verification of authentication and authorization  
-  - Data protection and API security measures
+- Run the system with specific input scenarios designed to test expected simulation behavior (e.g., increasing light levels, varying temperature).
+- Analyze the output `SimulationOutput` metrics from the Python implementation.
+- **Verify:** The simulated growth responds qualitatively as expected based on horticultural principles (e.g., growth increases with light up to saturation, shows an optimal temperature range). Document results.
 
 ---
 
-## 7. User Acceptance Testing
+## 7. Performance Testing
 
 ### 7.1 Test Scenarios
 
-**Basic Operations:**
-
-- System monitoring and parameter adjustments  
-- Alert handling and report generation
-
-**Advanced Features:**
-
-- Predictive control and automated energy optimization  
-- Multi-zone management and custom scheduling
+- **Simulation Speed Test:** Measure the average time taken for a single `run_simulation` call (in the Python implementation) over the evaluation period.
+- **MOEA Run Time Test:** Measure the total execution time for a complete optimization run with typical parameters (population size, generations) and a representative dataset size.
 
 ### 7.2 Acceptance Criteria
 
-```yaml
-Functionality:
-  - All features operate as specified
-  - No critical bugs present
-  - Complete and clear documentation provided
-
-Performance:
-  - Response times under 1 second
-  - 99.9% system uptime
-  - High prediction accuracy
-
-Usability:
-  - User-friendly interface
-  - Clear error messaging
-  - Comprehensive user documentation
-```
+- **Simulation Speed (Python):** The initial Python implementation's speed per run must allow the overall optimization to meet NFR-1.1. If not, this triggers consideration of the Rust/FFI optimization, which would then also need performance testing.
+- **Total Runtime:** Optimization should complete within a reasonable timeframe for research analysis (e.g., target < Y hours for a standard scenario). *(Specific targets TBD)*
 
 ---
 
-## 8. Test Automation
+## 8. Robustness Testing
 
-### 8.1 Automation Framework
+### 8.1 Test Scenarios
 
-```typescript
-interface TestResult {
-  passed: boolean;
-  message: string;
-  duration: number;
-}
-
-interface TestMetrics {
-  totalTests: number;
-  passedTests: number;
-  failedTests: number;
-  coverage: number;
-}
-
-export class AutomationFramework {
-  private testSuites: Map<string, () => Promise<TestResult[]>>;
-  private testResults: Map<string, TestResult[]>;
-  private testMetrics: TestMetrics;
-
-  constructor() {
-    this.testSuites = new Map();
-    this.testResults = new Map();
-    this.testMetrics = {
-      totalTests: 0,
-      passedTests: 0,
-      failedTests: 0,
-      coverage: 0
-    };
-  }
-
-  public async runTestSuite(suiteName: string): Promise<TestResult[]> {
-    const suite = this.testSuites.get(suiteName);
-    if (!suite) {
-      throw new Error(`Test suite '${suiteName}' not found`);
-    }
-
-    const results = await suite();
-    this.testResults.set(suiteName, results);
-    this.updateMetrics(results);
-    return results;
-  }
-
-  public generateReport(): string {
-    // Report generation logic
-    return JSON.stringify({
-      metrics: this.testMetrics,
-      results: Object.fromEntries(this.testResults)
-    }, null, 2);
-  }
-
-  private updateMetrics(results: TestResult[]): void {
-    this.testMetrics.totalTests += results.length;
-    this.testMetrics.passedTests += results.filter(r => r.passed).length;
-    this.testMetrics.failedTests += results.filter(r => !r.passed).length;
-    // Update coverage calculation
-  }
-}
-```
-
-### 8.2 CI/CD Integration
-
-- **Automated Test Triggers:** Integrated with code commits and pull requests  
-- **Test Result Reporting:** Centralized dashboards for real-time feedback  
-- **Coverage Analysis:** Automated coverage reports integrated into CI pipelines  
-- **Performance Metrics:** Continuous tracking of key performance indicators
+- **Invalid Configuration:** Provide malformed or incomplete configuration files (TOML/YAML). **Verify:** Application exits gracefully with informative error messages.
+- **Database Unavailability:** Attempt to run the application when the TimescaleDB instance is not reachable. **Verify:** Application handles connection errors gracefully and logs appropriately.
+- **File System Errors:** Test scenarios like lack of write permissions for the output directory. **Verify:** Application reports file system errors clearly.
+- **Invalid Input Data:** Test with historical data containing unexpected values or formats (if possible to simulate). **Verify:** Input Preparation or Simulation handles potential data issues robustly.
 
 ---
 
@@ -320,32 +223,14 @@ export class AutomationFramework {
 
 ### 9.1 Defect Categories
 
-1. **Critical:**  
-   - System-wide failure, data loss, or security breach  
-2. **High:**  
-   - Major functionality or performance issues impacting usability  
-3. **Medium:**  
-   - Minor functionality or UI issues, documentation errors  
-4. **Low:**  
-   - Cosmetic issues or enhancement suggestions
+1. **Critical:** Prevents core functionality (e.g., crash during simulation, incorrect MOEA results, data corruption).
+2. **High:** Major functional issue (e.g., significantly incorrect calculation, failure to log results).
+3. **Medium:** Minor functional issue, incorrect logging format, usability problem for configuration.
+4. **Low:** Typo in logs, minor deviation from expected output format.
 
 ### 9.2 Defect Tracking
 
-Defects are tracked using standardized JSON templates as shown below:
-
-```json
-{
-  "defect": {
-    "id": "string",
-    "category": "string",
-    "severity": "string",
-    "status": "string",
-    "description": "string",
-    "steps_to_reproduce": ["step1", "step2"],
-    "assigned_to": "string"
-  }
-}
-```
+- Use GitHub Issues to log, track, and manage defects discovered during testing. Assign priority labels based on the categories above.
 
 ---
 
@@ -353,45 +238,40 @@ Defects are tracked using standardized JSON templates as shown below:
 
 ### 10.1 Key Metrics
 
-- **Test Coverage:** Percentage of code covered by tests  
-- **Pass/Fail Rates:** Overall success rates of executed tests  
-- **Defect Density:** Number of defects per module or function  
-- **Test Execution Time:** Total duration of test runs  
-- **Automation Coverage:** Percentage of the test suite that is automated
+- **Unit Test Coverage:** Percentage of code covered by unit tests.
+- **Pass/Fail Rates:** Per test suite (unit, integration, system scenarios).
+- **Defect Density:** Number of defects found per module or feature area.
+- **Performance Metrics:** Average simulation execution time, total MOEA runtime.
+- **Qualitative Validation Checklist:** Status of validation tests against horticultural principles.
 
 ### 10.2 Reporting
 
-Regular reporting is defined as follows:
-
-```yaml
-Daily Report:
-  - Number of tests executed
-  - Pass/fail statistics
-  - Newly discovered defects
-  - Resolved defects
-
-Weekly Report:
-  - Overall test progress
-  - Coverage improvements
-  - Outstanding issues and risk assessments
-```
+- Test results will be summarized as part of iteration reviews.
+- Final test summary included in the project report/thesis appendix.
+- Coverage reports generated periodically (e.g., via CI if configured).
 
 ---
 
 ## Appendices
 
-### Appendix A: Test Case Templates
+*(Appendices to be developed during the project)*
 
-Standard templates and examples for test case creation.
+### Appendix A: Test Case Examples (Rust)
+
+Detailed examples of unit and integration tests using `cargo test`.
+
+### Appendix A: Test Case Examples (Python / pytest)
+
+Detailed examples of unit and integration tests using `pytest`.
 
 ### Appendix B: Test Data Samples
 
-Sample data sets used during testing.
+Specific historical data subsets and configuration files used for system tests.
 
-### Appendix C: Test Environment Setup
+### Appendix C: Test Environment Setup Guide
 
-Detailed documentation of the test environments and configurations.
+Instructions for setting up the Python (`uv`) and Dockerized TimescaleDB environment for testing.
 
-### Appendix D: Test Result Examples
+### Appendix D: Qualitative Validation Results
 
-Examples of test logs, results, and analysis reports.
+Documented outcomes of the simulation validation tests (NFR-6).

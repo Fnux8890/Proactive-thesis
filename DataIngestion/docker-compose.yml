@@ -1,245 +1,474 @@
-# Modern Docker Compose file (no version needed)
-name: data-ingestion # Explicitly name the project
+# Combined Docker Compose for DataIngestion (Rust + Python Pipelines)
+# Located in DataIngestion/docker-compose.yml
 
 services:
-  timescaledb:
-    image: timescale/timescaledb-ha:pg12
-    env_file: .env
+  # --- Rust Pipeline Services ---
+  rust_pipeline:
+    build:
+      context: ./rust_pipeline # Adjusted build context
+      dockerfile: Dockerfile
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
     volumes:
-      - timescaledb_data:/home/postgres/pgdata/data
-      # Mount all migration scripts to the container's initialization directory
-      - ./database_migrations:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      # Ensure PostGIS extension is available
-      TIMESCALEDB_EXTRA_EXTENSIONS: "postgis,uuid-ossp"
-    networks:
-      - ingestion-net
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
+      # Mount the data directory relative to DataIngestion parent
+      - ../Data:/app/data:ro
+      - ./rust_pipeline/pipeline_logs:/app/logs:rw # Adjusted path
+      - ./rust_pipeline/data_pipeline/output:/app/output:rw
     depends_on:
-      timescaledb:
+      redis:
+        condition: service_started
+      db:
         condition: service_healthy
+    environment:
+      DATA_SOURCE_PATH: /app/data
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
     networks:
       - ingestion-net
 
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - redis-data:/data
+    networks:
+      - ingestion-net
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Single Database Service (from rust_pipeline definition)
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Mount main init script first (for sensor_data table)
+      - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro # Adjusted path
+      # Mount script to create extra DBs needed by Python pipeline services
+      - ./simulation_data_prep/create_extra_dbs.sql:/docker-entrypoint-initdb.d/01_create_extra_dbs.sql:ro # Adjusted path
+      # Volume for pre_process SQL script (if not already handled by preprocess_feat service CMD)
+      - ./feature_extraction/pre_process/create_preprocessed_hypertable.sql:/docker-entrypoint-initdb.d/02_create_preprocessed_hypertable.sql:ro
+      - ./feature_extraction/pre_process/phenotype_ingest.py:/app/phenotype_ingest.py:ro # Make accessible if needed by init
+      - ./feature_extraction/pre_process/phenotype.json:/app/phenotype.json:ro
+      - ./feature_extraction/pre_process/db_utils.py:/app/db_utils.py:ro
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ingestion-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@example.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_SETUP_EMAIL: "admin@example.com"
+      PGADMIN_SETUP_PASSWORD: "admin"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./rust_pipeline/servers.json:/pgadmin4/servers.json:ro # Adjusted path
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ingestion-net
+
+  # --- Python Pipeline Services ---
+  data-prep:
+    build:
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env # Load from the same directory as this docker-compose.yml
+    command: [ "prefect", "worker", "start", "--pool", "default-process-pool", "--limit", "1" ] # Use direct CLI command
+    environment:
+      - PREFECT_API_URL=http://orion:4200/api
+      - PREFECT_LOGGING_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
+      - PYTHONPATH=/app # Add project root to Python path
+      - SKIP_GE_VALIDATION=true # Skip Great Expectations validation
+      # Pass through host environment variables
+      # - USE_GPU=${USE_GPU:-false} # Example, passed from host
+      # - PARALLEL_EXECUTION=${PARALLEL_EXECUTION:-true} # Example
+      # - ONLY_EARLIEST_DATE=${ONLY_EARLIEST_DATE:-false} # Example
+    depends_on:
+      orion:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - ./simulation_data_prep/src:/app/src
+      - ./simulation_data_prep/output:/app/output
+      - ./simulation_data_prep/plant_config.json:/app/plant_config.json
+      - ./simulation_data_prep/feast_repo:/app/feast_repo
+      - ./simulation_data_prep/great_expectations:/app/great_expectations
+      - ./simulation_data_prep/dao:/app/dao
+      - ./simulation_data_prep/transforms:/app/transforms
+      - ./simulation_data_prep/loading:/app/loading
+      - ./simulation_data_prep/validation:/app/validation
+      - prefect_data:/root/.prefect
+    networks:
+      - ingestion-net
+
+  orion:
+    build:
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: orion.Dockerfile # Relative path from context
+    command: prefect server start --host 0.0.0.0 --log-level debug
+    # Map host port 4201 to container port 4200 for UI access
+    ports:
+      - "4201:4200"
+    environment:
+      - PREFECT_LOGGING_LEVEL=DEBUG
+      # Point the UI (browser) to the host port where the API is exposed
+      - PREFECT_UI_API_URL=http://localhost:4201/api
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@db:5432/prefect
+    volumes:
+      - prefect_db:/root/.prefect/
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fs http://localhost:4200/health/live || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - ingestion-net
 
-  # Elixir-based data ingestion service (new)
-  elixir_ingestion:
+  mlflow-server:
     build:
-      context: ./elixir_ingestion
-      dockerfile: Dockerfile
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: mlflow.Dockerfile # Relative path from context
+    # Reverted command to use default filesystem artifact root
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000  --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow  --default-artifact-root /mlflow/artifacts 
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    # Re-enabled volume mount for artifacts
     volumes:
+      - mlflow_data:/mlflow/artifacts:rw
+    ports:
+      - "5001:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ingestion-net
+
+  # Test service for Python pipeline unit tests
+  test:
+    build:
+      context: ./simulation_data_prep # Adjusted build context
+      dockerfile: Dockerfile
+    working_dir: /app # Set working directory for consistency
+    env_file:
+      - ./.env # Load from the same directory as this docker-compose.yml
+    # Add PYTHONPATH to help with module discovery
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: [ "pytest", "--maxfail=1" ]
+    volumes:
+      # Mount source code needed for tests (read-only is fine for code)
+      - ./simulation_data_prep/src:/app/src:ro
+      - ./simulation_data_prep/dao:/app/dao:ro
+      - ./simulation_data_prep/transforms:/app/transforms:ro
+      - ./simulation_data_prep/loading:/app/loading:ro
+      - ./simulation_data_prep/validation:/app/validation:ro
+      # Mount the tests directory read-write to allow log file creation
+      - ./simulation_data_prep/src/tests:/app/src/tests:rw
+      # Mount config file needed by tests
+      - ./simulation_data_prep/plant_config.json:/app/plant_config.json:ro
+      # Mount sample data needed by tests (relative to docker-compose.yml location)
       - ../Data:/app/data:ro
-      - ./verification:/app/verification:rw # Mount for verification output files
-    ports:
-      - "4000:4000" # Phoenix API port
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: ${PROCESSING_DB_URL}
-      REDIS_URL: ${REDIS_URL}
-      MIX_ENV: prod
-      PYTHON_PROCESSING_SERVICE: ${PROCESSING_SERVICE_URL}
-      DATA_SOURCE_PATH: /app/data
-      SECRET_KEY_BASE: ${ELIXIR_SECRET_KEY}
-      VERIFICATION_DIR: /app/verification # Add verification directory environment variable
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "4000" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
     networks:
       - ingestion-net
 
-  metadata-catalog:
+  # --- New one-shot service for Prefect Deployment ---
+  prefect-deployer:
     build:
-      context: ./metadata_catalog
+      context: ./simulation_data_prep
       dockerfile: Dockerfile
-    volumes:
-      - ./metadata_catalog:/app
-      - metadata_catalog_data:/app/data
-    ports:
-      - "5000:5000"
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+    restart: "no"
+    networks:
+      - ingestion-net
+    env_file:
+      - ./.env
     environment:
-      PROCESSING_DB_URL: ${PROCESSING_DB_URL}
-      REDIS_URL: ${REDIS_URL}
-    networks:
-      - ingestion-net
-
-  airflow-init:
-    image: apache/airflow:2.3.0
-    env_file: .env
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    command: db init
-    networks:
-      - ingestion-net
-
-  airflow-webserver:
-    image: apache/airflow:2.3.0
-    env_file: .env
+      - PREFECT_API_URL=http://orion:4200/api
+    # Restore original command 
+    command: [ "echo", "Deployer container ready, awaiting command..." ] # Was: ["sleep", "infinity"]
     volumes:
-      - ./airflow_dags:/opt/airflow/dags:ro
-    ports:
-      - "8080:8080"
+      # Mount the entire simulation_data_prep directory
+      - ./simulation_data_prep:/app
+    working_dir: /app
     depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-    command: webserver
-    healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - ingestion-net
-
-  airflow-scheduler:
-    image: apache/airflow:2.3.0
-    env_file: .env
-    volumes:
-      - ./airflow_dags:/opt/airflow/dags:ro
-    depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-      airflow-webserver:
+      orion:
         condition: service_healthy
-    restart: unless-stopped
-    command: scheduler
-    healthcheck:
-      test: [ "CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - ingestion-net
 
-  # Python-based data processing service with API endpoint
-  data_processing:
+  model_builder:
     build:
-      context: ./data_processing
-      dockerfile: Dockerfile
-    volumes:
-      - ./data_processing:/app
-      - data_processing_data:/app/processed
-    ports:
-      - "8000:8000" # FastAPI port
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      metadata-catalog:
-        condition: service_started
+      context: ./model_builder # NEW → use the Dockerfile you just wrote
+    runtime: nvidia
     environment:
-      - PYTHONUNBUFFERED=1
-      - METADATA_SERVICE_URL=http://metadata-catalog:5000
-      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
-      - REDIS_URL=${REDIS_URL}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility # Ensure capabilities are set here if needed by runtime
+      - GPU_TAG=gtx1660super # Example: Set the tag for the specific GPU being used
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000 # Explicitly set URI
+    volumes:
+      - ./simulation_data_prep/output:/data:ro
+      - ./model_builder/models:/models
+      - ./model_builder/model_builder_mlflow_staging:/mlflow
+    command: [ "python", "-m", "src.training.train_surrogate", "--epochs", "50", "--data-dir", "/data", "--model-dir", "/models" ]
+    depends_on:
+      mlflow-server:
+        condition: service_started # Wait for mlflow server (adjust if healthcheck added)
+      db:
+        # MLflow server itself depends on DB being healthy
+        condition: service_healthy
+    # Add the service to the user-defined network
     networks:
       - ingestion-net
 
-  # Separate service for feature extraction
+  # --- Feature Extraction Pipeline Services (Modified and New) ---
+  # Stage A: Raw-Prep Lite (Uses preprocess.py with specific config)
+  raw_prep_lite:
+    build:
+      context: ./feature_extraction/pre_process
+      dockerfile: preprocess.dockerfile
+    container_name: raw_prep_lite
+    volumes:
+      - ./feature_extraction/data/input:/app/data/input:ro
+      - ./feature_extraction/data/processed:/app/data/output:rw
+      - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
+    # preprocess.py now handles calling other ingestion scripts internally
+    command: uv run python preprocess.py
+    environment:
+      - SKIP_ERA_FEATURE=true
+      - PROCESS_ERA_IDENTIFIER=MegaEra_All_Data
+      - APP_CONFIG_PATH=/app/config/data_processing_config.json
+      - APP_OUTPUT_DIR=/app/data/output
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
+    depends_on:
+      db:
+        condition: service_healthy
+      rust_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  # Stage B: Dynamic Era Discovery
+  era_detector:
+    build:
+      context: ./feature_extraction/era_detection_rust
+      dockerfile: Dockerfile
+    image: era_detector_rs:latest
+    container_name: era_detector
+    volumes:
+      # Input for era_detector is output from raw_prep_lite.
+      # The internal path /app/data/shared_processed matches the CMD in the era_detector Dockerfile.
+      - ./feature_extraction/data/processed:/app/data/shared_processed:rw
+    # The command is now defined by the CMD in the Dockerfile for era_detector.
+    # This allows easy overriding via `docker-compose run era_detector --arg value` or by re-adding a command here.
+    environment:
+      - RUST_LOG=trace # Changed from info to trace
+      - RUST_BACKTRACE=1
+    command: [
+        "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
+        "--output-dir", "/app/data/shared_processed/era_labels",
+        "--output-suffix", "docker_debug_run_single_signal",
+        "--signal-cols", "dli_sum",
+        "--resample-every", "5m",
+        "--min-coverage", "0.9",
+        "--include-time", "true",
+        "--pelt-min-size", "48",
+        "--bocpd-lambda", "200.0",
+        "--hmm-states", "5",
+        "--hmm-iterations", "20",
+        "--quant-max-val", "250"
+    ]
+    depends_on:
+      raw_prep_lite:
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  # Stage C: Auto-Era-Config Generator
+  auto_era_gen:
+    build:
+      context: ./feature_extraction/era_detection # Dockerfile can be simple, just needs python and pandas
+      dockerfile: auto_era_gen.dockerfile # NEW Dockerfile for this tiny script
+    container_name: auto_era_generator
+    volumes:
+      # Input is the Level C labels from era_detector, output is the JSON config
+      - ./feature_extraction/data/processed:/app/data/processed:rw
+    # Command to run auto_era_config_gen.py
+    # Input: <output_suffix_from_era_detector>_era_labels_levelC.parquet
+    # Output: auto_era_definitions.json (placed in /app/data/processed for full_preprocess to access)
+    command: >
+      uv run python auto_era_config_gen.py  /app/data/processed/MegaEra_All_Data_Segment1_era_labels_levelC.parquet  /app/data/processed/auto_era_definitions.json 
+    depends_on:
+      era_detector:
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+
+  # Stage D: Full Pre-processing Per Era (Manual + Auto)
+  # This service reuses the preprocess.dockerfile but with different ENV settings
+  full_preprocess:
+    build:
+      context: ./feature_extraction/pre_process
+      dockerfile: preprocess.dockerfile
+    container_name: full_preprocess
+    volumes:
+      - ./feature_extraction/data/input:/app/data/input:ro
+      - ./feature_extraction/data/processed:/app/data/output:rw # Main output for processed era segments
+      - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
+      # Mount the auto-generated era config for merging
+      - ./feature_extraction/data/processed/auto_era_definitions.json:/app/data/processed/auto_era_definitions.json:ro
+    command: >
+      sh -c " uv run python phenotype_ingest.py && \ uv run python fetch_external_weather.py && \ uv run python fetch_energy.py && \ uv run python preprocess.py"
+    environment:
+      - SKIP_ERA_FEATURE=false # Ensure EraFeatureGenerator runs in this stage
+      - EXTRA_ERA_CONFIG=/app/data/processed/auto_era_definitions.json # Path to auto-generated eras
+      - APP_CONFIG_PATH=/app/config/data_processing_config.json
+      - APP_OUTPUT_DIR=/app/data/output
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
+      # PROCESS_ERA_IDENTIFIER is NOT set here, so preprocess.py processes all eras found in merged config
+    depends_on:
+      auto_era_gen:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy # preprocess.py interacts with DB
+    networks:
+      - ingestion-net
+
+  # Stage E: Feature Extraction (Modified dependencies)
+  # (Existing preprocess_feat service might be replaced by raw_prep_lite + full_preprocess)
+  # The original preprocess_feat is more like Stage D if PROCESS_ERA_IDENTIFIER was set for a specific era.
+  # We will keep feature_extraction, feature_extraction_gpu, feature_analysis and adjust their dependencies.
+
+  # Delete or comment out original preprocess_feat if its role is fully covered by raw_prep_lite & full_preprocess
+  # preprocess_feat:
+  #   ...
+
   feature_extraction:
+    # Existing, but depends on full_preprocess now
     build:
-      context: ./data_processing
-      dockerfile: Dockerfile
+      context: ./feature_extraction/feature
+      dockerfile: feature.dockerfile
+    container_name: feature_extraction
     volumes:
-      - ./data_processing:/app
-      - feature_extraction_data:/app/features
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      metadata-catalog:
-        condition: service_started
-      data_processing:
-        condition: service_started
+      - ./feature_extraction/data/processed:/app/data/processed:ro # Input from full_preprocess
+      - ./feature_extraction/data/output:/app/data/output:rw # Output for feature_extraction service itself
+      - ./feature_extraction/config:/app/config:ro
+    command: uv run python extract_features.py
     environment:
-      - PYTHONUNBUFFERED=1
-      - METADATA_SERVICE_URL=http://metadata-catalog:5000
-      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
-      - FEATURE_EXTRACTION_CONFIG=/app/config/feature_extraction.yaml
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
+    depends_on:
+      full_preprocess:
+        condition: service_completed_successfully
+      db:
+        # If extract_features.py also connects to DB
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices: [ { capabilities: [ gpu ], driver: nvidia } ]
     networks:
       - ingestion-net
 
-  # Quality monitoring and feedback service
-  quality_monitor:
+  feature_extraction_gpu:
+    # Existing, but depends on full_preprocess
     build:
-      context: ./quality_monitor
-      dockerfile: Dockerfile
+      context: ./feature_extraction/feature-gpu
+      dockerfile: feature_gpu.dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices: [ { capabilities: [ gpu ], driver: nvidia } ]
+    container_name: feature_extraction_gpu
     volumes:
-      - ./quality_monitor:/app
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      data_processing:
-        condition: service_started
+      - ./feature_extraction/data/processed:/app/data/processed:ro
+      - ./feature_extraction/data/output:/app/data/output:rw
     environment:
-      - PYTHONUNBUFFERED=1
-      - METADATA_SERVICE_URL=http://metadata-catalog:5000
-      - PROCESSING_DB_URL=${PROCESSING_DB_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-postgres}
+    depends_on:
+      full_preprocess:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
     networks:
       - ingestion-net
 
+  feature_analysis:
+    # Existing, could depend on rust_pipeline or full_preprocess output
+    build:
+      context: ./feature_extraction # Changed context to the parent directory
+      dockerfile: ./data_analysis/analysis.dockerfile # Path to Dockerfile from new context
+    volumes:
+      - ./feature_extraction/data_processing_config.json:/app/input_config/data_processing_config.json:ro
+      - ./feature_extraction/data/analysis:/app/output_data:rw
+    depends_on:
+      # Choose dependency: rust_pipeline for raw analysis, or full_preprocess if it needs cleaned data
+      full_preprocess:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-postgres}
+      - PYTHONUNBUFFERED=1
+    networks:
+      - ingestion-net
+
+# --- Volumes ---
 volumes:
-  timescaledb_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_timescaledb_data
-  data_processing_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_processing_data
-  redis_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_redis_data
-  metadata_catalog_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_metadata_data
-  feature_extraction_data:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_feature_data
-
+  postgres-data:
+  redis-data:
+  pgadmin-data:
+  prefect_data:
+  prefect_db:
+  mlflow_data:
+  model_builder_mlflow_staging: {} # --- Network ---
 networks:
   ingestion-net:
-    name: ${COMPOSE_PROJECT_NAME:-data-ingestion}_network
+    name: ingestion-net
     driver: bridge

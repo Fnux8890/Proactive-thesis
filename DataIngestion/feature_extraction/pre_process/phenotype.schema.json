@@ -1,0 +1,109 @@
+{
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "title": "Phenotype Data",
+    "type": "object",
+    "properties": {
+        "entry_id": {
+            "type": "string",
+            "description": "Unique identifier for the phenotype entry"
+        },
+        "publication_source": {
+            "type": "string",
+            "description": "Source publication for the phenotype data"
+        },
+        "species": {
+            "type": "string",
+            "description": "Species name"
+        },
+        "cultivar_or_line": {
+            "type": "string",
+            "description": "Cultivar or line name"
+        },
+        "experiment_description": {
+            "type": "string",
+            "description": "Description of the experiment"
+        },
+        "phenotype_name": {
+            "type": "string",
+            "description": "Name of the phenotype"
+        },
+        "phenotype_value": {
+            "type": "string",
+            "description": "Value of the phenotype"
+        },
+        "phenotype_unit": {
+            "type": "string",
+            "description": "Unit of the phenotype"
+        },
+        "measurement_condition_notes": {
+            "type": "string",
+            "description": "Notes on the measurement conditions"
+        },
+        "environment_temp_day_C": {
+            "type": "number",
+            "description": "Daytime temperature in Celsius"
+        },
+        "environment_temp_night_C": {
+            "type": "number",
+            "description": "Nighttime temperature in Celsius"
+        },
+        "environment_photoperiod_h": {
+            "type": "number",
+            "description": "Photoperiod in hours"
+        },
+        "environment_DLI_mol_m2_d": {
+            "type": "number",
+            "description": "Daily light integral in mol m-2 d-1"
+        },
+        "environment_light_intensity_umol_m2_s": {
+            "type": "number",
+            "description": "Light intensity in micromoles per meter squared per second"
+        },
+        "environment_CO2_ppm": {
+            "type": "number",
+            "description": "CO2 concentration in parts per million"
+        },
+        "environment_RH_percent": {
+            "type": "number",
+            "description": "Relative humidity in percent"
+        },
+        "environment_stressor_type": {
+            "type": "string",
+            "description": "Type of stressor"
+        },
+        "environment_stressor_level": {
+            "type": "string",
+            "description": "Level of stressor"
+        },
+        "data_extraction_date": {
+            "type": "string",
+            "description": "Date of data extraction"
+        },
+        "additional_notes": {
+            "type": "string",
+            "description": "Additional notes"
+        }
+    },
+    "required": [
+        "entry_id",
+        "publication_source",
+        "species",
+        "cultivar_or_line",
+        "experiment_description",
+        "phenotype_name",
+        "phenotype_value",
+        "phenotype_unit",
+        "measurement_condition_notes",
+        "environment_temp_day_C",
+        "environment_temp_night_C",
+        "environment_photoperiod_h",
+        "environment_DLI_mol_m2_d",
+        "environment_light_intensity_umol_m2_s",
+        "environment_CO2_ppm",
+        "environment_RH_percent",
+        "environment_stressor_type",
+        "environment_stressor_level",
+        "data_extraction_date",
+        "additional_notes"
+    ]
+}

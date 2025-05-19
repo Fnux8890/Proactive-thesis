@@ -1,0 +1,15 @@
+pandas
+psycopg2-binary # For SQLAlchemy PostgreSQL connection
+SQLAlchemy
+pyarrow # For Parquet file support
+fastparquet # For Parquet file support
+# polars # Uncomment if you decide to use Polars
+# python-dotenv # For local testing if you use .env files for credentials 
+scikit-learn
+joblib 
+ijson # For streaming JSON parsing
+sktime
+ruptures
+pyro-ppl
+torch
+requests

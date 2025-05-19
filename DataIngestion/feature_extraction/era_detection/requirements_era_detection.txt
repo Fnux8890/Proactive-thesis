@@ -1,0 +1,19 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+pandas>=1.5
+numpy>=1.26
+ruptures>=1.1.9
+
+# Level B – Rust wheel already on PyPI
+changepoint==0.3.2
+
+# Level C – will be built from the local rust_hmm/ directory by maturin
+# Ensure PROJECT_ROOT is defined in your shell or CI environment for Docker build time,
+# or replace with a relative path if Docker context allows.
+# For local Docker builds, if rust_hmm is relative to the Dockerfile context:
+rusthmm @ file:./rust_hmm
+
+tqdm>=4.66
+decorator>=5.1
+maturin>=1.5 # builds the wheel if no pre-built one
+scipy==1.10.1 # Keep for ruptures or other potential indirect dependencies

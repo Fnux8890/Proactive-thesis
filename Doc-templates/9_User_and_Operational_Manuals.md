@@ -1,386 +1,240 @@
-# User and Operational Manuals
+# Usage Guide: Simulation-Based Greenhouse Control Optimization Tool
 
 ## Document Information
 
-- **Document Title:** User and Operational Manuals  
-- **Project:** Data-Driven Greenhouse Climate Control System  
-- **Version:** 1.0  
+- **Document Title:** Usage Guide
+- **Project:** Simulation-Based Greenhouse Control Optimization
+- **Version:** 1.0 (Based on Facilitation Report)
 - **Last Updated:** [Date]
 
 ---
 
-## Part 1: User Manual
+## 1. Introduction
 
-### 1. Introduction
+### 1.1 Purpose
 
-#### 1.1 Purpose
+This guide explains how to set up, configure, execute, and understand the outputs of the Simulation-Based Greenhouse Control Optimization tool. It is intended for researchers or developers running the simulation and optimization experiments.
 
-This manual provides comprehensive guidance for greenhouse operators and technical staff to effectively use the climate control system. It explains how to navigate the system, control environmental parameters, and respond to alerts.
+### 1.2 System Overview
 
-#### 1.2 System Overview
+The tool is a command-line Rust application designed to:
 
-The climate control system offers automated environmental management through:
-
-- Real-time monitoring
-- Predictive control
-- Energy optimization
-- Alert management
+- Read historical environmental data from a TimescaleDB database.
+- Read configuration parameters from a file (e.g., TOML).
+- Run a plant growth simulation based on the historical data and simulation parameters.
+- Execute a Multi-Objective Evolutionary Algorithm (MOEA) to find trade-offs between simulated plant growth and estimated energy cost based on defined control strategies (e.g., lighting schedules).
+- Output the results (non-dominated strategies) and process logs to the file system.
+- Run within a Docker container for environment consistency.
 
 ---
 
-### 2. Getting Started
+## 2. Getting Started
 
-#### 2.1 System Requirements
+### 2.1 System Requirements
 
-- **Web Browser:** Chrome 80+ or Firefox 75+  
-- **Mobile Devices:** iOS 13+ or Android 10+  
-- **Network:** Minimum 10 Mbps connection  
-- **Display:** 1920x1080 minimum resolution
+- **Runtime Environment:**
+  - Docker (Recommended for consistent environment)
+  - Alternatively, a Python environment (>= [Specify Version, e.g., 3.10+]) with `uv` installed.
+- **Database:** Access to a running TimescaleDB instance (local via Docker or remote).
+- **Operating System:** Linux, macOS, or Windows (with appropriate Python/`uv`/Docker setup).
+- **Source Code:** Cloned project repository.
 
-#### 2.2 Access and Authentication
+### 2.2 Setup
 
-```yaml
-Login Process:
-  1. Navigate to the dashboard URL.
-  2. Enter your username and password.
-  3. Complete the two-factor authentication step.
-  4. Select the appropriate greenhouse zone.
+1. **Clone Repository:**
 
-Password Requirements:
-  - Minimum 12 characters
-  - Combination of letters, numbers, and symbols
-  - Password must be changed every 90 days
+    ```bash
+    git clone [Repository URL]
+    cd [Repository Directory]
+    ```
+
+2. **Database Setup:**
+    - Ensure your TimescaleDB instance is running.
+    - Apply the necessary database schema (refer to `[Path to Schema Files or Instructions]`).
+    - Load historical environmental data into the appropriate TimescaleDB tables. (Format details in Section 4.1).
+3. **Configuration:**
+    - Create or modify the configuration file (e.g., `config.toml`). See Section 3 for details. Ensure database connection details are correct.
+4. **Python Environment Setup (if not using Docker):**
+    - Navigate to the project root directory.
+    - Create a virtual environment: `uv venv`
+    - Activate the environment (e.g., `. .venv/bin/activate` on Linux/macOS, `.venv\Scripts\activate` on Windows PowerShell).
+    - Install dependencies: `uv pip install -r requirements.txt` (assuming a `requirements.txt` file exists).
+5. **(Optional) Docker Setup:**
+    - Build the Docker image:
+
+      ```bash
+      docker build -t gh-sim-opt .
+      ```
+
+    - Ensure the Docker container can access the TimescaleDB instance (network configuration might be needed).
+
+---
+
+## 3. Configuration
+
+### 3.1 Configuration File
+
+The application requires a configuration file (default: `config.toml` or specified via command-line argument) to control its behavior.
+
+```toml
+# Example config.toml structure
+
+[database]
+connection_string = "postgres://user:password@host:port/database"
+
+[simulation]
+# Parameters specific to the chosen plant growth model
+# e.g., light_use_efficiency = 0.5
+# e.g., temp_optimum = 25.0
+# ... other model parameters ...
+evaluation_start_time = "YYYY-MM-DDTHH:MM:SSZ"
+evaluation_end_time = "YYYY-MM-DDTHH:MM:SSZ"
+
+[optimization]
+# MOEA Settings (e.g., for NSGA-II)
+population_size = 100
+max_generations = 50
+# Crossover/Mutation probabilities, etc.
+# ... other MOEA parameters ...
+
+# Control Strategy Definition
+# e.g., define optimization variables for lighting schedule
+# variable_bounds = { light_intensity = [0, 100], duration = [0, 12] }
+
+[objectives]
+# Parameters for energy cost calculation
+# e.g., energy_price_kwh = 0.15
+# e.g., lighting_watts_per_unit = 50
+
+[output]
+log_file = "output/run.log"
+results_file = "output/results.csv" # or .json
+log_level = "INFO" # e.g., ERROR, WARN, INFO, DEBUG, TRACE
+results_format = "CSV" # CSV or JSON
+
 ```
 
----
+### 3.2 Key Parameters
 
-### 3. Dashboard Navigation
-
-#### 3.1 Main Dashboard
-
-```
-[Overview Panel]
-       ↓
-[Zone Selection] → [Detail Views]
-       ↓
-[Control Panel] → [Settings]
-       ↓
-[Analytics] → [Reports]
-```
-
-#### 3.2 Key Features
-
-1. **Real-time Monitoring**
-   - Current temperature readings
-   - Humidity levels
-   - CO₂ concentrations
-   - Light intensity updates
-
-2. **Control Interface**
-   - Adjust environmental parameters as needed
-   - Select operational modes and override settings
-   - Manage scheduling for automated actions
+- **`[database]`**: Connection string for TimescaleDB.
+- **`[simulation]`**: Parameters required by the specific plant growth model being used, and the time period for evaluation.
+- **`[optimization]`**: Settings for the MOEA (population size, generations, algorithm-specific parameters), definition of the control strategy variables and their bounds.
+- **`[objectives]`**: Parameters needed for calculating the objective functions (e.g., energy cost coefficients).
+- **`[output]`**: Paths for log and result files, desired log verbosity, and format for the results file (CSV or JSON).
 
 ---
 
-### 4. System Operation
+## 4. Running the Application
 
-#### 4.1 Basic Operations
+### 4.1 Native Execution (using Python)
 
-1. **Viewing Current Status**  
-   Navigate:  
-   `Dashboard → Zone Selection → Status Panel`
+1. **Build:**
 
-2. **Adjusting Parameters**  
-   Navigate:  
-   `Control Panel → Parameter Settings → Adjust → Apply`
+    *No explicit build step usually required for Python.* Ensure dependencies are installed (See Setup Section 2.2, Step 4).
 
-3. **Setting Schedules**  
-   Navigate:  
-   `Settings → Schedules → Create/Edit → Save`
+2. **Run:**
 
-#### 4.2 Advanced Features
+    ```bash
+    # Ensure your virtual environment is activated
+    # Assuming config.toml is in the root directory and the main script is main.py
+    python main.py --config config.toml
+    # Or specify a different config path
+    # python main.py --config path/to/your/config.toml
+    ```
 
-1. **Predictive Control**
-   - Enable or disable forecast-based adjustments.
-   - Select the prediction horizon (e.g., next 1–24 hours).
-   - Fine-tune parameters based on predicted conditions.
+### 4.2 Docker Execution
 
-2. **Energy Optimization**
-   - Set energy consumption goals.
-   - Configure constraints such as peak usage periods.
-   - Review system recommendations for improved efficiency.
+1. **Run Container:**
 
----
+    ```bash
+    docker run --rm \
+      -v $(pwd)/config.toml:/app/config.toml \
+      -v $(pwd)/output:/app/output \
+      --network=[Your_Docker_Network_With_DB] \
+      gh-sim-opt # Add command if not specified in Dockerfile ENTRYPOINT/CMD
+      # Example if CMD/ENTRYPOINT is just 'python':
+      # gh-sim-opt main.py --config /app/config.toml
+    ```
 
-### 5. Alert Management
+    *Explanation:*
+    - `--rm`: Removes the container after execution.
+    - `-v $(pwd)/config.toml:/app/config.toml`: Mounts your local config file into the container. Adjust path if needed.
+    - `-v $(pwd)/output:/app/output`: Mounts a local `output` directory into the container to retrieve results/logs. Create this directory locally first (`mkdir output`).
+    - `--network=[Your_Docker_Network_With_DB]`: Connects the container to the network where your TimescaleDB is accessible. Replace `[Your_Docker_Network_With_DB]` with the actual network name.
+    - `gh-sim-opt`: The name of the built Docker image.
+    *(Command to run the Python script, e.g., `main.py --config /app/config.toml`, might be part of the command above or defined in the Dockerfile's `ENTRYPOINT` or `CMD`)*
 
-#### 5.1 Alert Types
+### 4.3 Input Data Format (TimescaleDB)
 
-```json
-{
-  "alerts": {
-    "critical": {
-      "temperature_extreme": "Alert for extreme temperatures",
-      "system_failure": "Alert for overall system failure"
-    },
-    "warning": {
-      "parameter_drift": "Alert that a parameter is deviating from its set point",
-      "maintenance_needed": "Alert indicating maintenance requirements"
-    },
-    "info": {
-      "optimization_suggestion": "Notification with energy or operational suggestions",
-      "schedule_reminder": "Reminder for scheduled tasks or events"
-    }
-  }
-}
-```
-
-#### 5.2 Response Procedures
-
-1. **Critical Alerts**
-   - Immediate action is required.
-   - Follow the emergency procedures as documented.
-   - Contact technical support without delay.
-
-2. **Warning Alerts**
-   - Assess the situation carefully.
-   - Develop a plan for corrective action.
-   - Monitor the situation closely to prevent escalation.
+- The application expects historical data in specific TimescaleDB tables.
+- Refer to the Database Schema documentation (e.g., ICD Appendix D or schema definition files) for table names, column names (e.g., `timestamp`, `sensor_type`, `value`), and expected data types.
 
 ---
 
-### 6. Reporting
+## 5. Output Interpretation
 
-#### 6.1 Standard Reports
+### 5.1 Log File
 
-- **Daily Operations Summary:** Overview of daily performance and events.  
-- **Environmental Conditions:** Records of temperature, humidity, and other critical metrics.  
-- **Energy Usage:** Detailed energy consumption reports.  
-- **Alert History:** Logs and summaries of alerts over time.
+- **Location:** Specified by `output.log_file` in the configuration.
+- **Content:** Provides information about the execution process, including:
+  - Configuration parameters used.
+  - Start and end times of major stages (data loading, simulation, optimization).
+  - MOEA progress (e.g., generation number).
+  - Any warnings or errors encountered.
+  - Log level controlled by `output.log_level`.
 
-#### 6.2 Custom Reports
+### 5.2 Results File
 
-- Ability to select specific parameters.
-- Define custom time ranges.
-- Export options (e.g., CSV, PDF).
-- Automated scheduling of report generation.
-
----
-
-## Part 2: Operational Manual
-
-### 1. System Administration
-
-#### 1.1 User Management
-
-```yaml
-User Roles:
-  Administrator:
-    - Complete system access
-    - Manage user accounts
-    - Modify system configurations
-
-  Operator:
-    - Operate control systems
-    - View analytics and live data
-    - Acknowledge and manage alerts
-
-  Viewer:
-    - View system status and reports
-    - Receive notifications and updates
-```
-
-#### 1.2 System Configuration
-
-1. **Network Settings:**  
-   - Configure IP settings  
-   - Set up firewall rules  
-   - Establish VPN connections if necessary
-
-2. **Integration Settings:**  
-   - Configure weather service integrations  
-   - Set up connections with energy management systems  
-   - Integrate with additional external systems
+- **Location:** Specified by `output.results_file` in the configuration.
+- **Format:** CSV or JSON, as specified by `output.results_format`.
+- **Content:** Contains the set of non-dominated solutions found by the MOEA.
+  - **CSV:** Each row is a solution. Columns represent the optimized control strategy parameters and the corresponding objective values (e.g., `simulated_growth`, `energy_cost`, `lighting_intensity_param1`, `lighting_duration_param2`, ...).
+  - **JSON:** Typically an array of objects, each object representing a solution with key-value pairs for parameters and objectives.
+- **Analysis:** This file is the primary output for research analysis. Use external tools (Python scripts with Pandas/Matplotlib, R, etc.) to plot the Pareto front and analyze the trade-offs.
 
 ---
 
-### 2. Maintenance Procedures
+## 6. Troubleshooting
 
-#### 2.1 Routine Maintenance
+### 6.1 Common Issues
 
-```yaml
-Daily Tasks:
-  - Perform system health checks
-  - Validate sensor readings
-  - Verify the integrity of data backups
+- **Database Connection Errors:**
+  - Verify the `database.connection_string` in `config.toml`.
+  - Check if the TimescaleDB instance is running and accessible from where the application is running (including Docker network settings).
+  - Ensure correct username/password/database name.
+- **Configuration Errors:**
+  - Application fails to start, often with a parsing error message.
+  - Carefully check the `config.toml` syntax.
+  - Ensure all required parameters are present for the selected simulation model and MOEA.
+- **File Path Errors:**
+  - Errors reading config or writing output files.
+  - Verify the paths specified in `config.toml` (`output.log_file`, `output.results_file`).
+  - Ensure the application (or Docker container) has write permissions to the output directory.
+- **Simulation/Optimization Errors:**
+  - Check the log file (`output.log_file`) for specific error messages (e.g., numerical issues, invalid inputs detected).
+  - Increase `log_level` to `DEBUG` or `TRACE` for more detailed information.
+  - Review simulation model parameters and MOEA settings.
 
-Weekly Tasks:
-  - Review performance metrics
-  - Conduct calibration checks on sensors
-  - Analyze system logs for anomalies
+### 6.2 Getting Help
 
-Monthly Tasks:
-  - Execute a full system backup
-  - Complete a security audit
-  - Review and update system configurations as needed
-```
-
-#### 2.2 Troubleshooting
-
-1. **Common Issues:**
-   - Inaccurate sensor data
-   - Communication errors between components
-   - Discrepancies in control actions
-
-2. **Resolution Steps:**
-   - Follow diagnostic procedures as per the troubleshooting guide.
-   - Implement recovery actions.
-   - Perform validation checks post-repair.
-
----
-
-### 3. Emergency Procedures
-
-#### 3.1 System Failures
-
-1. **Complete Failure:**
-   - Initiate an emergency shutdown.
-   - Activate manual override procedures.
-   - Contact support immediately.
-
-2. **Partial Failure:**
-   - Isolate affected components.
-   - Activate backup systems if available.
-   - Implement temporary measures until full recovery.
-
-#### 3.2 Recovery Procedures
-
-```yaml
-Recovery Steps:
-  1. Assess the extent of the damage.
-  2. Secure the affected environment.
-  3. Restore systems from backups.
-  4. Verify full restoration of functionality.
-  5. Document the incident and corrective actions.
-  
-Backup Systems:
-  - Secondary control units
-  - Backup power supplies
-  - Offline recovery protocols
-```
-
----
-
-### 4. System Updates
-
-#### 4.1 Update Procedures
-
-1. **Preparation:**
-   - Back up the current system state.
-   - Notify all users of upcoming maintenance.
-   - Schedule a maintenance window.
-
-2. **Implementation:**
-   - Apply updates according to the update plan.
-   - Verify system functionality post-update.
-   - Perform rollback if necessary.
-
-#### 4.2 Version Control
-
-- Maintain an updated change log.
-- Document configuration and software updates.
-- Track version history for system components and documentation.
-
----
-
-### 5. Performance Optimization
-
-#### 5.1 Monitoring Tools
-
-```json
-{
-  "monitoring": {
-    "system_health": {
-      "cpu_usage": "float",
-      "memory_usage": "float",
-      "network_status": "string"
-    },
-    "application_metrics": {
-      "response_time": "float",
-      "error_rate": "float",
-      "user_sessions": "integer"
-    }
-  }
-}
-```
-
-#### 5.2 Optimization Steps
-
-1. **Performance Analysis:**
-   - Identify performance bottlenecks.
-   - Analyze system metrics and usage patterns.
-   - Review monitoring data to pinpoint issues.
-
-2. **Implementation:**
-   - Apply targeted optimizations.
-   - Test the system to ensure improvements.
-   - Monitor post-optimization performance.
-
----
-
-### 6. Security Management
-
-#### 6.1 Security Procedures
-
-1. **Access Control:**
-   - Enforce strict user authentication.
-   - Manage permissions and access rights.
-   - Regularly review access logs.
-
-2. **Data Security:**
-   - Ensure data encryption both at rest and in transit.
-   - Maintain secure backups.
-   - Implement robust recovery processes.
-
-#### 6.2 Security Monitoring
-
-- Monitor for unauthorized access attempts.
-- Implement audit logging for all system activities.
-- Conduct periodic compliance checks.
-
----
-
-### 7. Documentation
-
-#### 7.1 System Documentation
-
-- Maintain comprehensive architecture diagrams.
-- Update configuration details regularly.
-- Document integration specifications and procedures.
-
-#### 7.2 Operational Logs
-
-- Keep detailed activity logs.
-- Maintain a history of configuration changes.
-- Archive incident reports and troubleshooting records.
+- Consult the project's README file.
+- Check existing GitHub Issues for similar problems.
+- If necessary, file a new GitHub Issue with details about the error, your configuration, and steps to reproduce.
 
 ---
 
 ## Appendices
 
-### Appendix A: Quick Reference Guides
+*(Appendices might be added during the project)*
 
-Concise guides for common tasks and troubleshooting.
+### Appendix A: Example Configuration Files
 
-### Appendix B: Troubleshooting Flowcharts
+Complete examples for different scenarios.
 
-Visual flowcharts to aid in diagnosing common issues.
+### Appendix B: Output File Schema Details
 
-### Appendix C: Contact Information
+Precise column names/JSON structure for the results file.
 
-Support and emergency contact details.
+### Appendix C: Glossary
 
-### Appendix D: Glossary
-
-Definitions of key terms and acronyms used throughout the manuals.
+Definitions of terms specific to the project.
