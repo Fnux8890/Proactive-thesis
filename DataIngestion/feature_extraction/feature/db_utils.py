@@ -98,6 +98,43 @@ class SQLAlchemyPostgresConnector(BaseDBConnector):
             print(f"Error fetching data to Pandas DataFrame: {e}")
             raise
 
+    def write_dataframe(self, df: pd.DataFrame, table_name: str,
+                         if_exists: str = "append", index: bool = False,
+                         index_label: str | None = None) -> None:
+        """Write *df* to *table_name* using ``pandas.to_sql``.
+
+        Parameters
+        ----------
+        df:
+            DataFrame to persist.
+        table_name:
+            Destination table name.
+        if_exists:
+            Passed to ``to_sql`` (e.g. ``"replace"`` or ``"append"``).
+        index:
+            Whether DataFrame index should be written as a column.
+        index_label:
+            Label for the index column if ``index`` is ``True``.
+        """
+        if df.empty:
+            print(f"No data to write to table {table_name}")
+            return
+
+        if not self.engine:
+            try:
+                self.connect()
+            except Exception as exc:
+                raise ConnectionError(
+                    "Database engine not initialised and cannot be created"
+                ) from exc
+
+        try:
+            df.to_sql(table_name, self.engine, if_exists=if_exists,
+                      index=index, index_label=index_label)
+        except Exception as exc:
+            print(f"Error writing DataFrame to table {table_name}: {exc}")
+            raise
+
     # def fetch_data_to_polars(self, query: str) -> pl.DataFrame: # Uncomment for Polars
     #     if not self.engine:
     #         print("Database engine not initialized. Call connect() first.")
