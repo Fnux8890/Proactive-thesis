@@ -8,7 +8,7 @@ graph TD
     Docs --> Strategy["Implementation_Strategy1.md"]
     Docs --> Requirements["RequirementsAnalysis.md"]
     Docs --> Approach["approach-to-data.md"]
-    Docs --> Templates["../Doc-templates"]
+    Docs --> Templates["Doc-templates/"]
 ```
 
 - **Docs/** – research notes and requirements analysis (14 markdown files).
