@@ -4,7 +4,7 @@ use anyhow::{Result, Context};
 use rayon::prelude::*;
 
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use polars::datatypes::TimeUnit;
 use polars::prelude::DynamicGroupOptions;
 use polars::lazy::frame::IntoLazy;
@@ -20,6 +20,8 @@ mod io;
 mod level_a;
 mod level_b;
 mod level_c;
+mod db;
+use crate::db::EraDb;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -57,11 +59,64 @@ struct Cli {
 }
 
 
+
+/// Helper function to persist a given era level's DataFrame to the database.
+/// Connects to DB, builds CSV, and copies data for a specific signal, level, and stage.
+fn persist_era_level(
+    era_db: &EraDb, // Added EraDb instance parameter
+    df_source: &DataFrame,      // Source DataFrame (e.g., df_out_a)
+    original_era_col_name: &str, // Name of the era column in df_source (e.g., "era_level_A")
+    signal_name: &str,
+    level_char: char,
+    stage_str: &str,
+) -> Result<()> {
+    // Removed EraDb::connect() call, as era_db is now passed in.
+
+    let mut df_to_persist = df_source.clone();
+    df_to_persist
+        .rename(original_era_col_name, "era_id")
+        .with_context(|| {
+            format!(
+                "Failed to rename column '{}' to 'era_id' for signal '{}', level '{}', stage '{}'",
+                original_era_col_name,
+                signal_name,
+                level_char,
+                stage_str
+            )
+        })?;
+
+    let csv_data = EraDb::build_segments_csv(&df_to_persist, signal_name, level_char, stage_str)
+        .with_context(|| {
+            format!(
+                "Failed to build CSV for signal '{}', level '{}', stage '{}'",
+                signal_name,
+                level_char,
+                stage_str
+            )
+        })?;
+
+    era_db // Use the passed-in era_db instance
+        .copy_segments_from_csv(&csv_data)
+        .with_context(|| {
+            format!(
+                "Failed to copy CSV to DB for signal '{}', level '{}', stage '{}'",
+                signal_name,
+                level_char,
+                stage_str
+            )
+        })?;
+
+    Ok(())
+}
+
 fn coverage(series: &Series) -> f32 {
     (series.len() - series.null_count()) as f32 / series.len() as f32
 }
 
 fn main() -> Result<()> {
+    // Initialize EraDb with connection pool
+    let era_db = Arc::new(EraDb::new().context("Failed to initialize EraDb connection pool")?);
+
     // Initialize logger
     // You can set the RUST_LOG environment variable to control log levels
     // e.g., RUST_LOG=info or RUST_LOG=era_detector=debug
@@ -184,44 +239,37 @@ fn main() -> Result<()> {
             log::info!("User provided 'time' in signal_cols, but --include-time is false. 'time' will be kept as per user's explicit list.");
         } else if !time_col_present && !cli.include_time && !cli.signal_cols.is_empty() {
             log::warn!("'time' column is not selected (due to --include-time=false and not in user's list) but is crucial for time series processing. This might lead to errors downstream if 'time' is implicitly required by operations like resampling.");
-        } // This case implies 'time' is always added if present, might need refinement based on strict user list interpretation
+        } 
     }
 
     // 2. Handle 'dli_sum' based on whether user specified --signal-cols
     let dli_sum_col_name = "dli_sum";
     if cli.signal_cols.is_empty() && df_main.column(dli_sum_col_name).is_ok() {
-        // In auto-selection mode, 'dli_sum' (if it passed prior checks and is in selected_columns_intermediate)
-        // will be added to final_selected_cols by the general loop in step 3.
-        // We log that it's being considered as part of auto-selection.
         if selected_columns_intermediate.contains(&dli_sum_col_name.to_string()) {
             log::debug!("'{}' is present in auto-selected intermediate columns and will be processed if it remains in final_selected_cols.", dli_sum_col_name);
         } else {
             log::debug!("'{}' was not auto-selected (e.g., due to coverage or type). It will not be processed unless explicitly in --signal-cols.", dli_sum_col_name);
         }
     } else if !cli.signal_cols.is_empty() {
-        // User provided --signal-cols. 'dli_sum' will only be processed if it was in that list.
-        // No special "force-adding" here.
         if selected_columns_intermediate.contains(&dli_sum_col_name.to_string()) {
             log::debug!("'{}' was included in user's --signal-cols and will be processed.", dli_sum_col_name);
         } else {
             log::debug!("'{}' was not in user's --signal-cols. It will not be processed.", dli_sum_col_name);
         }
     }
-    // Step 3 (the loop over selected_columns_intermediate) will now correctly populate final_selected_cols.
 
     // 3. Add other columns from the intermediate selection, ensuring uniqueness and existence
     for col_name in &selected_columns_intermediate {
-        if df_main.column(col_name).is_ok() { // Ensure column exists (should be true due to earlier checks)
-            if seen_cols.insert(col_name.clone()) { // Add if not already seen (e.g. wasn't time or dli_sum)
+        if df_main.column(col_name).is_ok() { 
+            if seen_cols.insert(col_name.clone()) { 
                 final_selected_cols.push(col_name.clone());
             }
         }
     }
     
-    // If 'time' wasn't added above (e.g. not in user list, not auto-selected) but MUST be there for resampling:
     if !seen_cols.contains(time_col_name) && df_main.column(time_col_name).is_ok() {
         log::warn!("'time' column was not in selected signals but is required for resampling. Adding it.");
-        final_selected_cols.insert(0, time_col_name.to_string()); // Insert at the beginning
+        final_selected_cols.insert(0, time_col_name.to_string()); 
         seen_cols.insert(time_col_name.to_string());
     }
 
@@ -233,16 +281,13 @@ fn main() -> Result<()> {
     log::info!("Final selected columns for processing: {:?}", final_selected_cols);
 
     let selected_columns_str: Vec<&str> = final_selected_cols.iter().map(|s| s.as_str()).collect();
-    let mut feature_df = df_main.select(selected_columns_str) // Pass Vec<&str> directly
+    let mut feature_df = df_main.select(selected_columns_str) 
         .with_context(|| format!("Failed to select final columns: {:?}", final_selected_cols))?;
     log::info!("Created feature_df with selected columns. Shape: {:?}", feature_df.shape());
-    // --- End: New Column Selection Logic ---
 
-    // --- Start: Resampling Logic ---
     log::info!("Starting resampling with interval: {}", cli.resample_every);
     let resampling_start_time = std::time::Instant::now();
 
-    // Ensure there are signal columns to aggregate
     if final_selected_cols.iter().filter(|&name| name != "time").count() == 0 {
         log::error!("No signal columns (other than 'time') were selected or survived validation. Cannot proceed with resampling aggregation.");
         return Err(anyhow::anyhow!("No signal columns selected for resampling aggregation."));
@@ -250,7 +295,7 @@ fn main() -> Result<()> {
 
     let mut agg_exprs: Vec<Expr> = Vec::new();
     for col_name_str in &final_selected_cols {
-        if col_name_str != "time" { // "time" is the group key, not aggregated here
+        if col_name_str != "time" { 
             agg_exprs.push(col(col_name_str).mean().alias(col_name_str));
         }
     }
@@ -258,16 +303,16 @@ fn main() -> Result<()> {
     feature_df = feature_df.lazy()
         .group_by_dynamic(
             col("time"),
-            [], // No additional non-dynamic group_by keys
+            [], 
             DynamicGroupOptions {
                 every: Duration::parse(&cli.resample_every),
                 period: Duration::parse(&cli.resample_every),
                 offset: Duration::parse("0s"),
                 include_boundaries: true,
-                closed_window: ClosedWindow::Left, // Or use label if closed_window is deprecated/different
-                label: Label::Left, // Explicitly set label
-                start_by: StartBy::WindowBound, // Explicitly set start_by
-                index_column: "time".into() // Explicitly set index_column as per error E0063
+                closed_window: ClosedWindow::Left, 
+                label: Label::Left, 
+                start_by: StartBy::WindowBound, 
+                index_column: "time".into() 
             }
         )
         .agg(agg_exprs)
@@ -275,24 +320,16 @@ fn main() -> Result<()> {
         .with_context(|| format!("Failed to resample DataFrame with interval '{}'", cli.resample_every))?;
 
     log::info!("Resampled feature_df. Shape: {:?}, Resampling time: {:.2?}", feature_df.shape(), resampling_start_time.elapsed());
-    // --- End: Resampling Logic ---
 
-    // --- Start: Fill Nulls (after resampling) ---
     let fill_start_time = std::time::Instant::now();
     feature_df = feature_df
-        .fill_null(FillNullStrategy::Forward(None))? // Fill forward first
-        .fill_null(FillNullStrategy::Backward(None))?; // Then fill backward for any leading NaNs
-    log::info!("Filled nulls in resampled feature_df. Shape: {:?}, Fill time: {:.2?}", feature_df.shape(), fill_start_time.elapsed()); // Corrected time to fill_start_time
-    // --- End: Fill Nulls ---
+        .fill_null(FillNullStrategy::Forward(None))? 
+        .fill_null(FillNullStrategy::Backward(None))?; 
+    log::info!("Filled nulls in resampled feature_df. Shape: {:?}, Fill time: {:.2?}", feature_df.shape(), fill_start_time.elapsed());
 
-    // Wrap feature_df in Arc for thread-safe sharing
     let feature_df_arc = Arc::new(feature_df);
-    // Update time_col_series from the FINAL feature_df (resampled and null-filled) and wrap in Arc
     let time_col_series_arc = Arc::new(feature_df_arc.column("time")?.clone());
 
-    // Ensure the main output directory exists
-    // Check if output_dir is a directory. If not, try to create it.
-    // create_dir_all is idempotent: it will not return an error if the directory already exists.
     if !cli.output_dir.is_dir() {
         log::info!("Attempting to create output directory: {:?}", &cli.output_dir);
         std::fs::create_dir_all(&cli.output_dir)
@@ -303,13 +340,13 @@ fn main() -> Result<()> {
     }
 
     final_selected_cols.par_iter().filter(|&name| name.as_str() != "time").for_each(move |signal_name_to_process| {
+        let era_db_clone = Arc::clone(&era_db); // Correctly clone Arc here
         let feature_df_task_local = Arc::clone(&feature_df_arc);
         let time_col_series_task_local = Arc::clone(&time_col_series_arc);
-        // Define a closure that can return a Result, to keep error handling with '?' clean within the processing logic for a single signal.
+        
         let process_signal_task = || -> Result<()> {
             log::info!("\n\n=== Processing signal: '{}' ===", signal_name_to_process);
 
-            // --- Level A: PELT Segmentation for current signal ---
             let pelt_start_time = std::time::Instant::now();
             log::info!("\n--- Level A: PELT Segmentation on '{}' ---", signal_name_to_process);
             let pelt_signal_column = feature_df_task_local
@@ -345,7 +382,8 @@ fn main() -> Result<()> {
             io::write_polars_df_to_parquet(&mut df_out_a, &path_a)?;
             log::info!("Saved Level A labels for '{}' to {:?}", signal_name_to_process, path_a);
 
-            // --- Level B: BOCPD for current signal ---
+            persist_era_level(era_db_clone.as_ref(), &df_out_a, "era_level_A", signal_name_to_process, 'A', "PELT")?;
+
             let bocpd_start_time = std::time::Instant::now();
             log::info!("\n--- Level B: BOCPD on '{}' ---", signal_name_to_process);
             let bocpd_signal_column = feature_df_task_local
@@ -373,7 +411,8 @@ fn main() -> Result<()> {
             io::write_polars_df_to_parquet(&mut df_out_b, &path_b)?;
             log::info!("Saved Level B labels for '{}' to {:?}", signal_name_to_process, path_b);
 
-            // --- Level C: HMM Viterbi for current signal ---
+            persist_era_level(era_db_clone.as_ref(), &df_out_b, "era_level_B", signal_name_to_process, 'B', "BOCPD")?;
+
             let hmm_start_time = std::time::Instant::now();
             log::info!("\n--- Level C: HMM Viterbi on '{}' (Quantized up to max value: {}) ---", signal_name_to_process, cli.quant_max_val);
             let hmm_signal_series_cont = feature_df_task_local.column(signal_name_to_process)
@@ -402,9 +441,10 @@ fn main() -> Result<()> {
             io::write_polars_df_to_parquet(&mut df_out_c, &path_c)?;
             log::info!("Saved Level C labels for '{}' to {:?}", signal_name_to_process, path_c);
 
+            persist_era_level(era_db_clone.as_ref(), &df_out_c, "era_level_C", signal_name_to_process, 'C', "HMM")?;
+
             Ok(())
         };
-
         // Execute the processing for the current signal and log any errors.
         if let Err(e) = process_signal_task() {
             log::error!("Error processing signal '{}' in parallel task: {:?}", signal_name_to_process, e);
