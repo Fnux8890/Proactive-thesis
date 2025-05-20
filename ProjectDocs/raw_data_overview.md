@@ -5,7 +5,7 @@ The `Data` folder stores sensor and climate logs used for experiments. It contai
 ```mermaid
 graph TD
     A[Data]
-    A --> Aarslev
+    A --> aarslev
     A --> Knudjepsen
 ```
 
