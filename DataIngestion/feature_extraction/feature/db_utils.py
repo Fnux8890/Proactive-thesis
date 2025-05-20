@@ -80,8 +80,9 @@ class SQLAlchemyPostgresConnector(BaseDBConnector):
             
     def fetch_data_to_pandas(self, query: Union[str, TextClause]) -> pd.DataFrame:
         """
-        Execute a query and return results as a pandas DataFrame.
-        If no engine exists, tries to create one if possible.
+        Executes a SQL query and returns the results as a pandas DataFrame.
+        
+        If the database engine is not initialized, attempts to connect using provided parameters. Raises a ConnectionError if the engine cannot be created.
         """
         if not self.engine:
             try:
@@ -101,21 +102,22 @@ class SQLAlchemyPostgresConnector(BaseDBConnector):
     def write_dataframe(self, df: pd.DataFrame, table_name: str,
                          if_exists: str = "append", index: bool = False,
                          index_label: str | None = None) -> None:
-        """Write *df* to *table_name* using ``pandas.to_sql``.
-
-        Parameters
-        ----------
-        df:
-            DataFrame to persist.
-        table_name:
-            Destination table name.
-        if_exists:
-            Passed to ``to_sql`` (e.g. ``"replace"`` or ``"append"``).
-        index:
-            Whether DataFrame index should be written as a column.
-        index_label:
-            Label for the index column if ``index`` is ``True``.
         """
+                         Writes a pandas DataFrame to a specified database table using pandas' to_sql method.
+                         
+                         If the DataFrame is empty, the operation is skipped. Ensures a database connection is established before writing. The DataFrame is written according to the specified table name, existence policy, and index options.
+                         
+                         Args:
+                             df: The DataFrame to write to the database.
+                             table_name: Name of the target table in the database.
+                             if_exists: Behavior when the table already exists ("fail", "replace", or "append").
+                             index: Whether to include the DataFrame index as a column.
+                             index_label: Name for the index column if included.
+                         
+                         Raises:
+                             ConnectionError: If the database engine is not initialized and cannot be created.
+                             Exception: If writing to the database fails.
+                         """
         if df.empty:
             print(f"No data to write to table {table_name}")
             return
