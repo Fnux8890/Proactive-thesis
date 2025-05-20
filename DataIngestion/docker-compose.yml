@@ -287,38 +287,51 @@ services:
       dockerfile: Dockerfile
     image: era_detector_rs:latest
     container_name: era_detector
+    environment:
+      - DB_DSN=postgresql://postgres:postgres@db:5432/postgres?sslmode=prefer
     volumes:
       # Input for era_detector is output from raw_prep_lite.
       # The internal path /app/data/shared_processed matches the CMD in the era_detector Dockerfile.
       - ./feature_extraction/data/processed:/app/data/shared_processed:rw
-    # The command is now defined by the CMD in the Dockerfile for era_detector.
-    # This allows easy overriding via `docker-compose run era_detector --arg value` or by re-adding a command here.
-    environment:
-      - RUST_LOG=trace # Changed from info to trace
-      - RUST_BACKTRACE=1
-    command: [
-        "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
-        "--output-dir", "/app/data/shared_processed/era_labels",
-        "--output-suffix", "docker_debug_run_single_signal",
-        "--signal-cols", "dli_sum",
-        "--resample-every", "5m",
-        "--min-coverage", "0.9",
-        "--include-time", "true",
-        "--pelt-min-size", "48",
-        "--bocpd-lambda", "200.0",
-        "--hmm-states", "5",
-        "--hmm-iterations", "20",
-        "--quant-max-val", "250"
-    ]
+      - ./feature_extraction/era_detection_rust/era_detector_logs:/app/logs:rw # Logs specific to era_detector
+    # This allows easy overriding via `docker-compose run era_detector --arg value`
+    # or by setting different defaults here for `docker-compose up era_detector`.
+    command:
+      - "/app/target/release/era_detector"
+      - "--input-parquet"
+      - "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet"
+      - "--output-suffix"
+      - "MegaEra_All_Data_processed_segment_1"
+      - "--output-dir"
+      - "/app/data/shared_processed/era_labels"
+      - "--resample-every"
+      - "1h"
+      # - --signal-cols
+      # - dli_sum,another_signal # This commented line remains as is
+      - "--min-coverage"
+      - "0.9"
+      - "--include-time"
+      - "true"
+      - "--pelt-min-size"
+      - "48"
+      - "--bocpd-lambda"
+      - "200.0"
+      - "--hmm-states"
+      - "5"
+      - "--hmm-iterations"
+      - "20"
+      - "--quant-max-val"
+      - "250"
     depends_on:
       raw_prep_lite:
         condition: service_completed_successfully
+      db:
+        condition: service_healthy
     networks:
       - ingestion-net
 
   # Stage C: Auto-Era-Config Generator
   # auto_era_gen:
-  #   build:
   #     context: ./feature_extraction/era_detection # Dockerfile can be simple, just needs python and pandas
   #     dockerfile: auto_era_gen.dockerfile # NEW Dockerfile for this tiny script
   #   container_name: auto_era_generator

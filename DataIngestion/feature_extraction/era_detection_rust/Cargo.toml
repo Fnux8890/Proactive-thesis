@@ -8,7 +8,7 @@ rayon = "1.10"
 log = "0.4"
 env_logger = "0.11"
 # ---------- data ----------
-polars = { version = "0.47.1", features = [
+polars = { version = "0.41.0", features = [ # Downgrading to a version compatible with current r2d2_postgres example with postgres 0.19, check for latest if issues persist
     "lazy",
     "new_streaming",
     "full",
@@ -43,6 +43,9 @@ clap   = { version = "4.5.38", features = ["derive"] }
 anyhow = "1.0"
 postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 chrono   = "0.4"
+r2d2 = "0.8"
+r2d2_postgres = { version = "0.18", features = ["postgres-0_19"] } # Ensure this matches your postgres version
+lazy_static = "1.4"
 
 
 [profile.release]
