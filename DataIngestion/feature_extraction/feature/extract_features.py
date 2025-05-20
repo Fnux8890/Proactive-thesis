@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import os
 import random
-from pathlib import Path
 from typing import Any
 
 import numpy as np  # Added for np.number
@@ -104,8 +103,12 @@ def select_relevant_features(
         work_df = features_df.to_pandas()
     else:
         work_df = features_df.copy()
+    # Exclude identifier-like columns that are not real features
+    id_cols = [c for c in ("era_id", "id") if c in work_df.columns]
+    if id_cols:
+        work_df = work_df.drop(columns=id_cols)
 
-    variances = work_df.var()
+    variances = work_df.var(numeric_only=True)
     cols_to_keep = variances[variances > variance_threshold].index
     work_df = work_df[cols_to_keep]
 
@@ -129,26 +132,23 @@ def select_relevant_features(
 # Promote a plain SQL table to Timescale hypertable if needed
 # -----------------------------------------------------------------
 def _make_hypertable_if_needed(conn, table_name, time_column):
-    sql = """
-    DO $$
-    BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb')
-        THEN
-            CREATE EXTENSION IF NOT EXISTS timescaledb;
-        END IF;
+    """Ensure the given table is a Timescale hypertable."""
+    # Create the extension separately because parameters aren't supported inside DO $$ blocks
+    conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
 
-        IF NOT EXISTS (
-            SELECT 1
-            FROM   timescaledb_information.hypertables
-            WHERE  hypertable_schema = current_schema
-              AND  hypertable_name   = $1)
-        THEN
-            PERFORM create_hypertable($1, $2, if_not_exists => TRUE);
-        END IF;
-    END;
-    $$;
+    check_sql = """
+        SELECT 1
+        FROM timescaledb_information.hypertables
+        WHERE hypertable_schema = current_schema
+          AND hypertable_name = :table_name
     """
-    conn.execute(sqlalchemy.text(sql), (table_name, time_column))
+    result = conn.execute(sqlalchemy.text(check_sql), {"table_name": table_name}).fetchone()
+    if result is None:
+        create_sql = "SELECT create_hypertable(:table_name, :time_column, if_not_exists => TRUE)"
+        conn.execute(
+            sqlalchemy.text(create_sql),
+            {"table_name": table_name, "time_column": time_column},
+        )
 
 
 def main() -> None:
@@ -193,14 +193,15 @@ def main() -> None:
             return
 
         # --- Configurable Sentinel Value Replacement ---
-        config_file_path = Path(__file__).resolve().parent.parent / "pre_process" / "preprocess_config.json"
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_file_path = os.path.join(base_dir, "pre_process", "preprocess_config.json")
         sentinel_map_for_replacement_parsed = {}
         
         nan_equivalent_value = np.nan # Default to numpy's NaN
         if USE_GPU_FLAG and 'cudf' in sys.modules and isinstance(consolidated_df, cudf.DataFrame):
             nan_equivalent_value = cudf.NA # Use cudf.NA for GPU dataframes if applicable
 
-        if config_file_path.exists():
+        if os.path.exists(config_file_path):
             logging.info(f"Loading sentinel value configuration from: {config_file_path}")
             try:
                 with open(config_file_path, 'r') as f:
