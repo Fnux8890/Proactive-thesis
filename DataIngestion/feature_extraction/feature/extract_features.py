@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 from pathlib import Path
 from typing import Any
 
@@ -309,12 +310,22 @@ def select_relevant_features(
         work_df = features_df.copy()
 
     # Remove constant columns
-    variances = work_df.var()
+    variances = work_df.var(numeric_only=True)
     cols_to_keep = variances[variances > variance_threshold].index
     work_df = work_df[cols_to_keep]
 
     # Drop highly correlated columns
-    corr_matrix = work_df.corr().abs()
+    MAX_FEATURES_FOR_CORR = 200  # Cap for correlation calculation
+    if work_df.shape[1] > MAX_FEATURES_FOR_CORR:
+        logging.warning(
+            f"Number of features ({work_df.shape[1]}) exceeds MAX_FEATURES_FOR_CORR ({MAX_FEATURES_FOR_CORR}). "
+            f"Sampling columns for correlation matrix calculation."
+        )
+        cols_for_corr = random.sample(list(work_df.columns), MAX_FEATURES_FOR_CORR)
+        corr_df = work_df[cols_for_corr]
+        corr_matrix = corr_df.corr().abs()
+    else:
+        corr_matrix = work_df.corr().abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
     to_drop = [col for col in upper.columns if any(upper[col] > correlation_threshold)]
     work_df = work_df.drop(columns=to_drop)
@@ -795,28 +806,43 @@ def main() -> None:
         logging.error(traceback.format_exc())
 
     # Perform simple feature selection
-    logging.info("Selecting relevant features …")
-    final_tsfresh_features = select_relevant_features(final_tsfresh_features)
+    logging.info("Selecting relevant features from the full feature set (%s columns)...", final_features.shape[1])
+    selected_features = select_relevant_features(final_features)
+    logging.info("Selected features shape: %s", selected_features.shape)
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    final_tsfresh_features.to_parquet(OUTPUT_PATH)
-    logging.info("Feature set saved to %s", OUTPUT_PATH)
+    # Note: The full feature set (final_features) is already saved to OUTPUT_PATH earlier (around lines 783-797)
 
     # Persist the selected features as a separate parquet file for convenience
-    SELECTED_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    final_tsfresh_features.to_parquet(SELECTED_OUTPUT_PATH)
-    logging.info("Selected feature set saved to %s", SELECTED_OUTPUT_PATH)
+    if not selected_features.empty:
+        SELECTED_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # Determine how to save based on whether it's cuDF or pandas
+        if USE_GPU_FLAG and 'cudf' in sys.modules and isinstance(selected_features, cudf.DataFrame):
+            selected_features.to_parquet(SELECTED_OUTPUT_PATH)
+            logging.info("Selected feature set (cuDF) saved to %s", SELECTED_OUTPUT_PATH)
+        elif isinstance(selected_features, original_pandas.DataFrame):
+            selected_features.to_parquet(SELECTED_OUTPUT_PATH, engine='pyarrow')
+            logging.info("Selected feature set (pandas) saved to %s", SELECTED_OUTPUT_PATH)
+        elif 'cudf' in sys.modules and isinstance(selected_features, cudf.DataFrame): # Should be caught by first if, but as a fallback
+            logging.warning("Selected_features is cuDF, but conditions for direct cuDF save not met. Converting to pandas.")
+            selected_features.to_pandas().to_parquet(SELECTED_OUTPUT_PATH, engine='pyarrow')
+            logging.info("Selected feature set (cuDF to pandas) saved to %s", SELECTED_OUTPUT_PATH)
+        else:
+            logging.error(f"Selected_features is of an unexpected type ({type(selected_features)}) or state. Cannot save to {SELECTED_OUTPUT_PATH}.")
+    else:
+        logging.warning(f"Selected features DataFrame is empty. Skipping save to {SELECTED_OUTPUT_PATH}")
+
 
     # Optionally store the selected features in the database
     try:
-        connector = SQLAlchemyPostgresConnector(
-            user=DB_USER,
-            password=DB_PASSWORD,
-            host=DB_HOST,
-            port=DB_PORT,
-            db_name=DB_NAME,
-        )
-        df_for_db = final_tsfresh_features.copy()
+        if not selected_features.empty:
+            connector = SQLAlchemyPostgresConnector(
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST,
+                port=DB_PORT,
+                db_name=DB_NAME,
+            )
+            df_for_db = selected_features.copy()
         df_for_db.index.name = "id"
         df_for_db = df_for_db.reset_index()
         if hasattr(df_for_db, "to_pandas"):

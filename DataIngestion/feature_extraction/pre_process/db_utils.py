@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from sqlalchemy import create_engine, text
 from sqlalchemy.sql.expression import TextClause
 import pandas as pd
+import logging
 from typing import Union, Optional, Any
 # import polars as pl # Uncomment if you plan to use Polars directly
 
@@ -26,6 +27,7 @@ class BaseDBConnector(ABC):
     #     pass
 
 class SQLAlchemyPostgresConnector(BaseDBConnector):
+    """Connector for PostgreSQL using SQLAlchemy."""
     """
     SQLAlchemy connector for PostgreSQL databases.
     Supports both creating its own engine or using dependency injection.
@@ -78,10 +80,27 @@ class SQLAlchemyPostgresConnector(BaseDBConnector):
             self.engine = None
             raise
             
-    def fetch_data_to_pandas(self, query: Union[str, TextClause]) -> pd.DataFrame:
-        """
-        Execute a query and return results as a pandas DataFrame.
-        If no engine exists, tries to create one if possible.
+    def fetch_data_to_pandas(self, query: Union[str, TextClause], index_label: Optional[str] = None) -> pd.DataFrame:
+        """Fetch data from the database using a SQL query and return as a Pandas DataFrame.
+
+        Parameters
+        ----------
+        query : Union[str, TextClause]
+            The SQL query string or SQLAlchemy TextClause to execute.
+        index_label : Optional[str], optional
+            Name of the column to set as the DataFrame index, by default None.
+
+        Returns
+        -------
+        pd.DataFrame
+            A Pandas DataFrame containing the query results.
+
+        Raises
+        -------
+        ConnectionError
+            If the database engine is not initialized.
+        Exception
+            For other database errors during query execution.
         """
         if not self.engine:
             try:
@@ -92,10 +111,10 @@ class SQLAlchemyPostgresConnector(BaseDBConnector):
             with self.engine.connect() as connection:
                 # Pass query directly, as it might be a pre-formed TextClause
                 # with bound parameters from the calling function.
-                df = pd.read_sql_query(sql=query, con=connection)
+                df = pd.read_sql_query(sql=query, con=connection, index_col=index_label)
             return df
         except Exception as e:
-            print(f"Error fetching data to Pandas DataFrame: {e}")
+            logging.exception(f"Error fetching data to Pandas DataFrame: {e}")
             raise
 
     # def fetch_data_to_polars(self, query: str) -> pl.DataFrame: # Uncomment for Polars
