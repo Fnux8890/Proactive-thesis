@@ -222,7 +222,17 @@ def load_era_definitions(era_definitions_dir_path: str, era_id_key: str, USE_GPU
 
 
 def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
-    """Convert wide sensor matrix (numeric columns only) to long format required by *tsfresh*."""
+    """
+    Converts a wide-format sensor DataFrame to the long (tidy) format required by tsfresh.
+    
+    Selects numeric columns (excluding 'id' and 'time'), optionally ensures float32 dtype in GPU mode, and reshapes the data so each row represents a single sensor reading with columns: 'id', 'time', 'kind' (sensor name), and 'value'. Drops rows with missing values in the 'value' column.
+    
+    Args:
+        wide_df: Wide-format DataFrame containing sensor readings with 'id' and 'time' columns.
+    
+    Returns:
+        A long-format DataFrame suitable for tsfresh feature extraction.
+    """
 
     logging.info("Converting to long (tidy) format for tsfresh …")
 
@@ -301,12 +311,19 @@ def select_relevant_features(
     correlation_threshold: float = 0.95,
     variance_threshold: float = 0.0,
 ) -> pd.DataFrame:
-    """Select relevant features using ``tsfresh`` when possible.
-
-    If *target_series* is provided, ``tsfresh.select_features`` is used for
-    supervised feature selection. Otherwise a simple variance- and
-    correlation-based filtering is applied. The returned DataFrame preserves
-    the original index.
+    """
+    Performs supervised or unsupervised feature selection on extracted features.
+    
+    If a target series is provided, uses tsfresh's supervised selection to retain features relevant to the target. Otherwise, removes features with low variance and those highly correlated with others. Supports both pandas and cuDF DataFrames, preserving the original index.
+    
+    Args:
+        features_df: DataFrame containing extracted features.
+        target_series: Optional target values for supervised selection.
+        correlation_threshold: Maximum allowed correlation between features.
+        variance_threshold: Minimum variance required for a feature to be kept.
+    
+    Returns:
+        DataFrame with selected features.
     """
 
     if features_df.empty:
@@ -355,7 +372,11 @@ def select_relevant_features(
 # -----------------------------------------------------------------------------
 
 def main() -> None:
-    """Main execution function."""
+    """
+    Coordinates the end-to-end process of feature extraction from time-series sensor data.
+    
+    Loads consolidated sensor and era definition data, processes each era to extract statistical features using tsfresh, applies optional supervised or unsupervised feature selection, and saves the resulting features to Parquet files and a database. Generates a summary report detailing the extraction process, including the number of eras processed, features extracted, and output file information. Supports both CPU (pandas) and GPU (cuDF) execution modes, with robust error handling and logging throughout.
+    """
     logging.info("Starting feature extraction with file-based inputs...")
     USE_GPU_FLAG = os.getenv("USE_GPU", "false").lower() == "true"
 
