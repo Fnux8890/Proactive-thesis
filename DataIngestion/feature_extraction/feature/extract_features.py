@@ -2,9 +2,10 @@
 
 This script connects to the TimescaleDB instance, reads the `preprocessed_features` hypertable
  (written by the preprocessing pipeline), unfolds the JSONB `features` column into a wide
- DataFrame, converts it to the long format expected by *tsfresh*, and finally extracts a rich
- set of statistical features.  The resulting feature set is written to a parquet file so that
- downstream modelling steps (e.g. LSTM/GAN training) can load it efficiently.
+DataFrame, converts it to the long format expected by *tsfresh*, and finally extracts a rich
+set of statistical features which are persisted back into the database.  The output
+table is automatically promoted to a TimescaleDB hypertable so downstream steps can
+query it efficiently.
 
 Usage (inside container):
 
@@ -13,13 +14,12 @@ Usage (inside container):
 Environment variables (all have sensible defaults for docker-compose):
 
     DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME  –  connection parameters
-    OUTPUT_PATH                                    –  where the parquet file will be written
-    ERA_IDENTIFIER                                 –  optional filter (process only one era)
+    FEATURES_TABLE                                 –  destination table for the
+                                                    selected features
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import random
@@ -27,29 +27,26 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np  # Added for np.number
-import pandas as original_pandas # Use this for true pandas operations
+import pandas as original_pandas  # Use this for true pandas operations
 import sqlalchemy
-import sys # For checking loaded modules
-import textwrap # For pretty-printing logs
+import sys  # For checking loaded modules
 
 # Local helper for DB access
 from db_utils import SQLAlchemyPostgresConnector
 from tsfresh import extract_features
-from tsfresh.feature_extraction.settings import EfficientFCParameters, MinimalFCParameters
+
 
 # Conditionally import and alias pd
 if os.getenv("USE_GPU", "false").lower() == "true":
     try:
         import cudf.pandas as pd  # pd becomes cudf.pandas
         import cudf               # For explicit cudf.DataFrame, etc.
-        import dask_cudf          # For Dask-cuDF operations
-        import inspect            # For monkey-patching
-        logging.info("Running in GPU mode with cudf.pandas, cudf, and dask_cudf.")
+        logging.info("Running in GPU mode with cudf.pandas and cudf.")
     except ImportError as e:
-        logging.error(f"Failed to import GPU libraries (cudf, dask_cudf): {e}. Falling back to CPU mode.")
+        logging.error(f"Failed to import GPU libraries (cudf): {e}. Falling back to CPU mode.")
         os.environ["USE_GPU"] = "false" # Force fallback for current script execution
         pd = original_pandas      # Ensure pd is original_pandas
-        # No need to re-import cudf, dask_cudf, inspect if they failed; they won't be used.
+        # No need to re-import cudf if it failed; it won't be used.
 else:
     pd = original_pandas          # pd is original_pandas
     logging.info("Running in CPU mode with pandas.")
@@ -79,212 +76,16 @@ DB_HOST = _env("DB_HOST", "db")
 DB_PORT = _env("DB_PORT", "5432")
 DB_NAME = _env("DB_NAME", "postgres")
 
-# Location where the parquet file will be written inside the container
-DEFAULT_OUTPUT_PATH = Path("/app/data/output/tsfresh_features.parquet")
-OUTPUT_PATH = Path(_env("OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH)))
-
-# Where to persist the selected feature set
-DEFAULT_SELECTED_OUTPUT_PATH = Path("/app/data/output/tsfresh_features_selected.parquet")
-SELECTED_OUTPUT_PATH = Path(_env("SELECTED_OUTPUT_PATH", str(DEFAULT_SELECTED_OUTPUT_PATH)))
-
 # Table name for database storage of selected features
-FEATURES_TABLE = _env("FEATURES_TABLE", "tsfresh_selected_features")
-
-# Optional: only process a single era, useful during debugging
-# FILTER_ERA: str | None = os.getenv("ERA_IDENTIFIER") # This might be re-purposed for filtering loaded era definitions
-
-# Paths for input files (to be set via env vars or args)
-CONSOLIDATED_DATA_PATH_ENV = "CONSOLIDATED_DATA_PATH"
-ERA_DEFINITIONS_PATH_ENV = "ERA_DEFINITIONS_PATH"
-ERA_ID_COLUMN_KEY_ENV = "ERA_ID_COLUMN_KEY" # Env var to specify which 'era_level_X' to use
-
-DEFAULT_CONSOLIDATED_DATA_PATH = "/app/data/processed/consolidated_data.jsonl"  # Example path
-DEFAULT_ERA_DEFINITIONS_PATH = "/app/data/era_definitions/"    # Example: directory containing era JSONL files
-DEFAULT_ERA_ID_COLUMN_KEY = "era_level_C" # Default key for era identifier in JSONL, chosen for stability
+FEATURES_TABLE = os.getenv("FEATURES_TABLE", "tsfresh_selected_features")
 
 # Global constant for reporting the feature set used
-FC_PARAMS_NAME = "Custom (preprocess_config.json-Guided)"  # Explicitly name the config file
+FC_PARAMS_NAME = "Custom (preprocess_config.json-Guided)"
 
+# Placeholder for tsfresh configuration per sensor
+kind_to_fc_parameters_global: dict[str, Any] = {}
 
-# -----------------------------------------------------------------------------
-# Data loading & preparation helpers
-# -----------------------------------------------------------------------------
-
-def load_era_definitions(era_definitions_dir_path: str, era_id_key: str, USE_GPU_FLAG: bool) -> pd.DataFrame | None:
-    """Load era definitions from all JSONL and Parquet files in a directory, calculate end times, and return a DataFrame."""
-    jsonl_files = list(Path(era_definitions_dir_path).glob('*.jsonl'))
-    parquet_files = list(Path(era_definitions_dir_path).glob('*.parquet'))
-    
-    if not jsonl_files and not parquet_files:
-        logging.error(f"No JSONL or Parquet files found in era definitions directory: {era_definitions_dir_path}")
-        return None
-
-    all_era_dfs = []
-
-    # Process JSONL files
-    for file_path in jsonl_files:
-        logging.info(f"Loading era definitions from JSONL: {file_path}")
-        current_raw_eras = []
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for line_number, line in enumerate(f, 1):
-                    try:
-                        record = json.loads(line)
-                        if 'time' not in record or era_id_key not in record:
-                            logging.warning(f"Skipping record in {file_path} line {line_number}: missing 'time' or '{era_id_key}'. Record: {record}")
-                            continue
-                        current_raw_eras.append(record)
-                    except json.JSONDecodeError:
-                        logging.warning(f"Skipping invalid JSON in {file_path} line {line_number}: {line.strip()}")
-            if current_raw_eras:
-                df = original_pandas.DataFrame(current_raw_eras)
-                 # For JSONL, assume 'time' might be ms epoch. Try parsing, then fallback.
-                try:
-                    df['start_time'] = original_pandas.to_datetime(df['time'], unit='ms', errors='raise')
-                except (ValueError, TypeError):
-                    logging.warning(f"Could not parse 'time' as ms epoch in {file_path}, trying default parsing.")
-                    df['start_time'] = original_pandas.to_datetime(df['time'], errors='coerce')
-                all_era_dfs.append(df)
-        except Exception as e:
-            logging.error(f"Error reading or parsing JSONL file {file_path}: {e}")
-            continue
-
-    # Process Parquet files
-    for file_path in parquet_files:
-        logging.info(f"Loading era definitions from Parquet: {file_path}")
-        try:
-            if USE_GPU_FLAG and 'cudf' in sys.modules:
-                df = cudf.read_parquet(file_path) 
-                # Convert to pandas for consistent processing initially, then convert back if needed
-                # This simplifies handling diverse Parquet contents before final cuDF conversion
-                df = df.to_pandas() 
-            else:
-                df = original_pandas.read_parquet(file_path)
-            
-            if 'time' not in df.columns or era_id_key not in df.columns:
-                logging.warning(f"Skipping Parquet file {file_path}: missing 'time' or '{era_id_key}' column. Found columns: {df.columns.tolist()}")
-                continue
-            # For Parquet, assume 'time' is likely a standard datetime string or object. Fallback to ms epoch if direct fails.
-            try:
-                 df['start_time'] = original_pandas.to_datetime(df['time'], errors='raise')
-            except (ValueError, TypeError):
-                logging.warning(f"Could not parse 'time' directly in Parquet {file_path}, trying as ms epoch.")
-                df['start_time'] = original_pandas.to_datetime(df['time'], unit='ms', errors='coerce')
-            all_era_dfs.append(df)
-        except Exception as e:
-            logging.error(f"Error reading or parsing Parquet file {file_path}: {e}")
-            continue
-
-    if not all_era_dfs:
-        logging.error("No valid era definitions loaded from any JSONL or Parquet file.")
-        return None
-
-    # Concatenate all loaded DataFrames
-    eras_df = original_pandas.concat(all_era_dfs, ignore_index=True)
-    logging.info(f"Loaded a total of {len(eras_df)} raw era records from {len(jsonl_files) + len(parquet_files)} files.")
-
-    # Ensure 'start_time' (derived from 'time') and the specified era_id_key column exist
-    if 'start_time' not in eras_df.columns or era_id_key not in eras_df.columns:
-        logging.error(f"'start_time' (from 'time') or '{era_id_key}' column not found after loading all era files. Available columns: {eras_df.columns.tolist()}")
-        return None
-
-    eras_df.rename(columns={era_id_key: 'era_id'}, inplace=True)
-
-    # Drop rows where start_time could not be parsed or era_id is missing/NaN
-    eras_df.dropna(subset=['start_time', 'era_id'], inplace=True)
-    if eras_df.empty:
-        logging.error("No valid eras remaining after datetime conversion and NA drop.")
-        return None
-
-    # Sort by start_time to correctly determine end_times
-    eras_df.sort_values('start_time', inplace=True)
-    eras_df.reset_index(drop=True, inplace=True)
-
-    # Calculate end_time: the start_time of the next era
-    eras_df['end_time'] = eras_df['start_time'].shift(-1)
-
-    # Select and reorder columns
-    final_eras_df = eras_df[['era_id', 'start_time', 'end_time']].copy()
-    
-    # load_era_definitions now always returns a pandas DataFrame.
-    # The internal logic may use cuDF for reading Parquet if USE_GPU_FLAG is true,
-    # but the final concatenation and return value are pandas.
-    logging.info(f"Processed {len(final_eras_df)} era definitions (as pandas.DataFrame). Columns: {final_eras_df.columns.tolist()}")
-    return final_eras_df
-
-
-def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
-    """Convert wide sensor matrix (numeric columns only) to long format required by *tsfresh*."""
-
-    logging.info("Converting to long (tidy) format for tsfresh …")
-
-    id_columns = ["id", "time"] # Expect 'id' column directly from main
-    # Select only numeric columns for melting, excluding the ID columns
-    # In cuDF, select_dtypes(include=np.number) might not work as robustly as iterating and checking.
-    # Let's refine the numeric column selection for both pandas and cudf.
-
-    numeric_cols = []
-    if 'cudf' in sys.modules and isinstance(wide_df, cudf.DataFrame):
-        for col in wide_df.columns:
-            if col not in id_columns and cudf.api.types.is_numeric_dtype(wide_df[col].dtype):
-                numeric_cols.append(col)
-    else: # Assuming original_pandas DataFrame
-        numeric_cols = wide_df.select_dtypes(include=[np.number]).columns.tolist()
-
-    value_columns = [col for col in numeric_cols if col not in id_columns]
-
-    if not value_columns:
-        raise ValueError("No numeric columns found in wide_df to melt for tsfresh.")
-
-    logging.info(f"Melting based on {len(value_columns)} numeric columns: {value_columns}")
-
-    # Ensure common dtype for value_vars in GPU mode before melting
-    if os.getenv("USE_GPU", "false").lower() == "true" and 'cudf' in sys.modules and isinstance(wide_df, cudf.DataFrame):
-        logging.info("GPU Mode: Ensuring common dtype (float32) for value_vars before melt.")
-        temp_wide_df = wide_df.copy() # Work on a copy to avoid modifying the original df used elsewhere
-        for col_name in value_columns:
-            if col_name in temp_wide_df.columns:
-                try:
-                    # Ensure the column is numeric-like before casting to avoid errors on non-numeric types
-                    if cudf.api.types.is_numeric_dtype(temp_wide_df[col_name].dtype):
-                        temp_wide_df[col_name] = temp_wide_df[col_name].astype(np.float32)
-                    else:
-                        logging.warning(f"GPU Mode: Column '{col_name}' is not numeric, attempting to convert. Original dtype: {temp_wide_df[col_name].dtype}")
-                        # Attempt conversion, which might fail if data is not convertible
-                        temp_wide_df[col_name] = cudf.to_numeric(temp_wide_df[col_name], errors='coerce').astype(np.float32)
-                except Exception as e_cast:
-                    logging.error(f"GPU Mode: Failed to cast column '{col_name}' to float32. Error: {e_cast}. Skipping this column for melt.")
-                    # Remove problematic column from value_columns to avoid melt error
-                    value_columns.remove(col_name)
-            else:
-                logging.warning(f"GPU Mode: Column '{col_name}' not found in temp_wide_df for dtype conversion. This shouldn't happen.")
-        wide_df_to_melt = temp_wide_df # Use the (potentially modified) copy for melting
-        if not value_columns: # Check if all columns were removed due to errors
-             raise ValueError("GPU Mode: No valid numeric columns left after dtype conversion attempts for melting.")
-    else:
-        wide_df_to_melt = wide_df # Use the original DataFrame for CPU path
-
-    long_df = (
-        wide_df_to_melt.melt(
-            id_vars=id_columns,
-            value_vars=value_columns,  # Use only numeric columns
-            var_name="variable",
-            value_name="value",
-        )
-        .dropna(subset=["value"])
-    )
-    long_df.rename(columns={"variable": "kind"}, inplace=True)
-
-        # No longer renaming 'era_identifier' to 'id' here, as 'id' is expected directly.
-    # if "era_identifier" in long_df.columns:
-    #     long_df.rename(
-    #         columns={"era_identifier": "id"}, 
-    #         inplace=True,
-    #     )
-
-    logging.info("Long DataFrame shape: %s", long_df.shape)
-
-    return long_df
+# -----------------------------------------------------------------
 
 
 def select_relevant_features(
@@ -292,12 +93,7 @@ def select_relevant_features(
     correlation_threshold: float = 0.95,
     variance_threshold: float = 0.0,
 ) -> pd.DataFrame:
-    """Perform a simple unsupervised feature selection.
-
-    Features with zero (or near-zero) variance are removed and highly
-    correlated features are dropped based on *correlation_threshold*.
-    The returned DataFrame preserves the original index.
-    """
+    """Perform a simple unsupervised feature selection."""
 
     if features_df.empty:
         return features_df
@@ -309,26 +105,16 @@ def select_relevant_features(
     else:
         work_df = features_df.copy()
 
-    # Remove constant columns
-    variances = work_df.var(numeric_only=True)
+    variances = work_df.var()
     cols_to_keep = variances[variances > variance_threshold].index
     work_df = work_df[cols_to_keep]
 
-    # Drop highly correlated columns
-    MAX_FEATURES_FOR_CORR = 200  # Cap for correlation calculation
-    if work_df.shape[1] > MAX_FEATURES_FOR_CORR:
-        logging.warning(
-            f"Number of features ({work_df.shape[1]}) exceeds MAX_FEATURES_FOR_CORR ({MAX_FEATURES_FOR_CORR}). "
-            f"Sampling columns for correlation matrix calculation."
-        )
-        cols_for_corr = random.sample(list(work_df.columns), MAX_FEATURES_FOR_CORR)
-        corr_df = work_df[cols_for_corr]
-        corr_matrix = corr_df.corr().abs()
-    else:
+    MAX_FEATURES_FOR_CORR = 2000   # was 200
+    if work_df.shape[1] <= MAX_FEATURES_FOR_CORR:
         corr_matrix = work_df.corr().abs()
-    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-    to_drop = [col for col in upper.columns if any(upper[col] > correlation_threshold)]
-    work_df = work_df.drop(columns=to_drop)
+        upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+        to_drop = [col for col in upper.columns if any(upper[col] > correlation_threshold)]
+        work_df = work_df.drop(columns=to_drop)
 
     if use_gpu:
         index_name = work_df.index.name or "index"
@@ -339,20 +125,36 @@ def select_relevant_features(
     return work_df
 
 
-# -----------------------------------------------------------------------------
-# Feature extraction
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------
+# Promote a plain SQL table to Timescale hypertable if needed
+# -----------------------------------------------------------------
+def _make_hypertable_if_needed(conn, table_name, time_column):
+    sql = """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb')
+        THEN
+            CREATE EXTENSION IF NOT EXISTS timescaledb;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM   timescaledb_information.hypertables
+            WHERE  hypertable_schema = current_schema
+              AND  hypertable_name   = $1)
+        THEN
+            PERFORM create_hypertable($1, $2, if_not_exists => TRUE);
+        END IF;
+    END;
+    $$;
+    """
+    conn.execute(sqlalchemy.text(sql), (table_name, time_column))
+
 
 def main() -> None:
-    """Main execution function."""
-    logging.info("Starting feature extraction with file-based inputs...")
-    USE_GPU_FLAG = os.getenv("USE_GPU", "false").lower() == "true"
+    """Entry point for feature extraction."""
 
-    # Get file paths from environment variables or use defaults
-    consolidated_data_file_path = _env(CONSOLIDATED_DATA_PATH_ENV, DEFAULT_CONSOLIDATED_DATA_PATH)
-    era_definitions_dir_path = _env(ERA_DEFINITIONS_PATH_ENV, DEFAULT_ERA_DEFINITIONS_PATH)
-    era_id_key_from_json = _env(ERA_ID_COLUMN_KEY_ENV, DEFAULT_ERA_ID_COLUMN_KEY)
-
+    logging.info("Starting feature extraction …")
     logging.info(f"Loading consolidated data from: {consolidated_data_file_path}")
     try:
         # Determine if using GPU for pandas operations
@@ -868,42 +670,67 @@ def main() -> None:
     if not final_features.empty:
         df_rows, df_cols = final_features.shape
     else:
-        # df_cols is n_features, which is already used below and would be 0 if empty.
-        # df_rows would be 0.
-        pass 
+        wide_df = pd.read_sql(SQL_WIDE, connector.engine)
 
-    # ---------------- summary report ------------------ #
-    report_path = OUTPUT_PATH.parent / "tsfresh_feature_extraction_report.txt"
-    logging.info("Writing summary report → %s", report_path)
+    logging.info("Wide dataframe shape: %s", wide_df.shape)
 
-    # Number of input rows and sensor columns
-    # n_rows = total_rows_processed # Use the counter from the loop
-    n_sensors = len(all_sensor_cols) # Use the set accumulated during the loop
-    n_features = final_features.shape[1]
-    n_eras_processed = len(all_era_features) # Number of eras that successfully produced features
+    # -----------------------------------------------------------------
+    # 2.  Melt to long format on GPU if possible
+    # -----------------------------------------------------------------
+    numeric_cols = [c for c in wide_df.columns
+                    if c not in ("era_id", "time") and
+                       wide_df[c].dtype.kind in ("i", "f")]
 
-    with open(report_path, "w", encoding="utf-8") as rep:
-        # Dynamically set report title based on GPU usage
-        report_title_prefix = "GPU (tsfresh)" if USE_GPU_FLAG and 'cudf' in sys.modules else "CPU (tsfresh)"
-        rep.write(f"{report_title_prefix} Feature Extraction Report\n")
-        rep.write("=======================================\n\n")
-        rep.write(f"Feature settings used : {FC_PARAMS_NAME}\n")
-        rep.write(f"Eras processed        : {n_eras_processed} / {len(eras_df)}\n")
-        rep.write(f"Total rows processed  : {total_rows_processed:,}\n") # From original wide_df rows
-        rep.write(f"Total feature columns : {n_features:,}\n\n")
+    melt_id_vars = ["era_id", "time"]
 
-        rep.write(f"Output Parquet file   : {parquet_file_path_str}\n")
-        rep.write(f"Parquet file size (MB): {parquet_file_size_mb:.2f}\n")
-        rep.write(f"DataFrame shape (rows, features): ({df_rows}, {df_cols})\n\n")
+    long_df = wide_df.melt(
+        id_vars=melt_id_vars,
+        value_vars=numeric_cols,
+        var_name="kind",
+        value_name="value"
+    )
 
-        rep.write("First 25 feature names →\n")
-        for fname in list(final_features.columns)[:25]:
-            rep.write(f"  • {fname}\n")
+    logging.info("Long dataframe shape (before tsfresh): %s", long_df.shape)
 
-        rep.write("\nExtraction successful.\n")
+    if os.getenv("USE_GPU", "false").lower() == "true":
+        long_df = long_df.to_pandas()
 
-    logging.info("Report written.")
+    # -----------------------------------------------------------------
+    # 3.  tsfresh extraction (single shot)
+    # -----------------------------------------------------------------
+    features = extract_features(
+        long_df,
+        column_id="era_id",
+        column_sort="time",
+        column_kind="kind",
+        column_value="value",
+        kind_to_fc_parameters=kind_to_fc_parameters_global,
+        default_fc_parameters=None,
+        n_jobs=os.cpu_count() - 2,
+    )
 
+    if features.index.name == "era_id":
+        features.reset_index(inplace=True)
+
+    logging.info("Raw feature matrix shape: %s", features.shape)
+
+    selected = select_relevant_features(features)
+
+    df_for_db = selected.copy()
+    df_for_db.index.name = "id"
+    df_for_db = df_for_db.reset_index()
+    if hasattr(df_for_db, "to_pandas"):
+        df_for_db = df_for_db.to_pandas()
+
+    connector.write_dataframe(
+        df_for_db,
+        FEATURES_TABLE,
+        if_exists="replace",
+        index=False,
+    )
+
+    with connector.engine.begin() as c:
+        _make_hypertable_if_needed(c, FEATURES_TABLE, "era_id")
 
 if __name__ == "__main__":
     main()
