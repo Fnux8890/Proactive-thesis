@@ -81,6 +81,13 @@ DB_NAME = _env("DB_NAME", "postgres")
 DEFAULT_OUTPUT_PATH = Path("/app/data/output/tsfresh_features.parquet")
 OUTPUT_PATH = Path(_env("OUTPUT_PATH", str(DEFAULT_OUTPUT_PATH)))
 
+# Where to persist the selected feature set
+DEFAULT_SELECTED_OUTPUT_PATH = Path("/app/data/output/tsfresh_features_selected.parquet")
+SELECTED_OUTPUT_PATH = Path(_env("SELECTED_OUTPUT_PATH", str(DEFAULT_SELECTED_OUTPUT_PATH)))
+
+# Table name for database storage of selected features
+FEATURES_TABLE = _env("FEATURES_TABLE", "tsfresh_selected_features")
+
 # Optional: only process a single era, useful during debugging
 # FILTER_ERA: str | None = os.getenv("ERA_IDENTIFIER") # This might be re-purposed for filtering loaded era definitions
 
@@ -282,6 +289,48 @@ def melt_for_tsfresh(wide_df: pd.DataFrame) -> pd.DataFrame:
     logging.info("Long DataFrame shape: %s", long_df.shape)
 
     return long_df
+
+
+def select_relevant_features(
+    features_df: pd.DataFrame,
+    correlation_threshold: float = 0.95,
+    variance_threshold: float = 0.0,
+) -> pd.DataFrame:
+    """Perform a simple unsupervised feature selection.
+
+    Features with zero (or near-zero) variance are removed and highly
+    correlated features are dropped based on *correlation_threshold*.
+    The returned DataFrame preserves the original index.
+    """
+
+    if features_df.empty:
+        return features_df
+
+    use_gpu = os.getenv("USE_GPU", "false").lower() == "true" and "cudf" in sys.modules
+
+    if use_gpu and isinstance(features_df, cudf.DataFrame):
+        work_df = features_df.to_pandas()
+    else:
+        work_df = features_df.copy()
+
+    # Remove constant columns
+    variances = work_df.var()
+    cols_to_keep = variances[variances > variance_threshold].index
+    work_df = work_df[cols_to_keep]
+
+    # Drop highly correlated columns
+    corr_matrix = work_df.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [col for col in upper.columns if any(upper[col] > correlation_threshold)]
+    work_df = work_df.drop(columns=to_drop)
+
+    if use_gpu:
+        index_name = work_df.index.name or "index"
+        pdf_reset = work_df.reset_index()
+        cdf = cudf.DataFrame.from_pandas(pdf_reset)
+        cdf.set_index(index_name, inplace=True)
+        return cdf
+    return work_df
 
 
 # -----------------------------------------------------------------------------
@@ -506,9 +555,42 @@ def main() -> None:
         else:
             final_tsfresh_features = original_pandas.concat(processed_list_for_concat)
 
+    # Perform simple feature selection
+    logging.info("Selecting relevant features …")
+    final_tsfresh_features = select_relevant_features(final_tsfresh_features)
+
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     final_tsfresh_features.to_parquet(OUTPUT_PATH)
     logging.info("Feature set saved to %s", OUTPUT_PATH)
+
+    # Persist the selected features as a separate parquet file for convenience
+    SELECTED_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    final_tsfresh_features.to_parquet(SELECTED_OUTPUT_PATH)
+    logging.info("Selected feature set saved to %s", SELECTED_OUTPUT_PATH)
+
+    # Optionally store the selected features in the database
+    try:
+        connector = SQLAlchemyPostgresConnector(
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            db_name=DB_NAME,
+        )
+        df_for_db = final_tsfresh_features.copy()
+        df_for_db.index.name = "id"
+        df_for_db = df_for_db.reset_index()
+        if hasattr(df_for_db, "to_pandas"):
+            df_for_db = df_for_db.to_pandas()
+        connector.write_dataframe(
+            df_for_db,
+            FEATURES_TABLE,
+            if_exists="replace",
+            index=False,
+        )
+        logging.info("Selected features written to table '%s'", FEATURES_TABLE)
+    except Exception as exc:
+        logging.error("Failed to write features to DB: %s", exc)
 
     # --- Gather info for the report ---
     parquet_file_path_str = str(OUTPUT_PATH.resolve()) # Get absolute path
@@ -541,7 +623,7 @@ def main() -> None:
         rep.write(f"{report_title_prefix} Feature Extraction Report\n")
         rep.write("=======================================\n\n")
         rep.write(f"Feature settings used : {FC_PARAMS_NAME}\n")
-        rep.write(f"Eras processed        : {n_eras_processed} / {len(eras_to_process)}\n")
+        rep.write(f"Eras processed        : {n_eras_processed} / {len(eras_df)}\n")
         rep.write(f"Total rows processed  : {total_rows_processed:,}\n") # From original wide_df rows
         rep.write(f"Total feature columns : {n_features:,}\n\n")
 
