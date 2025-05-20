@@ -7,7 +7,7 @@ graph TD
     DI[DataIngestion]
     DI --> RP_Docker["rust_pipeline/Dockerfile"]
     DI --> SimDocker["simulation_data_prep/Dockerfile"]
-    Scripts["scripts/Dockerfile"]
+    DI --> Scripts["scripts/Dockerfile"]
 ```
 
 - `DataIngestion/rust_pipeline/Dockerfile` – builds the Rust-based ingestion pipeline.
