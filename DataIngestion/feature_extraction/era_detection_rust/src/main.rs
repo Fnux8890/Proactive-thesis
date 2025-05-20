@@ -4,7 +4,7 @@ use anyhow::{Result, Context};
 use rayon::prelude::*;
 
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use polars::datatypes::TimeUnit;
 use polars::prelude::DynamicGroupOptions;
 use polars::lazy::frame::IntoLazy;
@@ -20,6 +20,8 @@ mod io;
 mod level_a;
 mod level_b;
 mod level_c;
+mod db;
+use crate::db::EraDb;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -302,9 +304,12 @@ fn main() -> Result<()> {
         log::info!("Output directory already exists: {:?}", &cli.output_dir);
     }
 
+    let shared_db = Arc::new(Mutex::new(EraDb::connect()?));
+
     final_selected_cols.par_iter().filter(|&name| name.as_str() != "time").for_each(move |signal_name_to_process| {
         let feature_df_task_local = Arc::clone(&feature_df_arc);
         let time_col_series_task_local = Arc::clone(&time_col_series_arc);
+        let db = Arc::clone(&shared_db);
         // Define a closure that can return a Result, to keep error handling with '?' clean within the processing logic for a single signal.
         let process_signal_task = || -> Result<()> {
             log::info!("\n\n=== Processing signal: '{}' ===", signal_name_to_process);
@@ -345,6 +350,15 @@ fn main() -> Result<()> {
             io::write_polars_df_to_parquet(&mut df_out_a, &path_a)?;
             log::info!("Saved Level A labels for '{}' to {:?}", signal_name_to_process, path_a);
 
+            let mut df_db_a = df_out_a.clone();
+            df_db_a.rename("era_level_A", "era_id")?;
+            {
+                let mut guard = db.lock().unwrap();
+                guard
+                    .copy_segments(&df_db_a, signal_name_to_process, 'A', "PELT")
+                    .expect("DB insert failed");
+            }
+
             // --- Level B: BOCPD for current signal ---
             let bocpd_start_time = std::time::Instant::now();
             log::info!("\n--- Level B: BOCPD on '{}' ---", signal_name_to_process);
@@ -372,6 +386,15 @@ fn main() -> Result<()> {
             let path_b = cli.output_dir.join(format!("{}_{}_era_labels_levelB.parquet", cli.output_suffix, signal_name_to_process));
             io::write_polars_df_to_parquet(&mut df_out_b, &path_b)?;
             log::info!("Saved Level B labels for '{}' to {:?}", signal_name_to_process, path_b);
+
+            let mut df_db_b = df_out_b.clone();
+            df_db_b.rename("era_level_B", "era_id")?;
+            {
+                let mut guard = db.lock().unwrap();
+                guard
+                    .copy_segments(&df_db_b, signal_name_to_process, 'B', "BOCPD")
+                    .expect("DB insert failed");
+            }
 
             // --- Level C: HMM Viterbi for current signal ---
             let hmm_start_time = std::time::Instant::now();
@@ -401,6 +424,15 @@ fn main() -> Result<()> {
             let path_c = cli.output_dir.join(format!("{}_{}_era_labels_levelC.parquet", cli.output_suffix, signal_name_to_process));
             io::write_polars_df_to_parquet(&mut df_out_c, &path_c)?;
             log::info!("Saved Level C labels for '{}' to {:?}", signal_name_to_process, path_c);
+
+            let mut df_db_c = df_out_c.clone();
+            df_db_c.rename("era_level_C", "era_id")?;
+            {
+                let mut guard = db.lock().unwrap();
+                guard
+                    .copy_segments(&df_db_c, signal_name_to_process, 'C', "HMM")
+                    .expect("DB insert failed");
+            }
 
             Ok(())
         };
