@@ -4,8 +4,9 @@ use chrono::{DateTime, Utc};
 use postgres::{Client, NoTls};
 use polars::prelude::*;
 
+/// 🔒  DSN is hard-coded. **Edit once** and check it into a private repo.
 const DB_DSN: &str =
-    "host=db port=5432 dbname=postgres user=postgres password=postgres";
+    "host=127.0.0.1 port=5432 dbname=mydb user=myuser password=supersecret";
 
 /// Connection wrapper – open once per Rayon thread or share via Arc.
 pub struct EraDb {
