@@ -317,58 +317,58 @@ services:
       - ingestion-net
 
   # Stage C: Auto-Era-Config Generator
-  auto_era_gen:
-    build:
-      context: ./feature_extraction/era_detection # Dockerfile can be simple, just needs python and pandas
-      dockerfile: auto_era_gen.dockerfile # NEW Dockerfile for this tiny script
-    container_name: auto_era_generator
-    volumes:
-      # Input is the Level C labels from era_detector, output is the JSON config
-      - ./feature_extraction/data/processed:/app/data/processed:rw
-    # Command to run auto_era_config_gen.py
-    # Input: <output_suffix_from_era_detector>_era_labels_levelC.parquet
-    # Output: auto_era_definitions.json (placed in /app/data/processed for full_preprocess to access)
-    command: >
-      uv run python auto_era_config_gen.py  /app/data/processed/MegaEra_All_Data_Segment1_era_labels_levelC.parquet  /app/data/processed/auto_era_definitions.json 
-    depends_on:
-      era_detector:
-        condition: service_completed_successfully
-    networks:
-      - ingestion-net
+  # auto_era_gen:
+  #   build:
+  #     context: ./feature_extraction/era_detection # Dockerfile can be simple, just needs python and pandas
+  #     dockerfile: auto_era_gen.dockerfile # NEW Dockerfile for this tiny script
+  #   container_name: auto_era_generator
+  #   volumes:
+  #     # Input is the Level C labels from era_detector, output is the JSON config
+  #     - ./feature_extraction/data/processed:/app/data/processed:rw
+  #   # Command to run auto_era_config_gen.py
+  #   # Input: <output_suffix_from_era_detector>_era_labels_levelC.parquet
+  #   # Output: auto_era_definitions.json (placed in /app/data/processed for full_preprocess to access)
+  #   command: >
+  #     uv run python auto_era_config_gen.py  /app/data/processed/MegaEra_All_Data_Segment1_era_labels_levelC.parquet  /app/data/processed/auto_era_definitions.json 
+  #   depends_on:
+  #     era_detector:
+  #       condition: service_completed_successfully
+  #   networks:
+  #     - ingestion-net
 
-  # Stage D: Full Pre-processing Per Era (Manual + Auto)
-  # This service reuses the preprocess.dockerfile but with different ENV settings
-  full_preprocess:
-    build:
-      context: ./feature_extraction/pre_process
-      dockerfile: preprocess.dockerfile
-    container_name: full_preprocess
-    volumes:
-      - ./feature_extraction/data/input:/app/data/input:ro
-      - ./feature_extraction/data/processed:/app/data/output:rw # Main output for processed era segments
-      - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
-      # Mount the auto-generated era config for merging
-      - ./feature_extraction/data/processed/auto_era_definitions.json:/app/data/processed/auto_era_definitions.json:ro
-    command: >
-      sh -c " uv run python phenotype_ingest.py && \ uv run python fetch_external_weather.py && \ uv run python fetch_energy.py && \ uv run python preprocess.py"
-    environment:
-      - SKIP_ERA_FEATURE=false # Ensure EraFeatureGenerator runs in this stage
-      - EXTRA_ERA_CONFIG=/app/data/processed/auto_era_definitions.json # Path to auto-generated eras
-      - APP_CONFIG_PATH=/app/config/data_processing_config.json
-      - APP_OUTPUT_DIR=/app/data/output
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_HOST=db
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_NAME=${DB_NAME:-postgres}
-      # PROCESS_ERA_IDENTIFIER is NOT set here, so preprocess.py processes all eras found in merged config
-    depends_on:
-      auto_era_gen:
-        condition: service_completed_successfully
-      db:
-        condition: service_healthy # preprocess.py interacts with DB
-    networks:
-      - ingestion-net
+  # # Stage D: Full Pre-processing Per Era (Manual + Auto)
+  # # This service reuses the preprocess.dockerfile but with different ENV settings
+  # full_preprocess:
+  #   build:
+  #     context: ./feature_extraction/pre_process
+  #     dockerfile: preprocess.dockerfile
+  #   container_name: full_preprocess
+  #   volumes:
+  #     - ./feature_extraction/data/input:/app/data/input:ro
+  #     - ./feature_extraction/data/processed:/app/data/output:rw # Main output for processed era segments
+  #     - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
+  #     # Mount the auto-generated era config for merging
+  #     - ./feature_extraction/data/processed/auto_era_definitions.json:/app/data/processed/auto_era_definitions.json:ro
+  #   command: >
+  #     sh -c " uv run python phenotype_ingest.py && \ uv run python fetch_external_weather.py && \ uv run python fetch_energy.py && \ uv run python preprocess.py"
+  #   environment:
+  #     - SKIP_ERA_FEATURE=false # Ensure EraFeatureGenerator runs in this stage
+  #     - EXTRA_ERA_CONFIG=/app/data/processed/auto_era_definitions.json # Path to auto-generated eras
+  #     - APP_CONFIG_PATH=/app/config/data_processing_config.json
+  #     - APP_OUTPUT_DIR=/app/data/output
+  #     - DB_USER=${DB_USER:-postgres}
+  #     - DB_PASSWORD=${DB_PASSWORD:-postgres}
+  #     - DB_HOST=db
+  #     - DB_PORT=${DB_PORT:-5432}
+  #     - DB_NAME=${DB_NAME:-postgres}
+  #     # PROCESS_ERA_IDENTIFIER is NOT set here, so preprocess.py processes all eras found in merged config
+  #   depends_on:
+  #     auto_era_gen:
+  #       condition: service_completed_successfully
+  #     db:
+  #       condition: service_healthy # preprocess.py interacts with DB
+  #   networks:
+  #     - ingestion-net
 
   # Stage E: Feature Extraction (Modified dependencies)
   # (Existing preprocess_feat service might be replaced by raw_prep_lite + full_preprocess)
@@ -397,7 +397,7 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - DB_NAME=${DB_NAME:-postgres}
     depends_on:
-      full_preprocess:
+      era_detector:
         condition: service_completed_successfully
       db:
         # If extract_features.py also connects to DB
@@ -429,7 +429,7 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - DB_NAME=${DB_NAME:-postgres}
     depends_on:
-      full_preprocess:
+      era_detector:
         condition: service_completed_successfully
       db:
         condition: service_healthy
@@ -446,7 +446,7 @@ services:
       - ./feature_extraction/data/analysis:/app/output_data:rw
     depends_on:
       # Choose dependency: rust_pipeline for raw analysis, or full_preprocess if it needs cleaned data
-      full_preprocess:
+      feature_extraction:
         condition: service_completed_successfully
       db:
         condition: service_healthy

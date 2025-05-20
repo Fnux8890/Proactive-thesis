@@ -1,21 +1,32 @@
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 # import polars as pl # Uncomment if you plan to use Polars
 from typing import List, Dict, Any
 
 class OutlierHandler:
-    def __init__(self, rules: List[Dict[str, Any]]):
+    def __init__(self, rules: List[Dict[str, Any]], rules_cfg_dict: Dict[str, Any] = None):
         self.rules = rules
-        print(f"OutlierHandler initialized with {len(rules)} rules.")
+        if rules_cfg_dict is None:
+            rules_cfg_dict = {}
+        self.no_clip_columns = set(rules_cfg_dict.get("do_not_clip_columns", []))
+        print(f"OutlierHandler initialized with {len(rules)} rules. No-clip columns: {self.no_clip_columns}")
 
     def clip_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
-        print("Starting outlier clipping...")
+        logger.info("Starting outlier clipping...")
         df_processed = df.copy()
         for rule in self.rules:
             col = rule['column']
+            if col in self.no_clip_columns:
+                logger.info(f"Skipping outlier clipping for column '{col}' as it is in no_clip_columns.")
+                print(f"  Skipping outlier clipping for column '{col}' as it's in no_clip_columns.")
+                continue
             if col in df_processed.columns:
                 min_val = rule.get('min_value')
                 max_val = rule.get('max_value')
                 if rule.get('clip', False):
+                    logger.info(f"Clipping outliers in column '{col}' to [{min_val}, {max_val}]")
                     print(f"Clipping outliers in column '{col}' to [{min_val}, {max_val}]")
                     df_processed[col] = df_processed[col].clip(lower=min_val, upper=max_val)
             else:

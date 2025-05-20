@@ -13,3 +13,6 @@ ruptures
 pyro-ppl
 torch
 requests
+pvlib
+astral
+pytest

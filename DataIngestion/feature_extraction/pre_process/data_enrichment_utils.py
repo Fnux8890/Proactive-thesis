@@ -7,6 +7,10 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.neighbors import KNeighborsRegressor
 import traceback
+import json
+import logging
+import pvlib
+
 
 LITERATURE_PHENOTYPES_TABLE_NAME = "literature_kalanchoe_phenotypes"
 
@@ -296,3 +300,125 @@ def scale_data_for_era(df: pd.DataFrame, era_identifier: str, era_config: Dict[s
                 print(f"  Warning: No scaler provided/loaded for column '{col}'. Skipping scaling for it.")
 
     return df_scaled, current_scalers 
+
+def synthesize_light_data(df: pd.DataFrame, lat: float = 56.2661, lon: float = 10.064, use_cloud: bool = True, era_identifier: str = "UnknownEra", dli_scale_clip_min: float = 0.25, dli_scale_clip_max: float = 4.0) -> pd.DataFrame:
+    """Return df with 'par_synth_umol' and a status dict.
+    
+    Synthesizes Photosynthetically Active Radiation (PAR) using a clear-sky model, 
+    adjusted for night time and optionally DLI and cloud cover.
+
+    Args:
+        df: Input DataFrame with a DatetimeIndex. Expected to have a discernible frequency (e.g., 5T, 15T).
+            May contain 'dli_sum' (mol m-2 day-1) and 'radiation_w_m2' (W m-2) for adjustments.
+        lat: Latitude for solar position calculation (default Hinnerup: 56.2661 N).
+        lon: Longitude for solar position calculation (default Hinnerup: 10.064 E).
+        use_cloud: Boolean flag to enable cloud correction using 'radiation_w_m2' if available.
+        era_identifier: Identifier for the current era, for logging.
+        dli_scale_clip_min: Minimum value for DLI scaling factor clip.
+        dli_scale_clip_max: Maximum value for DLI scaling factor clip.
+
+    Returns:
+        DataFrame with added 'par_synth_umol' (µmol m-2 s-1) and 'light_synthesis_status' (JSON string) columns.
+    """
+    # Note: The imports pvlib, numpy, pandas, json, astral are expected to be at the top of the file.
+    # Ensure df.index is a DatetimeIndex
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("DataFrame index must be a DatetimeIndex for light synthesis.")
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "Attempting light synthesis for era '%s' @ (%.4f, %.4f)",
+        era_identifier, lat, lon
+    )
+    df_synthesized = df.copy()
+    status = {}
+
+    # 1. Clear-sky irradiance
+    try:
+        solpos = pvlib.solarposition.get_solarposition(df_synthesized.index, lat, lon)
+        # Using pvlib's default for linke_turbidity by not specifying or passing None if the function handles it.
+        # pvlib.clearsky.ineichen typically defaults Linke turbidity to 3 and pressure to 101325 Pa if not provided.
+        # Explicitly setting linke_turbidity=3 as a common default, can be parameterized later if needed.
+        clearsky = pvlib.clearsky.ineichen(solpos['apparent_zenith'], linke_turbidity=3) 
+        ghi_cs = clearsky['ghi'].fillna(0) # W m-2, fill NaNs from clearsky model (e.g. extreme sun angles)
+        par_cs = ghi_cs * 4.57   # Convert GHI (W m-2) to PAR (µmol m-2 s-1)
+        status['clearsky_model'] = 'Ineichen-Perez_pvlib'
+    except Exception as e:
+        logger.error(f"  Error in clear-sky model calculation for era {era_identifier}: {e}", exc_info=True)
+        status['clearsky_model_error'] = str(e)
+        df_synthesized['par_synth_umol'] = np.nan
+        df_synthesized['light_synthesis_status'] = json.dumps(status)
+        return df_synthesized
+
+    # 2. Zero at night (astronomical definition: sun zenith < 90 degrees)
+    # Ensure astral.LocationInfo can get timezone if df.index is timezone-aware, or assume UTC/naive
+    # For simplicity, if df.index.tz is None, astral might use system's local timezone for sunrise/sunset,
+    # which could be an issue if df.index is naive UTC. Best if df.index is tz-aware UTC.
+    # The solarposition zenith angle is generally sufficient and timezone-agnostic if index is UTC.
+    day_mask = (solpos['zenith'] < 90) # True during daylight hours
+    par_cs = par_cs.where(day_mask, 0.0)
+    status['night_masking'] = 'applied_zenith_lt_90'
+
+    # 3. Daily scale to DLI if 'dli_sum' is available
+    par_adj = par_cs.copy() # Initialize adjusted PAR with clear-sky, night-masked PAR
+    if 'dli_sum' in df_synthesized.columns and not df_synthesized['dli_sum'].isnull().all():
+        # Determine interval for integration (e.g., 5 minutes = 300 seconds)
+        interval_s = None
+        if df_synthesized.index.freq:
+            interval_s = pd.to_timedelta(df_synthesized.index.freq).total_seconds()
+        elif len(df_synthesized.index) > 1:
+            interval_s = (df_synthesized.index[1] - df_synthesized.index[0]).total_seconds()
+        
+        if interval_s and interval_s > 0:
+            # Calculate synthetic DLI from par_cs (µmol m-2 s-1 -> mol m-2 day-1)
+            # Sum(par_cs_values_in_day) * interval_s / 1,000,000
+            synthetic_dli_mol_daily = (par_cs.groupby(df_synthesized.index.date).sum() * interval_s) / 1e6
+            synthetic_dli_mol_daily = synthetic_dli_mol_daily.reindex(df_synthesized.index.date).ffill().bfill()
+            
+            # Get observed DLI, ensuring one value per day, broadcasted
+            observed_dli_daily = df_synthesized['dli_sum'].groupby(df_synthesized.index.date).first()
+            observed_dli_daily = observed_dli_daily.reindex(df_synthesized.index.date).ffill().bfill()
+
+            # Create a daily scaling factor where observed DLI is available
+            # Avoid division by zero or near-zero synthetic DLI if par_cs was all zero for a day (e.g. polar night)
+            scale_factor_daily = (observed_dli_daily / synthetic_dli_mol_daily.where(synthetic_dli_mol_daily > 1e-6)).clip(dli_scale_clip_min, dli_scale_clip_max).fillna(1.0)
+            
+            # Apply daily scale factor to the timeseries par_cs values
+            # Map daily scale_factor back to the original DataFrame index
+            daily_scale_map = df_synthesized.index.to_series().dt.date.map(scale_factor_daily)
+            par_adj = par_cs * daily_scale_map
+            status['dli_anchor'] = True
+            logger.info(f"  (Era: {era_identifier}) DLI anchoring applied using 'dli_sum'. Min/Max scale: {scale_factor_daily.min():.2f}/{scale_factor_daily.max():.2f}")
+        else:
+            logger.warning(f"  (Era: {era_identifier}) Could not determine data frequency for DLI scaling. Skipping DLI anchor.")
+            status['dli_anchor'] = False
+            status['dli_anchor_issue'] = 'Could not determine data frequency'
+    else:
+        status['dli_anchor'] = False
+        logger.info(f"  (Era: {era_identifier}) 'dli_sum' not available or all NaNs. Skipping DLI anchor.")
+
+    # 4. Optional cloud correction using 'radiation_w_m2'
+    if use_cloud:
+        if 'radiation_w_m2' in df_synthesized.columns and not df_synthesized['radiation_w_m2'].isnull().all():
+            # ghi_cs is clear-sky GHI (W m-2). df_synthesized['radiation_w_m2'] is observed GHI.
+            # kt is the clearness index. Limit to [0,1] physically.
+            # Ensure ghi_cs is not zero to prevent division errors; where ghi_cs is 0, kt is undefined or 1 if radiation_w_m2 is also 0.
+            kt = (df_synthesized['radiation_w_m2'] / ghi_cs.where(ghi_cs > 1e-3)).clip(0, 1) 
+            # Fill NaNs in kt (e.g., from missing radiation_w_m2 or ghi_cs=0) with 1.0 (clear sky) or a mean/median kt if preferred.
+            # For simplicity, filling with 1.0 assumes periods of missing data were clear, or relies on DLI anchor.
+            par_adj *= kt.fillna(1.0) 
+            status['cloud_correction'] = 'empirical_kt_radiation_w_m2'
+            logger.info(f"  (Era: {era_identifier}) Cloud correction applied using 'radiation_w_m2'. Mean kt: {kt.mean():.2f}")
+        else:
+            status['cloud_correction'] = 'skipped_no_radiation_w_m2_data'
+            logger.info(f"  (Era: {era_identifier}) Cloud correction skipped: 'radiation_w_m2' not available or all NaNs.")
+    else:
+        status['cloud_correction'] = 'disabled_by_user_flag'
+
+    # Add final synthesized PAR column and status column
+    df_synthesized['par_synth_umol'] = par_adj.astype('float32')
+    df_synthesized['light_synthesis_status'] = json.dumps(status)
+
+    logger.info(f"--- (Era: {era_identifier}) Light Synthesis Complete ---")
+    return df_synthesized
+

@@ -35,7 +35,8 @@ from data_enrichment_utils import (
     generate_proxy_phenotype_labels,
     calculate_daily_weekly_aggregates,
     EraFeatureGenerator, # This class is imported
-    scale_data_for_era
+    scale_data_for_era,
+    synthesize_light_data # Added for light synthesis
 )
 
 
@@ -234,6 +235,15 @@ if __name__ == "__main__":
         common_settings_cfg = app_config.get('common_settings', {})
         era_target_freq = era_conf_details.get("target_frequency", common_settings_cfg.get("default_target_frequency", "15T"))
 
+        # Load light synthesis configurations globally for the run
+        enable_light_synthesis_flag = common_settings_cfg.get('enable_light_synthesis', False)
+        light_synthesis_columns_config = common_settings_cfg.get('light_synthesis_columns', [])
+        synth_latitude = common_settings_cfg.get('latitude', 56.2661)  # Default Hinnerup
+        synth_longitude = common_settings_cfg.get('longitude', 10.064) # Default Hinnerup
+        synth_use_cloud_correction = common_settings_cfg.get('use_cloud_correction', True)
+        synth_dli_clip_min = common_settings_cfg.get('dli_scale_clip_min', 0.25)
+        synth_dli_clip_max = common_settings_cfg.get('dli_scale_clip_max', 4.0)
+
         if common_settings_cfg.get("include_external_weather", False):
             print("Attempting to fetch and merge external weather data...")
             era_start_date_str = era_conf_details.get("start_date")
@@ -307,6 +317,51 @@ if __name__ == "__main__":
         
         df_enriched = df_resampled.copy()
         
+        # Light Synthesis Block
+        if common_settings_cfg.get("enable_light_synthesis", False):
+            print(f"\n--- Synthesizing Light Data for Era '{era_id}' ---")
+            light_synth_lat = common_settings_cfg.get("latitude", 56.2661)
+            light_synth_lon = common_settings_cfg.get("longitude", 10.064)
+            light_synth_use_cloud = common_settings_cfg.get("use_cloud_correction", True)
+            light_synth_dli_clip_min = common_settings_cfg.get("dli_scale_clip_min", 0.25)
+            light_synth_dli_clip_max = common_settings_cfg.get("dli_scale_clip_max", 4.0)
+            
+            if df_enriched.empty:
+                print(f"  Skipping light synthesis for Era '{era_id}': input DataFrame is empty before synthesis.")
+                current_era_summary_items.append(("Light Synthesis Attempted", "Skipped, empty input DF"))
+            else:
+                try:
+                    print(f"  Input shape for light synthesis: {df_enriched.shape}")
+                    df_synthesized = synthesize_light_data(
+                        df=df_enriched.copy(), # Use .copy() for safety
+                        lat=light_synth_lat,
+                        lon=light_synth_lon,
+                        use_cloud=light_synth_use_cloud,
+                        era_identifier=era_id,
+                        dli_scale_clip_min=light_synth_dli_clip_min,
+                        dli_scale_clip_max=light_synth_dli_clip_max
+                    )
+                    
+                    if df_synthesized is not None and not df_synthesized.empty:
+                        df_enriched = df_synthesized
+                        print(f"  Successfully synthesized light data. DataFrame shape after synthesis: {df_enriched.shape}")
+                        current_era_summary_items.append(("Light Synthesis Status", "Success"))
+                        if 'par_synth_umol' in df_enriched.columns:
+                             current_era_summary_items.append(("Synthetic PAR Column", "par_synth_umol added"))
+                        else:
+                             current_era_summary_items.append(("Synthetic PAR Column", "par_synth_umol NOT added"))
+                    else:
+                        print(f"  Light synthesis for Era '{era_id}' resulted in an empty or None DataFrame. Original data retained.")
+                        current_era_summary_items.append(("Light Synthesis Status", "Failed - empty/None result"))
+                except Exception as e:
+                    print(f"  Error during light synthesis for Era '{era_id}': {e}")
+                    traceback.print_exc()
+                    current_era_summary_items.append(("Light Synthesis Status", f"Failed - Exception: {type(e).__name__}"))
+        else:
+            print(f"\n--- Skipping Light Synthesis (disabled in config) ---")
+            current_era_summary_items.append(("Light Synthesis Attempted", "Skipped by config"))
+        # End Light Synthesis Block
+
         proxy_phenotype_config = app_config.get('proxy_phenotypes')
         if proxy_phenotype_config and not literature_phenotypes_df.empty:
             print(f"\n--- Generating Proxy Phenotype Labels ---")
@@ -314,21 +369,21 @@ if __name__ == "__main__":
                 lit_features = pheno_target_info.get('literature_model_features')
                 gh_features = pheno_target_info.get('greenhouse_data_features')
                 if lit_features and gh_features:
+                    # Erroneous light synthesis logic previously here (lines 317-338) has been removed.
+                    # The actual light synthesis will be inserted before this proxy phenotype block.
                     proxy_series = generate_proxy_phenotype_labels(
-                        era_aggregated_gh_data=df_enriched, 
-                        literature_phenotypes_df=literature_phenotypes_df,
-                        target_phenotype_info=pheno_target_info,
-                        literature_model_features=lit_features,
-                        greenhouse_data_features=gh_features
-                    )
-                    if not proxy_series.empty:
-                        df_enriched[proxy_series.name] = proxy_series
-                        current_era_summary_items.append((f"Proxy Phenotype Added: {proxy_series.name}", True))
-                        print(f"  Added proxy phenotype: {proxy_series.name}")
-                    else:
-                        current_era_summary_items.append((f"Proxy Phenotype Skipped: {pheno_target_info.get('name')}", "No data or error"))
+                    era_aggregated_gh_data=df_enriched, 
+                    literature_phenotypes_df=literature_phenotypes_df,
+                    target_phenotype_info=pheno_target_info,
+                    literature_model_features=lit_features,
+                    greenhouse_data_features=gh_features
+                )
+                if not proxy_series.empty:
+                    df_enriched[proxy_series.name] = proxy_series
+                    current_era_summary_items.append((f"Proxy Phenotype Added: {proxy_series.name}", True))
+                    print(f"  Added proxy phenotype: {proxy_series.name}")
                 else:
-                    print(f"  Skipping proxy generation for {pheno_target_info.get('name')} due to missing feature mappings in config.")
+                    current_era_summary_items.append((f"Proxy Phenotype Skipped: {pheno_target_info.get('name')}", "No data or error"))
             current_era_summary_items.append(("Shape after proxy phenotypes", df_enriched.shape))
         else:
             print(f"\n--- Skipping Proxy Phenotype Generation (no config or no literature data) ---")
@@ -352,7 +407,7 @@ if __name__ == "__main__":
 
         era_outlier_rules_ref = era_conf_details.get('outlier_rules_ref', 'default_outlier_rules')
         outlier_rules = app_config.get('preprocessing_rules', {}).get(era_outlier_rules_ref, [])
-        outlier_handler = OutlierHandler(outlier_rules)
+        outlier_handler = OutlierHandler(outlier_rules, rules_cfg_dict=common_settings_cfg.get('outlier_configs', {}))
         df_after_outliers = outlier_handler.clip_outliers(df_for_further_processing)
         current_era_summary_items.append(("Outlier Clipped Data Shape", df_after_outliers.shape))
 
@@ -363,8 +418,8 @@ if __name__ == "__main__":
                  df_after_outliers.dropna(subset=[time_col_name_common], inplace=True)
              if not df_after_outliers.empty:
                 df_after_outliers = df_after_outliers.set_index(time_col_name_common)
-        elif isinstance(df_after_outliers.index, pd.DatetimeIndex) == False and df_after_outliers.index.name == time_col_name_common :
-             df_after_outliers.index = pd.to_datetime(df_after_outliers.index, utc=True)
+        elif not isinstance(df_after_outliers.index, pd.DatetimeIndex) and df_after_outliers.index.name == time_col_name_common:
+            df_after_outliers.index = pd.to_datetime(df_after_outliers.index, utc=True)
         
         if df_after_outliers.empty:
             print(f"DataFrame became empty before segmentation for Era '{era_id}'. Skipping.")
@@ -455,4 +510,5 @@ if __name__ == "__main__":
     if engine:
         engine.dispose()
         print(f"\nDatabase engine disposed.")
-    print(f"\n===== ALL SPECIFIED ERAS PROCESSED =====")
+    print("\n===== ALL SPECIFIED ERAS PROCESSED =====")
+

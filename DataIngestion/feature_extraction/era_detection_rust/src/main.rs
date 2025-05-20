@@ -5,7 +5,13 @@ use rayon::prelude::*;
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use polars::datatypes::TimeUnit;
+use polars::prelude::DynamicGroupOptions;
+use polars::lazy::frame::IntoLazy;
 use polars::prelude::{
+    Column,
+    ChunkCompareIneq, // For series.gt()
+    NamedFrom, SortMultipleOptions,
     DataFrame, Series, DataType, Expr, Duration, ClosedWindow, FillNullStrategy, Label, StartBy,
     col,
 };
@@ -121,36 +127,43 @@ fn main() -> Result<()> {
         selected_columns_intermediate = df_main
             .get_columns()
             .par_iter()
-            .filter_map(|s: &Series| { // s is &Series
-                // First, check the overall dtype reported by the Column enum itself
-                match s.dtype() {
-                    DataType::Float32 | DataType::Float64 |
-                    DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64 |
-                    DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => {
-                        // If dtype is numeric, use as_materialized_series() for coverage check
-                        // If dtype is numeric, directly use the &Series for coverage check
-
-                        if coverage(s) >= cli.min_coverage {
-                            Some(s.name().to_string()) // Use s.name() for the original column name
-                        } else {
-                            log::debug!(
-                                "Column '{}' (dtype: {:?}) excluded due to coverage: {:.2} < {}",
+            .filter_map(|s: &Column| {
+                // Match on the result of s.as_series()
+                if let Some(actual_series_ref) = s.as_series() {
+                    // Now 'actual_series_ref' is &Series
+                    match s.dtype() {
+                        DataType::Float32 | DataType::Float64 |
+                        DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64 |
+                        DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => {
+                            if coverage(actual_series_ref) >= cli.min_coverage {
+                                Some(s.name().to_string())
+                            } else {
+                                log::debug!(
+                                    "Column '{}' (dtype: {:?}) excluded due to coverage: {:.2} < {}",
+                                    s.name(),
+                                    s.dtype(),
+                                    coverage(actual_series_ref),
+                                    cli.min_coverage
+                                );
+                                None // This None is for filter_map, if coverage is too low
+                            }
+                        }
+                        _ => {
+                            log::trace!(
+                                "Column '{}' (dtype: {:?}) ignored (not a numeric signal type for auto-selection).",
                                 s.name(),
-                                s.dtype(), // s.dtype() refers to the Series's dtype
-                                coverage(s),
-                                cli.min_coverage
+                                s.dtype()
                             );
-                            None
+                            None // This None is for filter_map, if not numeric
                         }
                     }
-                    _ => { // If the Column enum's reported dtype itself is not numeric, skip
-                        log::trace!(
-                            "Column '{}' (dtype: {:?}) ignored (not a numeric signal type for auto-selection).",
-                            s.name(),
-                            s.dtype()
-                        );
-                        None
-                    }
+                } else {
+                    // s.as_series() returned None, so we can't process this column for coverage.
+                    log::warn!(
+                        "Column '{}' could not be represented as a Series for coverage check.",
+                        s.name()
+                    );
+                    None // This None is for filter_map, if as_series() fails
                 }
             })
             .collect();

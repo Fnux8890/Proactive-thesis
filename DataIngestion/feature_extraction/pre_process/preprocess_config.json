@@ -1,0 +1,70 @@
+{
+  "common_settings": {
+    "default_target_frequency": "15T",
+    "include_external_weather": false,
+    "include_energy_prices": false,
+    "time_col": "time",
+    "enable_light_synthesis": false,
+    "light_synthesis_columns": [
+      "radiation_w_m2", 
+      "light_intensity_umol", 
+      "par_umol_m2_s",
+      "dli_sum"
+    ],
+    "latitude": 56.2661,
+    "longitude": 10.064,
+    "use_cloud_correction": true,
+    "dli_scale_clip_min": 0.25,
+    "dli_scale_clip_max": 4.0,
+    "outlier_configs": {
+        "default_method": "iqr",
+        "default_threshold": 1.5,
+        "column_specific": {},
+        "do_not_clip_columns": [
+            "par_synth_umol"
+        ]
+    },
+    "imputation_rules": {
+        "default_method": "linear",
+        "column_specific": {}
+    }
+  },
+  "sentinel_replacements": {
+    "-1": null
+  },
+  "tsfresh_sensor_profiles": {
+    "_default": "minimal",
+    "air_temp_c": "efficient",
+    "relative_humidity_percent": "efficient",
+    "co2_measured_ppm": "efficient",
+    "radiation_w_m2": "efficient",
+    "light_intensity_umol": "efficient",
+    "dli_sum": "efficient",
+    "par_synth_umol": "efficient"
+  },
+  "database_connection": {
+    "user": "postgres",
+    "password": "postgres",
+    "host": "db",
+    "port": 5432,
+    "dbname": "postgres",
+    "sources_table": "raw_iot_data",
+    "weather_table_name": "external_weather_data",
+    "energy_price_table_name": "energy_prices"
+  },
+  "era_definitions": {
+    "ExampleEra1": {
+      "start_date": "2023-01-01T00:00:00Z",
+      "end_date": "2023-03-31T23:59:59Z",
+      "source_table": "raw_iot_data",
+      "target_frequency": "30T",
+      "description": "Example era for Q1 2023.",
+      "imputation_rules": {
+        "air_temp_c": {"method": "ffill"}
+      },
+      "outlier_configs": {
+        "co2_measured_ppm": {"method": "zscore", "threshold": 3}
+      }
+    }
+  }
+}

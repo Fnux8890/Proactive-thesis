@@ -57,20 +57,7 @@ DB_NAME = os.getenv("DB_NAME", "postgres")
 
 def create_energy_price_table_if_not_exists(engine, table_name: str):
     """Creates the energy price data table in the database if it doesn't exist."""
-    # Primary key will be (time, price_area)
-    create_table_sql = f"""
-    CREATE TABLE IF NOT EXISTS public.{table_name} (
-        "{API_TIME_COLUMN}" TIMESTAMPTZ NOT NULL,
-        "{API_PRICE_AREA_COLUMN}" VARCHAR(10) NOT NULL,
-        "{API_SPOT_PRICE_COLUMN}" REAL,
-        PRIMARY KEY ("time", "PriceArea")
-    );
-    """ # Note: Using "time" and "PriceArea" directly in PK for simplicity if API_TIME_COLUMN is 'HourUTC' etc.
-      # Adjust if API_TIME_COLUMN variable itself should be quoted.
-      # Forcing "time" and "PriceArea" as PK column names here.
-    
-    # Refined PK definition to use actual column names
-    pk_time_col = API_TIME_COLUMN # Use the variable name from config
+    pk_time_col = API_TIME_COLUMN
     pk_area_col = API_PRICE_AREA_COLUMN
     create_table_sql_refined = f"""
     CREATE TABLE IF NOT EXISTS public.{table_name} (
