@@ -421,3 +421,4 @@ def synthesize_light_data(df: pd.DataFrame, lat: float = 56.2661, lon: float = 1
 
     logger.info(f"--- (Era: {era_identifier}) Light Synthesis Complete ---")
     return df_synthesized
+

@@ -418,8 +418,8 @@ if __name__ == "__main__":
                  df_after_outliers.dropna(subset=[time_col_name_common], inplace=True)
              if not df_after_outliers.empty:
                 df_after_outliers = df_after_outliers.set_index(time_col_name_common)
-        elif isinstance(df_after_outliers.index, pd.DatetimeIndex) == False and df_after_outliers.index.name == time_col_name_common :
-             df_after_outliers.index = pd.to_datetime(df_after_outliers.index, utc=True)
+        elif not isinstance(df_after_outliers.index, pd.DatetimeIndex) and df_after_outliers.index.name == time_col_name_common:
+            df_after_outliers.index = pd.to_datetime(df_after_outliers.index, utc=True)
         
         if df_after_outliers.empty:
             print(f"DataFrame became empty before segmentation for Era '{era_id}'. Skipping.")
@@ -511,3 +511,4 @@ if __name__ == "__main__":
         engine.dispose()
         print(f"\nDatabase engine disposed.")
     print("\n===== ALL SPECIFIED ERAS PROCESSED =====")
+
