@@ -15,14 +15,14 @@ RUN mkdir src && \
     echo "fn main() {println!(\"Building dependencies...\");}" > src/main.rs
 # Build all dependencies. The --locked flag ensures Cargo.lock is used and not updated.
 # This step will be cached if Cargo.toml and Cargo.lock haven't changed.
-RUN cargo build --release --locked
+RUN cargo build --release
 # Clean up dummy source file. The compiled dependencies are in target/release/deps.
 RUN rm src/main.rs
 
 # now copy the real source
 COPY src ./src
 # Build the application, using cached dependencies
-RUN cargo build --release --locked --bin era_detector
+RUN cargo build --release --bin era_detector
 
 # ---------- runtime stage ----------
 FROM debian:bookworm-slim

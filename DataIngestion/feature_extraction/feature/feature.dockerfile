@@ -20,8 +20,10 @@ RUN uv pip install --system --no-cache -r requirements.txt
 
 ENV USE_GPU=true
 
-COPY db_utils.py .
-COPY extract_features.py .
+# Copy essential Python source files required for the application.
+# These typically include: __init__.py, config.py, db_utils.py, extract_features.py, feature_utils.py, etc.
+# The wildcard ensures all .py files in the current directory context are copied.
+COPY *.py .
 
 # Run the script using the python from the main RAPIDS conda environment
 CMD ["uv", "run", "extract_features.py" ]

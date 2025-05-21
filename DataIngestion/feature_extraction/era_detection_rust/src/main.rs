@@ -4,7 +4,7 @@ use anyhow::{Result, Context};
 use rayon::prelude::*;
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use polars::datatypes::TimeUnit;
 use polars::prelude::DynamicGroupOptions;
 use polars::lazy::frame::IntoLazy;
@@ -74,7 +74,7 @@ fn persist_era_level(
 
     let mut df_to_persist = df_source.clone();
     df_to_persist
-        .rename(original_era_col_name, "era_id")
+        .rename(original_era_col_name, "era_id".into())
         .with_context(|| {
             format!(
                 "Failed to rename column '{}' to 'era_id' for signal '{}', level '{}', stage '{}'",

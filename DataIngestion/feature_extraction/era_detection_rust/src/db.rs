@@ -1,6 +1,7 @@
 // src/db.rs
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use std::io::Write;
+
 use polars::prelude::*;
 use r2d2_postgres::{PostgresConnectionManager, r2d2};
 use postgres::NoTls;
@@ -109,9 +110,14 @@ impl EraDb {
         let stmt = "COPY era_labels \
                     (signal_name,level,stage,era_id,start_time,end_time,rows) \
                     FROM STDIN CSV";
+        let data_len = csv_data.len();
         let mut conn = self.pool.get().with_context(|| "Failed to get connection from pool for copy_segments_from_csv")?;
-        conn.copy_in(stmt, &mut &csv_data[..])
-            .with_context(|| "COPY era_segments failed")?;
+        let mut writer = conn.copy_in(stmt)
+            .with_context(|| format!("Failed to start COPY for era_segments (data size: {} bytes)", data_len))?;
+        writer.write_all(&csv_data[..])
+            .with_context(|| format!("Failed to write data for COPY era_segments (data size: {} bytes)", data_len))?;
+        writer.finish()
+            .with_context(|| format!("COPY era_segments failed during finish (data size: {} bytes)", data_len))?;
         Ok(())
     }
 }

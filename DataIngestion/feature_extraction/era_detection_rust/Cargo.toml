@@ -8,16 +8,13 @@ rayon = "1.10"
 log = "0.4"
 env_logger = "0.11"
 # ---------- data ----------
-polars = { version = "0.41.0", features = [ # Downgrading to a version compatible with current r2d2_postgres example with postgres 0.19, check for latest if issues persist
+polars = { version = "0.48.0", features = [
     "lazy",
-    "new_streaming",
-    "full",
-    "dtype-full",
+    "streaming",      # Replaced "new_streaming"
+    "dtype-full",     # Preset for all opt-in dtypes
     "parquet",
     "round_series",
     "temporal",
-    "dtype-datetime",
-    "dtype-duration",
     "strings",
     "concat_str",
     "is_in",
@@ -29,7 +26,8 @@ polars = { version = "0.41.0", features = [ # Downgrading to a version compatibl
     "cross_join",
     "zip_with",
     "pct_change",
-    "propagate_nans"
+    "propagate_nans",
+    "dynamic_group_by"
 ] }
 ndarray = "0.13.1"
 
