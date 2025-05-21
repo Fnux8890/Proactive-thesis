@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import os
 import random
-from pathlib import Path
 from typing import Any
 
 import numpy as np  # Added for np.number
@@ -89,12 +88,9 @@ kind_to_fc_parameters_global: dict[str, Any] = {}
 # -----------------------------------------------------------------
 
 
-
-
 # -----------------------------------------------------------------
 # Promote a plain SQL table to Timescale hypertable if needed
-# -----------------------------------------------------------------
-
+# ----------------------------------------------------------------
 
 def main() -> None:
     """Entry point for feature extraction."""
@@ -138,14 +134,15 @@ def main() -> None:
             return
 
         # --- Configurable Sentinel Value Replacement ---
-        config_file_path = Path(__file__).resolve().parent.parent / "pre_process" / "preprocess_config.json"
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_file_path = os.path.join(base_dir, "pre_process", "preprocess_config.json")
         sentinel_map_for_replacement_parsed = {}
         
         nan_equivalent_value = np.nan # Default to numpy's NaN
         if USE_GPU_FLAG and 'cudf' in sys.modules and isinstance(consolidated_df, cudf.DataFrame):
             nan_equivalent_value = cudf.NA # Use cudf.NA for GPU dataframes if applicable
 
-        if config_file_path.exists():
+        if os.path.exists(config_file_path):
             logging.info(f"Loading sentinel value configuration from: {config_file_path}")
             try:
                 with open(config_file_path, 'r') as f:
