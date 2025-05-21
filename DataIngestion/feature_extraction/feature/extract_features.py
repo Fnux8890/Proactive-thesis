@@ -30,20 +30,24 @@ import pandas as original_pandas  # Use this for true pandas operations
 import sqlalchemy
 import sys  # For checking loaded modules
 
-# Local helper for DB access
-from db_utils import SQLAlchemyPostgresConnector
 from tsfresh import extract_features
+from db_utils import SQLAlchemyPostgresConnector
+from . import config
+from .feature_utils import (
+    select_relevant_features,
+    make_hypertable_if_needed,
+)
 
 
 # Conditionally import and alias pd
-if os.getenv("USE_GPU", "false").lower() == "true":
+if config.USE_GPU_FLAG:
     try:
         import cudf.pandas as pd  # pd becomes cudf.pandas
         import cudf               # For explicit cudf.DataFrame, etc.
         logging.info("Running in GPU mode with cudf.pandas and cudf.")
     except ImportError as e:
         logging.error(f"Failed to import GPU libraries (cudf): {e}. Falling back to CPU mode.")
-        os.environ["USE_GPU"] = "false" # Force fallback for current script execution
+        os.environ["USE_GPU"] = "false"  # Force fallback for current script execution
         pd = original_pandas      # Ensure pd is original_pandas
         # No need to re-import cudf if it failed; it won't be used.
 else:
@@ -62,24 +66,21 @@ logging.basicConfig(
 # Configuration helpers
 # -----------------------------------------------------------------------------
 
-
-def _env(key: str, default: str) -> str:
-    """Read *key* from the environment or fall back to *default*."""
-
-    return os.getenv(key, default)
-
-
-DB_USER = _env("DB_USER", "postgres")
-DB_PASSWORD = _env("DB_PASSWORD", "postgres")
-DB_HOST = _env("DB_HOST", "db")
-DB_PORT = _env("DB_PORT", "5432")
-DB_NAME = _env("DB_NAME", "postgres")
-
-# Table name for database storage of selected features
-FEATURES_TABLE = os.getenv("FEATURES_TABLE", "tsfresh_selected_features")
-
-# Global constant for reporting the feature set used
+# Use configuration constants from ``config``
+DB_USER = config.DB_USER
+DB_PASSWORD = config.DB_PASSWORD
+DB_HOST = config.DB_HOST
+DB_PORT = config.DB_PORT
+DB_NAME = config.DB_NAME
+FEATURES_TABLE = config.FEATURES_TABLE
 FC_PARAMS_NAME = "Custom (preprocess_config.json-Guided)"
+USE_GPU_FLAG = config.USE_GPU_FLAG
+
+# Paths
+consolidated_data_file_path = config.CONSOLIDATED_DATA_FILE_PATH
+era_definitions_dir_path = config.ERA_DEFINITIONS_DIR_PATH
+OUTPUT_PATH = config.OUTPUT_PATH
+SELECTED_OUTPUT_PATH = config.SELECTED_OUTPUT_PATH
 
 # Placeholder for tsfresh configuration per sensor
 kind_to_fc_parameters_global: dict[str, Any] = {}
@@ -87,69 +88,9 @@ kind_to_fc_parameters_global: dict[str, Any] = {}
 # -----------------------------------------------------------------
 
 
-def select_relevant_features(
-    features_df: pd.DataFrame,
-    correlation_threshold: float = 0.95,
-    variance_threshold: float = 0.0,
-) -> pd.DataFrame:
-    """Perform a simple unsupervised feature selection."""
-
-    if features_df.empty:
-        return features_df
-
-    use_gpu = os.getenv("USE_GPU", "false").lower() == "true" and "cudf" in sys.modules
-
-    if use_gpu and isinstance(features_df, cudf.DataFrame):
-        work_df = features_df.to_pandas()
-    else:
-        work_df = features_df.copy()
-    # Exclude identifier-like columns that are not real features
-    id_cols = [c for c in ("era_id", "id") if c in work_df.columns]
-    if id_cols:
-        work_df = work_df.drop(columns=id_cols)
-
-    variances = work_df.var(numeric_only=True)
-    cols_to_keep = variances[variances > variance_threshold].index
-    work_df = work_df[cols_to_keep]
-
-    MAX_FEATURES_FOR_CORR = 2000   # was 200
-    if work_df.shape[1] <= MAX_FEATURES_FOR_CORR:
-        corr_matrix = work_df.corr().abs()
-        upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-        to_drop = [col for col in upper.columns if any(upper[col] > correlation_threshold)]
-        work_df = work_df.drop(columns=to_drop)
-
-    if use_gpu:
-        index_name = work_df.index.name or "index"
-        pdf_reset = work_df.reset_index()
-        cdf = cudf.DataFrame.from_pandas(pdf_reset)
-        cdf.set_index(index_name, inplace=True)
-        return cdf
-    return work_df
-
-
 # -----------------------------------------------------------------
 # Promote a plain SQL table to Timescale hypertable if needed
-# -----------------------------------------------------------------
-def _make_hypertable_if_needed(conn, table_name, time_column):
-    """Ensure the given table is a Timescale hypertable."""
-    # Create the extension separately because parameters aren't supported inside DO $$ blocks
-    conn.execute(sqlalchemy.text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
-
-    check_sql = """
-        SELECT 1
-        FROM timescaledb_information.hypertables
-        WHERE hypertable_schema = current_schema
-          AND hypertable_name = :table_name
-    """
-    result = conn.execute(sqlalchemy.text(check_sql), {"table_name": table_name}).fetchone()
-    if result is None:
-        create_sql = "SELECT create_hypertable(:table_name, :time_column, if_not_exists => TRUE)"
-        conn.execute(
-            sqlalchemy.text(create_sql),
-            {"table_name": table_name, "time_column": time_column},
-        )
-
+# ----------------------------------------------------------------
 
 def main() -> None:
     """Entry point for feature extraction."""
@@ -731,7 +672,7 @@ def main() -> None:
     )
 
     with connector.engine.begin() as c:
-        _make_hypertable_if_needed(c, FEATURES_TABLE, "era_id")
+        make_hypertable_if_needed(c, FEATURES_TABLE, "era_id")
 
 if __name__ == "__main__":
     main()
