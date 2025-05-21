@@ -1,58 +1,46 @@
-# ---------- build stage ----------
+# ---------- deps stage ----------
+FROM rust:alpine AS deps
+WORKDIR /app
+
+# 1️⃣ Copy manifests only and build *dependencies* once
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo 'fn main() {}' > src/main.rs
+RUN cargo build --release          # compiles deps into /app/target
+RUN rm -rf src                     # we don't need dummy src any longer
+
+# ---------- builder stage ----------
 FROM rust:alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache build-base musl-dev openssl-dev
 
-# copy manifests first (cache dependencies)
-# 1. Copy manifests and lock file first.
-# This layer is invalidated only if Cargo.toml or Cargo.lock changes.
-COPY Cargo.toml Cargo.lock ./
-
-# 2. Build dependencies.
-# Create a dummy main.rs to allow us to build dependencies before copying the actual source.
-# This compiles all dependencies defined in Cargo.toml and Cargo.lock.
-RUN mkdir src && \
-    echo "fn main() {println!(\"Building dependencies...\");}" > src/main.rs
-# Build all dependencies. The --locked flag ensures Cargo.lock is used and not updated.
-# This step will be cached if Cargo.toml and Cargo.lock haven't changed.
-RUN cargo build --release
-# Clean up dummy source file. The compiled dependencies are in target/release/deps.
-RUN rm src/main.rs
-
-# now copy the real source
-COPY src ./src
-# Build the application, using cached dependencies
+# 2️⃣ Re-use the cached target directory, add real code, build final binary
+COPY --from=deps /app/target target
+COPY . .                            # Cargo.toml + real src/
 RUN cargo build --release --bin era_detector
 
 # ---------- runtime stage ----------
 FROM debian:bookworm-slim
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/era_detector /usr/local/bin/era_detector
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# Set output directory consistently if needed by the app (though CLI arg is better)
-# ENV APP_OUTPUT_DIR=/app/data/processed 
-# WORKDIR /app # The binary can be called from anywhere if it's in PATH
+COPY --from=builder /app/target/release/era_detector /usr/local/bin/era_detector
 
 ENV RUST_LOG=trace
 ENTRYPOINT ["era_detector"]
 
-# Default command to run if no arguments are provided to `docker run`
-# Users can override these by specifying arguments after `docker run <image_name>`
-CMD [ \
-    "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet", \
-    "--output-dir", "/app/data/shared_processed/era_labels", \
-    "--output-suffix", "docker_default_run", \
-    "--signal-cols", "dli_sum,lamp_group,radiation_w_m2,co2_measured_ppm,outside_temp_c", \
-    "--resample-every", "5m", \
-    "--min-coverage", "0.9", \
-    "--include-time", "true", \
-    "--pelt-min-size", "48", \
-    "--bocpd-lambda", "200.0", \
-    "--hmm-states", "5", \
-    "--hmm-iterations", "20", \
-    "--quant-max-val", "250" \
+# Default arguments (unchanged from your original file ⬇︎)
+CMD [
+  "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
+  "--output-dir",     "/app/data/shared_processed/era_labels",
+  "--output-suffix",  "docker_default_run",
+  "--signal-cols",    "dli_sum,lamp_group,radiation_w_m2,co2_measured_ppm,outside_temp_c",
+  "--resample-every", "5m",
+  "--min-coverage",   "0.9",
+  "--include-time",   "true",
+  "--pelt-min-size",  "48",
+  "--bocpd-lambda",   "200.0",
+  "--hmm-states",     "5",
+  "--hmm-iterations", "20",
+  "--quant-max-val",  "250"
 ]
-# Example: To get help, run: docker run <image_name> --help
-# Example: To run with custom input: docker run -v /local/data:/app/data <image_name> --input-parquet /app/data/my_data.parquet --signal-cols "dli_sum,another_col"
+
