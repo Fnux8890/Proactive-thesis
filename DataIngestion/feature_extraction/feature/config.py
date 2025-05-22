@@ -34,3 +34,13 @@ OUTPUT_PATH = Path(env("OUTPUT_PATH", "output/features.parquet"))
 SELECTED_OUTPUT_PATH = Path(
     env("SELECTED_OUTPUT_PATH", "output/features_selected.parquet")
 )
+
+# Supervised feature selection settings
+USE_SUPERVISED_SELECTION = env("USE_SUPERVISED_SELECTION", "false").lower() == "true"
+FDR_LEVEL = float(env("FDR_LEVEL", "0.05"))
+N_JOBS = int(env("N_JOBS", "0"))
+CHUNKSIZE_ENV = env("CHUNKSIZE", "")
+CHUNKSIZE = int(CHUNKSIZE_ENV) if CHUNKSIZE_ENV else None
+
+# Name of the target column for supervised selection
+TARGET_COLUMN = env("TARGET_COLUMN", "energy_kWh_next_hour")

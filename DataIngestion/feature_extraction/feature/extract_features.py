@@ -37,6 +37,7 @@ from .feature_utils import (
     select_relevant_features,
     make_hypertable_if_needed,
 )
+from .feature_utils_supervised import select_tsfresh_features
 
 
 # Conditionally import and alias pd
@@ -81,6 +82,13 @@ consolidated_data_file_path = config.CONSOLIDATED_DATA_FILE_PATH
 era_definitions_dir_path = config.ERA_DEFINITIONS_DIR_PATH
 OUTPUT_PATH = config.OUTPUT_PATH
 SELECTED_OUTPUT_PATH = config.SELECTED_OUTPUT_PATH
+
+# Supervised feature selection configuration
+USE_SUPERVISED_SELECTION = config.USE_SUPERVISED_SELECTION
+FDR_LEVEL = config.FDR_LEVEL
+N_JOBS = config.N_JOBS
+CHUNKSIZE = config.CHUNKSIZE
+TARGET_COLUMN = config.TARGET_COLUMN
 
 # Placeholder for tsfresh configuration per sensor
 kind_to_fc_parameters_global: dict[str, Any] = {}
@@ -549,9 +557,24 @@ def main() -> None:
         import traceback
         logging.error(traceback.format_exc())
 
-    # Perform simple feature selection
-    logging.info("Selecting relevant features from the full feature set (%s columns)...", final_features.shape[1])
-    selected_features = select_relevant_features(final_features)
+    # Perform feature selection
+    logging.info(
+        "Selecting relevant features from the full feature set (%s columns)...",
+        final_features.shape[1],
+    )
+    if USE_SUPERVISED_SELECTION and TARGET_COLUMN in consolidated_df.columns:
+        y_series = consolidated_df[TARGET_COLUMN].reset_index(drop=True).iloc[
+            : len(final_features)
+        ]
+        selected_features = select_tsfresh_features(
+            final_features,
+            y_series,
+            fdr=FDR_LEVEL,
+            n_jobs=N_JOBS,
+            chunksize=CHUNKSIZE,
+        )
+    else:
+        selected_features = select_relevant_features(final_features)
     logging.info("Selected features shape: %s", selected_features.shape)
 
     # Note: The full feature set (final_features) is already saved to OUTPUT_PATH earlier (around lines 783-797)
@@ -656,7 +679,19 @@ def main() -> None:
 
     logging.info("Raw feature matrix shape: %s", features.shape)
 
-    selected = select_relevant_features(features)
+    if USE_SUPERVISED_SELECTION and TARGET_COLUMN in consolidated_df.columns:
+        y_series = consolidated_df[TARGET_COLUMN].reset_index(drop=True).iloc[
+            : len(features)
+        ]
+        selected = select_tsfresh_features(
+            features,
+            y_series,
+            fdr=FDR_LEVEL,
+            n_jobs=N_JOBS,
+            chunksize=CHUNKSIZE,
+        )
+    else:
+        selected = select_relevant_features(features)
 
     df_for_db = selected.copy()
     df_for_db.index.name = "id"
