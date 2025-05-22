@@ -11,6 +11,7 @@ pub fn read_parquet_to_polars_df(file_path: &Path) -> Result<DataFrame> {
         .with_context(|| format!("Failed to read parquet schema/metadata from file: {:?}", file_path))
 }
 
+#[allow(dead_code)]
 pub fn write_polars_df_to_parquet(df: &mut DataFrame, output_path: &Path) -> Result<()> {
     let file = File::create(output_path)
         .with_context(|| format!("Failed to create output file: {:?}", output_path))?;

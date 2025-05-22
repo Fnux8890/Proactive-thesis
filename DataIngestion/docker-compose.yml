@@ -13,7 +13,6 @@ services:
       # Mount the data directory relative to DataIngestion parent
       - ../Data:/app/data:ro
       - ./rust_pipeline/pipeline_logs:/app/logs:rw # Adjusted path
-      - ./rust_pipeline/data_pipeline/output:/app/output:rw
     depends_on:
       redis:
         condition: service_started
@@ -89,141 +88,141 @@ services:
       - ingestion-net
 
   # --- Python Pipeline Services ---
-  data-prep:
-    build:
-      context: ./simulation_data_prep # Adjusted build context
-      dockerfile: Dockerfile
-    env_file:
-      - ./.env # Load from the same directory as this docker-compose.yml
-    command: [ "prefect", "worker", "start", "--pool", "default-process-pool", "--limit", "1" ] # Use direct CLI command
-    environment:
-      - PREFECT_API_URL=http://orion:4200/api
-      - PREFECT_LOGGING_LEVEL=DEBUG
-      - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
-      - PYTHONPATH=/app # Add project root to Python path
-      - SKIP_GE_VALIDATION=true # Skip Great Expectations validation
-      # Pass through host environment variables
-      # - USE_GPU=${USE_GPU:-false} # Example, passed from host
-      # - PARALLEL_EXECUTION=${PARALLEL_EXECUTION:-true} # Example
-      # - ONLY_EARLIEST_DATE=${ONLY_EARLIEST_DATE:-false} # Example
-    depends_on:
-      orion:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    volumes:
-      - ./simulation_data_prep/src:/app/src
-      - ./simulation_data_prep/output:/app/output
-      - ./simulation_data_prep/plant_config.json:/app/plant_config.json
-      - ./simulation_data_prep/feast_repo:/app/feast_repo
-      - ./simulation_data_prep/great_expectations:/app/great_expectations
-      - ./simulation_data_prep/dao:/app/dao
-      - ./simulation_data_prep/transforms:/app/transforms
-      - ./simulation_data_prep/loading:/app/loading
-      - ./simulation_data_prep/validation:/app/validation
-      - prefect_data:/root/.prefect
-    networks:
-      - ingestion-net
+  # data-prep:
+  #   build:
+  #     context: ./simulation_data_prep # Adjusted build context
+  #     dockerfile: Dockerfile
+  #   env_file:
+  #     - ./.env # Load from the same directory as this docker-compose.yml
+  #   command: [ "prefect", "worker", "start", "--pool", "default-process-pool", "--limit", "1" ] # Use direct CLI command
+  #   environment:
+  #     - PREFECT_API_URL=http://orion:4200/api
+  #     - PREFECT_LOGGING_LEVEL=DEBUG
+  #     - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
+  #     - PYTHONPATH=/app # Add project root to Python path
+  #     - SKIP_GE_VALIDATION=true # Skip Great Expectations validation
+  #     # Pass through host environment variables
+  #     # - USE_GPU=${USE_GPU:-false} # Example, passed from host
+  #     # - PARALLEL_EXECUTION=${PARALLEL_EXECUTION:-true} # Example
+  #     # - ONLY_EARLIEST_DATE=${ONLY_EARLIEST_DATE:-false} # Example
+  #   depends_on:
+  #     orion:
+  #       condition: service_healthy
+  #     db:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./simulation_data_prep/src:/app/src
+  #     - ./simulation_data_prep/output:/app/output
+  #     - ./simulation_data_prep/plant_config.json:/app/plant_config.json
+  #     - ./simulation_data_prep/feast_repo:/app/feast_repo
+  #     - ./simulation_data_prep/great_expectations:/app/great_expectations
+  #     - ./simulation_data_prep/dao:/app/dao
+  #     - ./simulation_data_prep/transforms:/app/transforms
+  #     - ./simulation_data_prep/loading:/app/loading
+  #     - ./simulation_data_prep/validation:/app/validation
+  #     - prefect_data:/root/.prefect
+  #   networks:
+  #     - ingestion-net
 
-  orion:
-    build:
-      context: ./simulation_data_prep # Adjusted build context
-      dockerfile: orion.Dockerfile # Relative path from context
-    command: prefect server start --host 0.0.0.0 --log-level debug
-    # Map host port 4201 to container port 4200 for UI access
-    ports:
-      - "4201:4200"
-    environment:
-      - PREFECT_LOGGING_LEVEL=DEBUG
-      # Point the UI (browser) to the host port where the API is exposed
-      - PREFECT_UI_API_URL=http://localhost:4201/api
-      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@db:5432/prefect
-    volumes:
-      - prefect_db:/root/.prefect/
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -fs http://localhost:4200/health/live || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - ingestion-net
+  # orion:
+  #   build:
+  #     context: ./simulation_data_prep # Adjusted build context
+  #     dockerfile: orion.Dockerfile # Relative path from context
+  #   command: prefect server start --host 0.0.0.0 --log-level debug
+  #   # Map host port 4201 to container port 4200 for UI access
+  #   ports:
+  #     - "4201:4200"
+  #   environment:
+  #     - PREFECT_LOGGING_LEVEL=DEBUG
+  #     # Point the UI (browser) to the host port where the API is exposed
+  #     - PREFECT_UI_API_URL=http://localhost:4201/api
+  #     - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@db:5432/prefect
+  #   volumes:
+  #     - prefect_db:/root/.prefect/
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "curl -fs http://localhost:4200/health/live || exit 1" ]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - ingestion-net
 
-  mlflow-server:
-    build:
-      context: ./simulation_data_prep # Adjusted build context
-      dockerfile: mlflow.Dockerfile # Relative path from context
-    # Reverted command to use default filesystem artifact root
-    command: >
-      mlflow server --host 0.0.0.0 --port 5000  --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow  --default-artifact-root /mlflow/artifacts 
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    # Re-enabled volume mount for artifacts
-    volumes:
-      - mlflow_data:/mlflow/artifacts:rw
-    ports:
-      - "5001:5000"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - ingestion-net
+  # mlflow-server:
+  #   build:
+  #     context: ./simulation_data_prep # Adjusted build context
+  #     dockerfile: mlflow.Dockerfile # Relative path from context
+  #   # Reverted command to use default filesystem artifact root
+  #   command: >
+  #     mlflow server --host 0.0.0.0 --port 5000  --backend-store-uri postgresql+psycopg2://postgres:postgres@db:5432/mlflow  --default-artifact-root /mlflow/artifacts 
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #   # Re-enabled volume mount for artifacts
+  #   volumes:
+  #     - mlflow_data:/mlflow/artifacts:rw
+  #   ports:
+  #     - "5001:5000"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   networks:
+  #     - ingestion-net
 
-  # Test service for Python pipeline unit tests
-  test:
-    build:
-      context: ./simulation_data_prep # Adjusted build context
-      dockerfile: Dockerfile
-    working_dir: /app # Set working directory for consistency
-    env_file:
-      - ./.env # Load from the same directory as this docker-compose.yml
-    # Add PYTHONPATH to help with module discovery
-    environment:
-      - PYTHONPATH=/app
-    depends_on:
-      db:
-        condition: service_healthy
-    entrypoint: [ "pytest", "--maxfail=1" ]
-    volumes:
-      # Mount source code needed for tests (read-only is fine for code)
-      - ./simulation_data_prep/src:/app/src:ro
-      - ./simulation_data_prep/dao:/app/dao:ro
-      - ./simulation_data_prep/transforms:/app/transforms:ro
-      - ./simulation_data_prep/loading:/app/loading:ro
-      - ./simulation_data_prep/validation:/app/validation:ro
-      # Mount the tests directory read-write to allow log file creation
-      - ./simulation_data_prep/src/tests:/app/src/tests:rw
-      # Mount config file needed by tests
-      - ./simulation_data_prep/plant_config.json:/app/plant_config.json:ro
-      # Mount sample data needed by tests (relative to docker-compose.yml location)
-      - ../Data:/app/data:ro
-    networks:
-      - ingestion-net
+  # # Test service for Python pipeline unit tests
+  # test:
+  #   build:
+  #     context: ./simulation_data_prep # Adjusted build context
+  #     dockerfile: Dockerfile
+  #   working_dir: /app # Set working directory for consistency
+  #   env_file:
+  #     - ./.env # Load from the same directory as this docker-compose.yml
+  #   # Add PYTHONPATH to help with module discovery
+  #   environment:
+  #     - PYTHONPATH=/app
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   entrypoint: [ "pytest", "--maxfail=1" ]
+  #   volumes:
+  #     # Mount source code needed for tests (read-only is fine for code)
+  #     - ./simulation_data_prep/src:/app/src:ro
+  #     - ./simulation_data_prep/dao:/app/dao:ro
+  #     - ./simulation_data_prep/transforms:/app/transforms:ro
+  #     - ./simulation_data_prep/loading:/app/loading:ro
+  #     - ./simulation_data_prep/validation:/app/validation:ro
+  #     # Mount the tests directory read-write to allow log file creation
+  #     - ./simulation_data_prep/src/tests:/app/src/tests:rw
+  #     # Mount config file needed by tests
+  #     - ./simulation_data_prep/plant_config.json:/app/plant_config.json:ro
+  #     # Mount sample data needed by tests (relative to docker-compose.yml location)
+  #     - ../Data:/app/data:ro
+  #   networks:
+  #     - ingestion-net
 
-  # --- New one-shot service for Prefect Deployment ---
-  prefect-deployer:
-    build:
-      context: ./simulation_data_prep
-      dockerfile: Dockerfile
-    restart: "no"
-    networks:
-      - ingestion-net
-    env_file:
-      - ./.env
-    environment:
-      - PREFECT_API_URL=http://orion:4200/api
-    # Restore original command 
-    command: [ "echo", "Deployer container ready, awaiting command..." ] # Was: ["sleep", "infinity"]
-    volumes:
-      # Mount the entire simulation_data_prep directory
-      - ./simulation_data_prep:/app
-    working_dir: /app
-    depends_on:
-      orion:
-        condition: service_healthy
+  # # --- New one-shot service for Prefect Deployment ---
+  # prefect-deployer:
+  #   build:
+  #     context: ./simulation_data_prep
+  #     dockerfile: Dockerfile
+  #   restart: "no"
+  #   networks:
+  #     - ingestion-net
+  #   env_file:
+  #     - ./.env
+  #   environment:
+  #     - PREFECT_API_URL=http://orion:4200/api
+  #   # Restore original command 
+  #   command: [ "echo", "Deployer container ready, awaiting command..." ] # Was: ["sleep", "infinity"]
+  #   volumes:
+  #     # Mount the entire simulation_data_prep directory
+  #     - ./simulation_data_prep:/app
+  #   working_dir: /app
+  #   depends_on:
+  #     orion:
+  #       condition: service_healthy
 
   model_builder:
     build:
@@ -240,8 +239,8 @@ services:
       - ./model_builder/model_builder_mlflow_staging:/mlflow
     command: [ "python", "-m", "src.training.train_surrogate", "--epochs", "50", "--data-dir", "/data", "--model-dir", "/models" ]
     depends_on:
-      mlflow-server:
-        condition: service_started # Wait for mlflow server (adjust if healthcheck added)
+      # mlflow-server:
+      #   condition: service_started # Wait for mlflow server (adjust if healthcheck added)
       db:
         # MLflow server itself depends on DB being healthy
         condition: service_healthy
@@ -285,7 +284,6 @@ services:
     build:
       context: ./feature_extraction/era_detection_rust
       dockerfile: Dockerfile
-    image: era_detector_rs:latest
     container_name: era_detector
     environment:
       - DB_DSN=postgresql://postgres:postgres@db:5432/postgres?sslmode=prefer
@@ -294,34 +292,9 @@ services:
       # The internal path /app/data/shared_processed matches the CMD in the era_detector Dockerfile.
       - ./feature_extraction/data/processed:/app/data/shared_processed:rw
       - ./feature_extraction/era_detection_rust/era_detector_logs:/app/logs:rw # Logs specific to era_detector
-    # This allows easy overriding via `docker-compose run era_detector --arg value`
-    # or by setting different defaults here for `docker-compose up era_detector`.
-    command:
-      - "/app/target/release/era_detector"
-      - "--input-parquet"
-      - "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet"
-      - "--output-suffix"
-      - "MegaEra_All_Data_processed_segment_1"
-      - "--output-dir"
-      - "/app/data/shared_processed/era_labels"
-      - "--resample-every"
-      - "1h"
-      # - --signal-cols
-      # - dli_sum,another_signal # This commented line remains as is
-      - "--min-coverage"
-      - "0.9"
-      - "--include-time"
-      - "true"
-      - "--pelt-min-size"
-      - "48"
-      - "--bocpd-lambda"
-      - "200.0"
-      - "--hmm-states"
-      - "5"
-      - "--hmm-iterations"
-      - "20"
-      - "--quant-max-val"
-      - "250"
+    # The Dockerfile's ENTRYPOINT ["era_detector"] and CMD will be used.
+    # Arguments from the Dockerfile's CMD are used by default.
+    # They can be overridden if needed, e.g., via `docker-compose run era_detector --input-parquet /new/path.parquet`
     depends_on:
       raw_prep_lite:
         condition: service_completed_successfully

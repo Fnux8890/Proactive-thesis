@@ -1,0 +1,12 @@
+[package]
+name = "dc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dialoguer = "0.11"   # prompt UI (multi‑select, confirm)
+anyhow     = "1"      # ergonomic error handling
+
+[[bin]]
+name = "dc"
+path = "main.rs"

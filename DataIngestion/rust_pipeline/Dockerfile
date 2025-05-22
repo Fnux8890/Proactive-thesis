@@ -18,6 +18,9 @@ RUN mkdir -p /app/config /app/sql_scripts
 COPY ./data_pipeline/data_files.json /app/config/data_files.json
 COPY ./data_pipeline/sql_scripts/ /app/sql_scripts
 
+# Install dependencies for Postgres client and SSL
+RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates libpq5 && rm -rf /var/lib/apt/lists/*
+
 # Copy Cargo files 
 COPY data_pipeline/Cargo.toml data_pipeline/Cargo.lock ./
 

@@ -23,15 +23,27 @@ mod level_c;
 mod db;
 use crate::db::EraDb;
 
+/// Where the program should read the input data from.
+/// * `--input-parquet  some_file.parquet`  (old behaviour)
+/// * `--db-dsn  postgresql://…`            (new behaviour)
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
+    /// Optional parquet-file path (legacy mode)
     #[clap(long, value_parser)]
-    input_parquet: PathBuf,
-    #[clap(long)]
-    output_suffix: String,
-    #[clap(long, default_value = "/app/data/processed/")]
-    output_dir: PathBuf,
+    input_parquet: Option<PathBuf>,
+
+    /// Postgres connection string.
+    /// Falls back to $DB_DSN when not supplied explicitly.
+    #[clap(long, env = "DB_DSN")]
+    db_dsn: Option<String>,
+
+    /// Name of the table / materialised view that holds the
+    /// densified, resampled features you want to detect eras on.
+    #[clap(long, default_value = "preprocessed_features")]
+    db_table: String,
+
+
     #[clap(long, default_value_t = 48)] // Default min_size for PELT (e.g. 1 day for 5T data if 12*24=288, 48 ~ 4h)
     pelt_min_size: usize,
     #[clap(long, default_value_t = 200.0)] // Expected run length for BOCPD
@@ -62,60 +74,21 @@ struct Cli {
 
 /// Helper function to persist a given era level's DataFrame to the database.
 /// Connects to DB, builds CSV, and copies data for a specific signal, level, and stage.
-fn persist_era_level(
-    era_db: &EraDb, // Added EraDb instance parameter
-    df_source: &DataFrame,      // Source DataFrame (e.g., df_out_a)
-    original_era_col_name: &str, // Name of the era column in df_source (e.g., "era_level_A")
-    signal_name: &str,
-    level_char: char,
-    stage_str: &str,
-) -> Result<()> {
-    // Removed EraDb::connect() call, as era_db is now passed in.
 
-    let mut df_to_persist = df_source.clone();
-    df_to_persist
-        .rename(original_era_col_name, "era_id".into())
-        .with_context(|| {
-            format!(
-                "Failed to rename column '{}' to 'era_id' for signal '{}', level '{}', stage '{}'",
-                original_era_col_name,
-                signal_name,
-                level_char,
-                stage_str
-            )
-        })?;
-
-    let csv_data = EraDb::build_segments_csv(&df_to_persist, signal_name, level_char, stage_str)
-        .with_context(|| {
-            format!(
-                "Failed to build CSV for signal '{}', level '{}', stage '{}'",
-                signal_name,
-                level_char,
-                stage_str
-            )
-        })?;
-
-    era_db // Use the passed-in era_db instance
-        .copy_segments_from_csv(&csv_data)
-        .with_context(|| {
-            format!(
-                "Failed to copy CSV to DB for signal '{}', level '{}', stage '{}'",
-                signal_name,
-                level_char,
-                stage_str
-            )
-        })?;
-
-    Ok(())
-}
 
 fn coverage(series: &Series) -> f32 {
     (series.len() - series.null_count()) as f32 / series.len() as f32
 }
 
 fn main() -> Result<()> {
-    // Initialize EraDb with connection pool
-    let era_db = Arc::new(EraDb::new().context("Failed to initialize EraDb connection pool")?);
+    let cli = Cli::parse();
+
+    if cli.input_parquet.is_none() && cli.db_dsn.is_none() {
+        anyhow::bail!("❌ Supply either --input-parquet or --db-dsn (or set DB_DSN env var if using --input-parquet for output only)");
+    }
+
+    // Initialize EraDb with connection pool, passing DSN if provided
+    let era_db = Arc::new(EraDb::new(cli.db_dsn.as_deref()).context("Failed to initialize EraDb connection pool")?);
 
     // Initialize logger
     // You can set the RUST_LOG environment variable to control log levels
@@ -127,16 +100,28 @@ fn main() -> Result<()> {
     log::info!("Era Detector application started.");
     log::info!("Version: {}", env!("CARGO_PKG_VERSION"));
 
-    let cli = Cli::parse();
-    log::debug!("CLI arguments parsed: {:?}", cli);
 
     let start_time_main = std::time::Instant::now();
 
     // The CLI arguments are already logged via log::debug!("CLI arguments parsed: {:?}", cli);
     // If more detailed startup info is needed, it can be added here.
 
-    let mut df_main = io::read_parquet_to_polars_df(&cli.input_parquet)
-        .with_context(|| format!("Failed to read input parquet: {:?}", cli.input_parquet))?;
+    let mut df_main = if let Some(ref parquet_path) = cli.input_parquet {
+        log::info!("Loading data from Parquet file: {:?}", parquet_path);
+        io::read_parquet_to_polars_df(parquet_path)
+            .with_context(|| format!("Failed to read input parquet: {:?}", parquet_path))?
+    } else {
+        // input_parquet is None, so db_dsn must be Some (guaranteed by earlier check)
+        log::info!("Loading data from database table: {}", cli.db_table);
+        // EraDb instance `era_db` is already initialized above and is an Arc.
+        // We can use it directly if we don't need a mutable borrow or ownership transfer.
+        // For load_feature_df, we just need a reference.
+        // Note: The original plan was to initialize EraDb here, but it's already initialized above.
+        // We'll use the existing `era_db` (Arc-wrapped) directly. 
+        // This requires `EraDb::new` to have been called with `cli.db_dsn.as_deref()` already, which is now the case.
+        era_db.load_feature_df(&cli.db_table, None)
+            .with_context(|| format!("Failed to load feature DataFrame from DB table: {}", cli.db_table))?
+    };
     log::info!("Loaded DataFrame. Shape: {:?}, Load time: {:.2?}", df_main.shape(), start_time_main.elapsed());
 
     // Ensure 'time' column is Datetime
@@ -330,14 +315,6 @@ fn main() -> Result<()> {
     let feature_df_arc = Arc::new(feature_df);
     let time_col_series_arc = Arc::new(feature_df_arc.column("time")?.clone());
 
-    if !cli.output_dir.is_dir() {
-        log::info!("Attempting to create output directory: {:?}", &cli.output_dir);
-        std::fs::create_dir_all(&cli.output_dir)
-            .with_context(|| format!("Failed to create output directory: {:?}", &cli.output_dir))?;
-        log::info!("Successfully created or ensured output directory exists: {:?}", &cli.output_dir);
-    } else {
-        log::info!("Output directory already exists: {:?}", &cli.output_dir);
-    }
 
     final_selected_cols.par_iter().filter(|&name| name.as_str() != "time").for_each(move |signal_name_to_process| {
         let era_db_clone = Arc::clone(&era_db); // Correctly clone Arc here
@@ -377,12 +354,16 @@ fn main() -> Result<()> {
                 for i in last_idx_a..feature_df_task_local.height() { era_a_values[i] = current_era_a; }
             }
             let era_a_series = Series::new("era_level_A".into(), era_a_values);
-            let mut df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
-            let path_a = cli.output_dir.join(format!("{}_{}_era_labels_levelA.parquet", cli.output_suffix, signal_name_to_process));
-            io::write_polars_df_to_parquet(&mut df_out_a, &path_a)?;
-            log::info!("Saved Level A labels for '{}' to {:?}", signal_name_to_process, path_a);
-
-            persist_era_level(era_db_clone.as_ref(), &df_out_a, "era_level_A", signal_name_to_process, 'A', "PELT")?;
+            let df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
+            era_db_clone.as_ref().save_era_labels(
+                &df_out_a, 
+                "era_level_A", 
+                signal_name_to_process, 
+                'A', 
+                "PELT", 
+                "era_labels_level_a"
+            ).with_context(|| format!("Failed to save Level A labels to DB for signal '{}'", signal_name_to_process))?;
+            log::info!("Saved Level A labels for '{}' to database table 'era_labels_level_a'", signal_name_to_process);
 
             let bocpd_start_time = std::time::Instant::now();
             log::info!("\n--- Level B: BOCPD on '{}' ---", signal_name_to_process);
@@ -406,12 +387,16 @@ fn main() -> Result<()> {
                 })
                 .collect();
             let era_b_series = Series::new("era_level_B".into(), era_labels);
-            let mut df_out_b = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), cp_probs_b_series.into(), era_b_series.into()])?;
-            let path_b = cli.output_dir.join(format!("{}_{}_era_labels_levelB.parquet", cli.output_suffix, signal_name_to_process));
-            io::write_polars_df_to_parquet(&mut df_out_b, &path_b)?;
-            log::info!("Saved Level B labels for '{}' to {:?}", signal_name_to_process, path_b);
-
-            persist_era_level(era_db_clone.as_ref(), &df_out_b, "era_level_B", signal_name_to_process, 'B', "BOCPD")?;
+            let df_out_b = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), cp_probs_b_series.into(), era_b_series.into()])?;
+            era_db_clone.as_ref().save_era_labels(
+                &df_out_b, 
+                "era_level_B", 
+                signal_name_to_process, 
+                'B', 
+                "BOCPD", 
+                "era_labels_level_b"
+            ).with_context(|| format!("Failed to save Level B labels to DB for signal '{}'", signal_name_to_process))?;
+            log::info!("Saved Level B labels for '{}' to database table 'era_labels_level_b'", signal_name_to_process);
 
             let hmm_start_time = std::time::Instant::now();
             log::info!("\n--- Level C: HMM Viterbi on '{}' (Quantized up to max value: {}) ---", signal_name_to_process, cli.quant_max_val);
@@ -436,12 +421,16 @@ fn main() -> Result<()> {
                 hmm_start_time.elapsed()
             );
             let era_c_series = Series::new("era_level_C".into(), viterbi_states_c.iter().map(|&x| x as i32).collect::<Vec<i32>>());
-            let mut df_out_c = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_c_series.into()])?;
-            let path_c = cli.output_dir.join(format!("{}_{}_era_labels_levelC.parquet", cli.output_suffix, signal_name_to_process));
-            io::write_polars_df_to_parquet(&mut df_out_c, &path_c)?;
-            log::info!("Saved Level C labels for '{}' to {:?}", signal_name_to_process, path_c);
-
-            persist_era_level(era_db_clone.as_ref(), &df_out_c, "era_level_C", signal_name_to_process, 'C', "HMM")?;
+            let df_out_c = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_c_series.into()])?;
+            era_db_clone.as_ref().save_era_labels(
+                &df_out_c, 
+                "era_level_C", 
+                signal_name_to_process, 
+                'C', 
+                "HMM", 
+                "era_labels_level_c"
+            ).with_context(|| format!("Failed to save Level C labels to DB for signal '{}'", signal_name_to_process))?;
+            log::info!("Saved Level C labels for '{}' to database table 'era_labels_level_c'", signal_name_to_process);
 
             Ok(())
         };

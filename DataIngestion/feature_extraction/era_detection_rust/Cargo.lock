@@ -831,6 +831,7 @@ dependencies = [
  "r2d2_postgres",
  "rand 0.7.3",
  "rayon",
+ "regex",
 ]
 
 [[package]]

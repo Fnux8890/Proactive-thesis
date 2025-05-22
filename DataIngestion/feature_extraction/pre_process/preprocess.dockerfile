@@ -1,20 +1,24 @@
-# Base Python image
 FROM python:3.9-slim
 
-# Set working directory
+# build tools for any wheels that need compiling
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# CPU-only PyTorch (skips the big CUDA chain)
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.2.2
+
+RUN pip install --no-cache-dir --upgrade uv
+
 WORKDIR /app
 
-# Install uv
-RUN pip install uv
-
-# Copy requirements file first to leverage Docker cache
 COPY requirements.txt .
-
-# Install dependencies using uv
 RUN uv pip install --system --no-cache -r requirements.txt
-RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
 
-# Copy all application python files from the pre_process directory
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends postgresql-client && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY db_utils.py .
 COPY processing_steps.py .
 COPY database_operations.py .
@@ -28,7 +32,7 @@ COPY phenotype.json .
 COPY phenotype.schema.json .
 COPY create_preprocessed_hypertable.sql /app/create_preprocessed_hypertable.sql
 
-# Config will be mounted via volume in docker-compose
-
-# CMD will be provided by docker-compose, but if run directly, it would be:
-CMD ["sh", "-c", "psql postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-postgres} -f /app/create_preprocessed_hypertable.sql && uv run python preprocess.py"]
+CMD ["sh", "-c", "\
+     psql postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-postgres} \
+          -f /app/create_preprocessed_hypertable.sql && \
+     python preprocess.py"]
