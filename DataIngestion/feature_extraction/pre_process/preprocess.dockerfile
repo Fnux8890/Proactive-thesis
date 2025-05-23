@@ -30,9 +30,9 @@ COPY fetch_energy.py .
 COPY phenotype_ingest.py .
 COPY phenotype.json .
 COPY phenotype.schema.json .
-COPY create_preprocessed_hypertable.sql /app/create_preprocessed_hypertable.sql
+COPY create_preprocessed_wide.sql /app/create_preprocessed_wide.sql
 
 CMD ["sh", "-c", "\
      psql postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-postgres} \
-          -f /app/create_preprocessed_hypertable.sql && \
+          -f /app/create_preprocessed_wide.sql && \
      python preprocess.py"]

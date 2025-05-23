@@ -61,14 +61,14 @@ class SimpleDBConnector:
             logger.info("DBConnector: Database engine disposed.")
 
 def fetch_sample_data_from_db(num_rows=200, era_identifier='Era1') -> cudf.DataFrame:
-    """Fetches a small sample of actual data from preprocessed_features table."""
+    """Fetches a small sample of actual data from preprocessed_wide table."""
     logger.info(f"--- Fetching sample data from DB for Era: {era_identifier}, Limit: {num_rows} ---")
     connector = None
     try:
         connector = SimpleDBConnector(DB_URL)
         query = f"""
-        SELECT time, era_identifier, features 
-        FROM public.preprocessed_features
+        SELECT *
+        FROM public.preprocessed_wide
         WHERE era_identifier = :era_id
         ORDER BY time ASC
         LIMIT :row_limit;
@@ -83,28 +83,7 @@ def fetch_sample_data_from_db(num_rows=200, era_identifier='Era1') -> cudf.DataF
 
         logger.info(f"Successfully fetched {len(pdf_raw)} raw rows from DB for sample.")
 
-        # Unnest features JSONB (assuming it's a list of dicts, pd.json_normalize handles Series of dicts)
-        # If pdf_raw["features"] is string representation of JSON, it needs json.loads first
-        # Based on extract_features_gpu.py, it should be dicts after initial pandas load
-        try:
-            # Attempt to load if it's stringified JSON in the sample (less likely from preprocess.py output)
-            # If preprocess.py stores dicts, this json.loads isn't needed
-            # For safety, check type of first element
-            if not pdf_raw.empty and isinstance(pdf_raw['features'].iloc[0], str):
-                logger.info("Sample features column appears to be string-encoded JSON, applying json.loads.")
-                features_series = pdf_raw["features"].apply(json.loads)
-            else:
-                features_series = pdf_raw["features"] # Assume it's already a series of dicts
-            
-            feat_pdf = pd.json_normalize(features_series)
-        except Exception as e:
-            logger.error(f"Error normalizing 'features' JSON in sample: {e}. First element: {pdf_raw['features'].iloc[0] if not pdf_raw.empty else 'N/A'}")
-            return cudf.DataFrame()
-            
-        full_pdf = pd.concat([pdf_raw[["time", "era_identifier"]], feat_pdf], axis=1)
-        logger.info(f"Sample data - Loaded and unnested to {full_pdf.shape[0]} rows, {full_pdf.shape[1]} columns.")
-
-        cdf = cudf.from_pandas(full_pdf)
+        cdf = cudf.from_pandas(pdf_raw)
         cdf["time"] = cudf.to_datetime(cdf["time"], utc=True) # Ensure time is datetime and UTC
         cdf = cdf.set_index('time').sort_index() # Set DatetimeIndex
         

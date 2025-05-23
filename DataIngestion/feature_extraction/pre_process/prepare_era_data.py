@@ -4,6 +4,8 @@ from pathlib import Path
 import json
 import psycopg2 # For PostgreSQL connection
 import os # For reading environment variables
+from sqlalchemy import create_engine
+from database_operations import save_wide_to_timescaledb
 # from sklearn.preprocessing import MinMaxScaler # Import if/when needed for scaling
 # import joblib # Import if/when needed for saving scalers
 
@@ -224,7 +226,11 @@ def main():
         print(f"Error decoding JSON from config file: {e}")
         return
     
-    era_to_process = config.get("common_settings", {}).get("default_era_to_process_for_script", "Era1") 
+    era_to_process = config.get("common_settings", {}).get("default_era_to_process_for_script", "Era1")
+    conn_details = get_db_connection_details(config)
+    engine = create_engine(
+        f"postgresql://{conn_details['user']}:{conn_details['password']}@{conn_details['host']}:{conn_details['port']}/{conn_details['dbname']}"
+    )
     # eras_to_process = config.get("era_specific_settings", {}).keys() # To process all defined eras
 
     print(f"===== STARTING PREPROCESSING FOR ERA: {era_to_process} =====")
@@ -272,6 +278,8 @@ def main():
     else:
         print("Final DataFrame is empty.")
     print(f"Final DataFrame shape: {df_imputed.shape}")
+    rows = save_wide_to_timescaledb(df_imputed, era_to_process, engine)
+    print(f"Inserted {rows} rows into preprocessed_wide")
     
     # Next steps would be windowing this df_imputed/df_scaled and then feature engineering per window.
     # Output of this script could be a Parquet/CSV file of the preprocessed data for this era.
@@ -283,6 +291,8 @@ def main():
         print(f"Saved preprocessed data for Era '{era_to_process}' to: {preprocessed_file_path}")
     except Exception as e:
         print(f"Error saving preprocessed data for Era '{era_to_process}': {e}")
+    finally:
+        engine.dispose()
 
 if __name__ == "__main__":
     main() 
