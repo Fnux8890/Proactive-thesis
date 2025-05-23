@@ -27,4 +27,6 @@ futures-util = "0.3"
 
 # Added for logging
 env_logger = "0.11"
-log = "0.4" 
+log = "0.4"
+# Timezone conversion helpers
+chrono-tz = "0.8"

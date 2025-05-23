@@ -24,6 +24,7 @@ mod file_processor;
 mod db;
 mod models;
 mod validation; // <-- Add module declaration
+mod utils;
 
 use config::load_config; // <-- Remove unused FileConfig
 use errors::PipelineError;

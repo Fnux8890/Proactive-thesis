@@ -39,6 +39,8 @@ pub struct TimestampInfo {
     pub start_col_name: Option<String>,
     #[serde(default)]
     pub end_col_name: Option<String>,
+    #[serde(default)]
+    pub timezone: Option<String>,
     pub format: Option<String>, // Format string required for most strategies
 }
 
