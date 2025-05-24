@@ -4,6 +4,8 @@ use crate::config::FileConfig;
 use crate::data_models::ParsedRecord;
 use crate::errors::ParseError;
 use chrono::{DateTime, Utc, NaiveDateTime, TimeZone};
+use chrono_tz::Tz;
+use crate::utils::{parse_locale_float, parse_datetime_with_tz};
 use csv::{ReaderBuilder, StringRecord};
 use std::collections::HashMap;
 use std::fs::File;
@@ -56,15 +58,7 @@ macro_rules! set_field {
 
 // ADDED BACK: Helper function parse_datetime_utc
 fn parse_datetime_utc(datetime_str: &str, format: &str) -> Result<DateTime<Utc>, String> {
-    // use chrono::NaiveDateTime; // Use import from top
-    NaiveDateTime::parse_from_str(datetime_str, format)
-        .map_err(|e| {
-            format!(
-                "Failed to parse timestamp '{}' with format '{}': {}",
-                datetime_str, format, e
-            )
-        })
-        .map(|naive_dt| Utc.from_utc_datetime(&naive_dt)) // Use import from top
+    parse_datetime_with_tz(datetime_str, format, None)
 }
 
 pub fn parse_morten_sdu(
@@ -173,6 +167,18 @@ pub fn parse_morten_sdu(
             message: "Timestamp format is required.".to_string(),
         })?;
 
+    // Parse timezone if present
+    let tz_opt: Option<Tz> = ts_info
+        .timezone
+        .as_deref()
+        .and_then(|tz_str| match tz_str.parse::<Tz>() {
+            Ok(tz) => Some(tz),
+            Err(_) => {
+                eprintln!("WARN (MortenSDU): Invalid timezone '{}' in config for {}", tz_str, file_path.display());
+                None
+            }
+        });
+
     let start_index = *header_map
         .get(start_col_name)
         .ok_or_else(|| ParseError::ConfigError {
@@ -270,7 +276,7 @@ pub fn parse_morten_sdu(
                 // Check inner Option
                 if !null_markers.iter().any(|m| m == start_str) {
                     // Check for null marker
-                    match parse_datetime_utc(start_str, timestamp_format) {
+                    match parse_datetime_with_tz(start_str, timestamp_format, tz_opt.as_ref()) {
                         Ok(ts) => parsed_record.timestamp_utc = Some(ts),
                         Err(e) => {
                             eprintln!("ERROR (MortenSDU): Timestamp parse failed for Start ('{}') in {} at row {}: {}", start_str, file_path.display(), file_row_num, e);
@@ -301,7 +307,7 @@ pub fn parse_morten_sdu(
                     // --- Special handling for rain_status boolean ---
                     if *target_field == "rain_status" {
                         // Need to dereference target_field
-                        match trimmed_value.parse::<f64>() {
+                        match parse_locale_float(trimmed_value) {
                             Ok(val_f64) => {
                                 // Treat any non-zero float as true
                                 parsed_record.rain_status = Some(val_f64 > 0.0);
@@ -318,7 +324,7 @@ pub fn parse_morten_sdu(
                     }
 
                     match data_type.as_str() {
-                        "float" => match trimmed_value.parse::<f64>() {
+                        "float" => match parse_locale_float(trimmed_value) {
                             Ok(val) => {
                                 // RE-ADDED: Range check specifically for humidity
                                 if *target_field == "relative_humidity_percent"

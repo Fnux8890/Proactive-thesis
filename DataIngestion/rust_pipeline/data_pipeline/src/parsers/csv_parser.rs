@@ -2,6 +2,8 @@ use crate::config::FileConfig;
 use crate::data_models::ParsedRecord;
 use crate::errors::ParseError;
 use chrono::{DateTime, Utc, TimeZone, NaiveDateTime};
+use chrono_tz::Tz;
+use crate::utils::{parse_locale_float, parse_datetime_with_tz};
 use csv::{ReaderBuilder, StringRecord};
 use std::collections::HashMap;
 use std::fs::File;
@@ -135,6 +137,7 @@ fn missing_format_error(file_path: &Path, context: &str) -> ParseError {
 fn parse_timestamp_from_strategy(
     record: &StringRecord,
     strategy: &TimestampStrategy,
+    tz: Option<&Tz>,
     file_path: &Path,
     row_num: usize,
 ) -> Result<Option<DateTime<Utc>>, ParseError> {
@@ -157,7 +160,7 @@ fn parse_timestamp_from_strategy(
         TimestampStrategy::DateTimeByIndex(index, format) => {
             get_field_by_index(record, *index)?
                 .map(|val_str| {
-                    parse_datetime_utc(val_str, format)
+                    parse_datetime_with_tz(val_str, format, tz)
                         .map_err(|e| ParseError::TimestampParseError {
                             path: file_path.to_path_buf(),
                             row: row_num,
@@ -173,7 +176,7 @@ fn parse_timestamp_from_strategy(
             let time_str_opt = get_field_by_index(record, *time_idx)?;
             if let (Some(date_str), Some(time_str)) = (date_str_opt, time_str_opt) {
                 let datetime_str = format!("{} {}", date_str, time_str);
-                match parse_datetime_utc(&datetime_str, format) {
+                match parse_datetime_with_tz(&datetime_str, format, tz) {
                     Ok(dt) => Ok(Some(dt)),
                     Err(e) => Err(ParseError::TimestampParseError {
                         path: file_path.to_path_buf(),
@@ -211,6 +214,19 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
     let mut reader_builder = ReaderBuilder::new();
     reader_builder.delimiter(delimiter);
     reader_builder.has_headers(has_headers);
+
+    // Parse timezone if provided
+    let tz_opt: Option<Tz> = config
+        .timestamp_info
+        .as_ref()
+        .and_then(|ts| ts.timezone.as_deref())
+        .and_then(|tz_str| match tz_str.parse::<Tz>() {
+            Ok(tz) => Some(tz),
+            Err(_) => {
+                eprintln!("WARN: Invalid timezone '{}' in config for {}", tz_str, file_path.display());
+                None
+            }
+        });
 
     // --- Configure Quoting ---
     // Default behavior if 'quoting' is None or invalid
@@ -488,7 +504,7 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
 
         // Timestamp Parsing
         let timestamp_result =
-            parse_timestamp_from_strategy(&record, &timestamp_strategy, file_path, file_row_num);
+            parse_timestamp_from_strategy(&record, &timestamp_strategy, tz_opt.as_ref(), file_path, file_row_num);
         match timestamp_result {
             Ok(ts) => parsed_record.timestamp_utc = ts,
             Err(e) => {
@@ -533,11 +549,10 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                     // Attempt to parse based on data_type
                     match data_type.as_str() {
                         "float" => {
-                            let cleaned_value = trimmed_value.replace(',', ".");
-                            match cleaned_value.parse::<f64>() {
+                            match parse_locale_float(trimmed_value) {
                                 Ok(val) => set_field!(parsed_record, *target_field, val; f64),
                                 Err(e) => {
-                                    eprintln!("WARN: Float parse failed for field '{}' ('{}' -> '{}') in {} at row {}: {}. Setting field to None.", target_field, raw_value, cleaned_value, file_path.display(), file_row_num, e);
+                                    eprintln!("WARN: Float parse failed for field '{}' ('{}') in {} at row {}: {}. Setting field to None.", target_field, raw_value, file_path.display(), file_row_num, e);
                                     // REMOVED: row_has_error = true;
                                 }
                             }
@@ -546,23 +561,15 @@ pub fn parse_csv(config: &FileConfig, file_path: &Path) -> Result<Vec<ParsedReco
                             match trimmed_value.parse::<i64>() {
                                 Ok(val) => set_field!(parsed_record, *target_field, val; i64),
                                 Err(_) => {
-                                    // Try parsing as f64 then casting
-                                    match trimmed_value.replace(',', ".").parse::<f64>() {
-                                        Ok(f_val)
-                                            if (f_val.fract() < 1e-9)
-                                                || (f_val.fract() > 1.0 - 1e-9) =>
-                                        {
+                                    match parse_locale_float(trimmed_value) {
+                                        Ok(f_val) if (f_val.fract().abs() < 1e-6) => {
                                             set_field!(parsed_record, *target_field, f_val.round() as i64; i64)
                                         }
                                         Ok(f_val) => {
-                                            // Parsed as float but wasn't whole number
                                             eprintln!("WARN: Integer parse failed (non-integer float: {}) for field '{}' ('{}') in {} at row {}. Setting field to None.", f_val, target_field, raw_value, file_path.display(), file_row_num);
-                                            // REMOVED: row_has_error = true;
                                         }
                                         Err(e) => {
-                                            // Failed to parse as int or float
                                             eprintln!("WARN: Integer parse failed for field '{}' ('{}') in {} at row {}: {}. Setting field to None.", target_field, raw_value, file_path.display(), file_row_num, e);
-                                            // REMOVED: row_has_error = true;
                                         }
                                     }
                                 }
@@ -671,14 +678,7 @@ fn get_field_by_index<'r>(
 
 // Parses a datetime string with a given format into UTC DateTime
 fn parse_datetime_utc(datetime_str: &str, format: &str) -> Result<DateTime<Utc>, String> {
-    NaiveDateTime::parse_from_str(datetime_str, format)
-        .map_err(|e| {
-            format!(
-                "Failed to parse timestamp '{}' with format '{}': {}",
-                datetime_str, format, e
-            )
-        })
-        .map(|naive_dt| Utc.from_utc_datetime(&naive_dt))
+    parse_datetime_with_tz(datetime_str, format, None)
 }
 
 // Parses a Unix millisecond timestamp string into UTC DateTime
