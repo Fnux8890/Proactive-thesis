@@ -1,0 +1,61 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+LICENSE
+
+# Logs and debug files
+pipeline_logs/
+*.log
+debug/
+
+# Test data and temporary files
+*.tmp
+*.temp
+*.cache
+
+# Docker-related files we don't need in the build context
+.dockerignore
+docker-compose*.yml
+composeBuild.ps1
+
+# Database files
+*.db
+*.sqlite
+
+# Environment files
+.env
+.env.*
+
+# Backup files
+*.bak
+*.backup
+
+# OS specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Other subdirectories not needed for the rust pipeline build
+db_checker/
+data_pipeline_binary
+
+# Don't ignore these (they are needed by the Dockerfile):
+# data_pipeline/
+# db_init/
+# servers.json

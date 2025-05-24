@@ -1,0 +1,92 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.uv/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Documentation (except schema)
+README.md
+*.md
+report_for_preprocess/
+
+# Logs and debug files
+*.log
+logs/
+debug/
+
+# Test data and temporary files
+*.tmp
+*.temp
+*.cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Docker-related files
+.dockerignore
+docker-compose*.yml
+
+# Database files
+*.db
+*.sqlite
+
+# Environment files
+.env
+.env.*
+
+# Backup files
+*.bak
+*.backup
+
+# OS specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Output directories
+output/
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Don't ignore these (needed by Dockerfile):
+# requirements.txt
+# *.py (all Python scripts)
+# phenotype.json
+# phenotype.schema.json
+# create_preprocessed_hypertable.sql

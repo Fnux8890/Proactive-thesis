@@ -395,55 +395,55 @@ services:
     networks:
       - ingestion-net
 
-  feature_extraction_gpu:
-    # Existing, but depends on full_preprocess
-    build:
-      context: ./feature_extraction/feature-gpu
-      dockerfile: feature_gpu.dockerfile
-    deploy:
-      resources:
-        reservations:
-          devices: [ { capabilities: [ gpu ], driver: nvidia } ]
-    container_name: feature_extraction_gpu
-    volumes:
-      - ./feature_extraction/data/processed:/app/data/processed:ro
-      - ./feature_extraction/data/output:/app/data/output:rw
-    environment:
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_HOST=db
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_NAME=${DB_NAME:-postgres}
-    depends_on:
-      era_detector:
-        condition: service_completed_successfully
-      db:
-        condition: service_healthy
-    networks:
-      - ingestion-net
+  # feature_extraction_gpu:
+  #   # Existing, but depends on full_preprocess
+  #   build:
+  #     context: ./feature_extraction/feature-gpu
+  #     dockerfile: feature_gpu.dockerfile
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices: [ { capabilities: [ gpu ], driver: nvidia } ]
+  #   container_name: feature_extraction_gpu
+  #   volumes:
+  #     - ./feature_extraction/data/processed:/app/data/processed:ro
+  #     - ./feature_extraction/data/output:/app/data/output:rw
+  #   environment:
+  #     - DB_USER=${DB_USER:-postgres}
+  #     - DB_PASSWORD=${DB_PASSWORD:-postgres}
+  #     - DB_HOST=db
+  #     - DB_PORT=${DB_PORT:-5432}
+  #     - DB_NAME=${DB_NAME:-postgres}
+  #   depends_on:
+  #     era_detector:
+  #       condition: service_completed_successfully
+  #     db:
+  #       condition: service_healthy
+  #   networks:
+  #     - ingestion-net
 
-  feature_analysis:
-    # Existing, could depend on rust_pipeline or full_preprocess output
-    build:
-      context: ./feature_extraction # Changed context to the parent directory
-      dockerfile: ./data_analysis/analysis.dockerfile # Path to Dockerfile from new context
-    volumes:
-      - ./feature_extraction/data_processing_config.json:/app/input_config/data_processing_config.json:ro
-      - ./feature_extraction/data/analysis:/app/output_data:rw
-    depends_on:
-      # Choose dependency: rust_pipeline for raw analysis, or full_preprocess if it needs cleaned data
-      feature_extraction:
-        condition: service_completed_successfully
-      db:
-        condition: service_healthy
-    environment:
-      - DB_HOST=db
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-postgres}
-      - PYTHONUNBUFFERED=1
-    networks:
-      - ingestion-net
+  # feature_analysis:
+  #   # Existing, could depend on rust_pipeline or full_preprocess output
+  #   build:
+  #     context: ./feature_extraction # Changed context to the parent directory
+  #     dockerfile: ./data_analysis/analysis.dockerfile # Path to Dockerfile from new context
+  #   volumes:
+  #     - ./feature_extraction/data_processing_config.json:/app/input_config/data_processing_config.json:ro
+  #     - ./feature_extraction/data/analysis:/app/output_data:rw
+  #   depends_on:
+  #     # Choose dependency: rust_pipeline for raw analysis, or full_preprocess if it needs cleaned data
+  #     feature_extraction:
+  #       condition: service_completed_successfully
+  #     db:
+  #       condition: service_healthy
+  #   environment:
+  #     - DB_HOST=db
+  #     - DB_USER=${DB_USER:-postgres}
+  #     - DB_PASSWORD=${DB_PASSWORD:-postgres}
+  #     - DB_NAME=${DB_NAME:-postgres}
+  #     - PYTHONUNBUFFERED=1
+  #   networks:
+  #     - ingestion-net
 
 # --- Volumes ---
 volumes:
