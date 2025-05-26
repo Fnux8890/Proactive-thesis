@@ -1,14 +1,18 @@
 [package]
 name = "era_detector"
-version = "0.1.0"
-edition = "2021"
+version = "0.1.1"
+edition = "2024"
+
+[[bin]]
+name = "era_detector"
+path = "src/main.rs"
 
 [dependencies]
 rayon = "1.10"
 log = "0.4"
 env_logger = "0.11"
 # ---------- data ----------
-polars = { version = "0.48.0", features = [
+polars = { version = "0.48.1", features = [
     "lazy",
     "streaming",      # Replaced "new_streaming"
     "dtype-full",     # Preset for all opt-in dtypes
@@ -16,6 +20,7 @@ polars = { version = "0.48.0", features = [
     "round_series",
     "temporal",
     "strings",
+    "json",
     "concat_str",
     "is_in",
     "cum_agg",
@@ -27,7 +32,8 @@ polars = { version = "0.48.0", features = [
     "zip_with",
     "pct_change",
     "propagate_nans",
-    "dynamic_group_by"
+    "dynamic_group_by",
+    "timezones"
 ] }
 ndarray = "0.13.1"
 
@@ -39,12 +45,13 @@ hmmm        = { version = "0.2.0" }
 rand   = "0.7.3"
 clap   = { version = "4.5.38", features = ["derive", "env"] }
 anyhow = "1.0"
-postgres = { version = "0.19", features = ["with-chrono-0_4"] }
+postgres = { version = "0.19", features = ["with-chrono-0_4", "with-serde_json-1"] }
 chrono   = "0.4"
 r2d2 = "0.8"
 r2d2_postgres = "0.18.2"
 lazy_static = "1.4"
 regex = "1.10.4"
+serde_json = "1.0"
 
 
 [profile.release]

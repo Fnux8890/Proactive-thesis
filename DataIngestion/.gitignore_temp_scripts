@@ -1,0 +1,8 @@
+# Temporary test scripts to ignore
+check_era_detector_logs.ps1
+check_table_structure.sql
+run_era_detector_debug.sh
+test_era_detector.sh
+feature_extraction/era_detection_rust/debug_era_detector.sh
+feature_extraction/era_detection_rust/test_era_detector.sh
+feature_extraction/era_detection_rust/test_local_era_detector.sh

@@ -7,12 +7,24 @@ BEGIN;
 -- 1. Drop the table if it exists (for idempotency in dev/test)
 DROP TABLE IF EXISTS preprocessed_features;
 
--- 2. Create the new table
+-- 2. Create the new table with a hybrid schema
 CREATE TABLE preprocessed_features (
     time TIMESTAMPTZ NOT NULL,
     era_identifier TEXT NOT NULL,
-    features JSONB NOT NULL
-    -- Add more columns here if you want to store additional metadata
+    air_temp_c REAL,
+    relative_humidity_percent REAL,
+    co2_measured_ppm REAL,
+    light_intensity_umol REAL,
+    radiation_w_m2 REAL,
+    total_lamps_on REAL, -- Assuming REAL, adjust if INTEGER
+    dli_sum REAL,
+    vpd_hpa REAL,
+    heating_setpoint_c REAL,
+    co2_status INTEGER, -- Based on cast in database_operations_hybrid.py
+    source_file TEXT,
+    format_type TEXT,
+    extended_features JSONB, -- For any other features
+    PRIMARY KEY (time, era_identifier) -- Ensures uniqueness for ON CONFLICT
 );
 
 -- 3. Convert to TimescaleDB hypertable

@@ -1,4 +1,6 @@
 #!/usr/bin/env -S uv run --isolated
+import logging
+
 # /// script
 # dependencies = ["pandas", "psycopg2-binary", "SQLAlchemy", "pyarrow", "fastparquet", "scikit-learn", "joblib", "ijson"]
 # ///
@@ -19,10 +21,11 @@ from database_operations import (
     fetch_source_data, 
     run_sql_script, 
     verify_table_exists, 
-    save_to_timescaledb,
+    # save_to_timescaledb, # Removed, will use hybrid version
     fetch_and_prepare_external_weather_for_era,
     fetch_and_prepare_energy_prices_for_era
 )
+from database_operations_hybrid import save_to_timescaledb_hybrid
 from data_preparation_utils import (
     load_config, 
     sort_and_prepare_df, 
@@ -132,10 +135,10 @@ if __name__ == "__main__":
     engine = None
     try:
         engine = create_engine(db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800)
-        if not run_sql_script(engine, sql_script_path):
-             print(f"Warning: SQL script execution failed or script not found: {sql_script_path}")
-        if not verify_table_exists(engine, "preprocessed_features"):
-             print("Warning: Table 'preprocessed_features' does not exist after script execution attempt.")
+        # The 'preprocessed_features' table is expected to be created by the
+        # Docker entrypoint initialization scripts for the 'db' service.
+        # We will still check for its existence before attempting to save data.
+        logging.info("Assuming 'preprocessed_features' table is initialized by db service.")
         
         literature_phenotypes_df = load_literature_phenotypes(engine)
 
@@ -500,9 +503,25 @@ if __name__ == "__main__":
             processed_segment_paths_era.append(str(output_path))
             current_era_summary_items.append((f"Segment {i+1} Saved Path", str(output_path)))
             
+            # Check if the preprocessed_features table exists before attempting to save
             if engine and verify_table_exists(engine, "preprocessed_features"):
-                time_col_for_saving = app_config.get('common_settings',{}).get('time_col', 'time')
-                save_to_timescaledb(df=df_scaled, era_identifier=era_id, engine=engine, time_col=time_col_for_saving)
+                db_config_for_hybrid = {
+                    "user": db_user,
+                    "password": db_password,
+                    "host": db_host,
+                    "port": db_port, # db_port is already a string from getenv/config
+                    "dbname": db_name
+                }
+                # df_scaled is the DataFrame to save.
+                # era_id is the era_identifier.
+                # The time_col argument is handled internally by save_to_timescaledb_hybrid.
+                # Default table_name='preprocessed_features_hybrid' and batch_size=10000 are used from the function's signature.
+                save_to_timescaledb_hybrid(df=df_scaled, era_identifier=era_id, db_config=db_config_for_hybrid, table_name='preprocessed_features')
+                print(f"INFO: Attempted save for era {era_id}, segment {i+1} to 'preprocessed_features' using hybrid method.")
+            elif engine: # If engine exists but table doesn't
+                print(f"WARNING: Table 'preprocessed_features' does not exist. Skipping save for era {era_id}, segment {i+1}. Ensure the table is created with the correct schema.")
+            else: # If engine itself is not available
+                 print(f"CRITICAL: Database engine not available. Skipping save for era {era_id}, segment {i+1} to hybrid table.")
         
         current_era_summary_items.append(("Processed Segment Paths", processed_segment_paths_era))
         generate_summary_report(current_era_summary_items, OUTPUT_DATA_DIR, SUMMARY_REPORT_FILENAME_TEMPLATE.format(era_identifier=era_id))

@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use std::io::{Write, Cursor, Read};
 
 use polars::prelude::*;
-use polars::prelude::CsvReadOptions;
+use polars::lazy::dsl::{col, lit};
 use r2d2_postgres::{PostgresConnectionManager, r2d2};
 use postgres::NoTls;
 use regex::Regex;
@@ -178,7 +178,43 @@ impl EraDb {
         let quoted_table_name = quote_identifier(table)
             .with_context(|| format!("Failed to sanitize table name '{}' for load_feature_df", table))?;
 
-        let base_query = format!("SELECT * FROM {}", quoted_table_name);
+        // Check if this is the preprocessed_features table with JSONB
+        let base_query = if table == "preprocessed_features" {
+            // For preprocessed_features, extract JSONB fields as columns
+            log::info!("Loading preprocessed_features table with JSONB expansion");
+            
+            // Simplified approach - extract key sensor fields and let nulls be nulls
+            // Using safe casting that returns NULL on error
+            // Extract time column and JSONB fields
+            // Time is stored as a separate column, not in JSONB
+            format!(
+                r#"SELECT 
+                    time,
+                    (features->>'air_temp_c')::float AS air_temp_c,
+                    (features->>'relative_humidity_percent')::float AS relative_humidity_percent,
+                    (features->>'co2_measured_ppm')::float AS co2_measured_ppm,
+                    (features->>'radiation_w_m2')::float AS radiation_w_m2,
+                    (features->>'light_intensity_umol')::float AS light_intensity_umol,
+                    (features->>'heating_setpoint_c')::float AS heating_setpoint_c,
+                    (features->>'pipe_temp_1_c')::float AS pipe_temp_1_c,
+                    (features->>'pipe_temp_2_c')::float AS pipe_temp_2_c,
+                    (features->>'flow_temp_1_c')::float AS flow_temp_1_c,
+                    (features->>'flow_temp_2_c')::float AS flow_temp_2_c,
+                    (features->>'vent_lee_afd3_percent')::float AS vent_lee_afd3_percent,
+                    (features->>'vent_wind_afd3_percent')::float AS vent_wind_afd3_percent,
+                    (features->>'total_lamps_on')::float AS total_lamps_on,
+                    (features->>'dli_sum')::float AS dli_sum,
+                    (features->>'vpd_hpa')::float AS vpd_hpa,
+                    (features->>'humidity_deficit_g_m3')::float AS humidity_deficit_g_m3
+                FROM {}
+                WHERE time IS NOT NULL AND features IS NOT NULL
+                ORDER BY time"#,
+                quoted_table_name
+            )
+        } else {
+            format!("SELECT * FROM {}", quoted_table_name)
+        };
+        
         let final_query = match row_limit {
             Some(limit) => format!("{} LIMIT {}", base_query, limit),
             None => base_query,
@@ -191,11 +227,54 @@ impl EraDb {
             .read_to_end(&mut raw_csv)
             .with_context(|| format!("Failed to read CSV data from COPY OUT for table '{}' (sanitized: '{}')", table, quoted_table_name))?;
 
-        let opts = CsvReadOptions::default().with_has_header(true);
-        let df = CsvReader::new(Cursor::new(raw_csv))
-                     .with_options(opts)
-                     .finish()
-                     .with_context(|| format!("Polars CsvReader failed to parse data for table '{}' (sanitized: '{}')", table, quoted_table_name))?;
+        let mut df = if table == "preprocessed_features" {
+            // For preprocessed_features, infer schema from the entire file to handle mixed types
+            let opts = CsvReadOptions::default()
+                .with_has_header(true)
+                .with_infer_schema_length(None); // Infer from entire file
+            
+            CsvReader::new(Cursor::new(raw_csv))
+                .with_options(opts)
+                .finish()
+                .with_context(|| format!("Polars CsvReader failed to parse data for table '{}'", table))?
+        } else {
+            // For other tables, use schema inference
+            let opts = CsvReadOptions::default()
+                .with_has_header(true)
+                .with_infer_schema_length(Some(10000));
+            
+            CsvReader::new(Cursor::new(raw_csv))
+                .with_options(opts)
+                .finish()
+                .with_context(|| format!("Polars CsvReader failed to parse data for table '{}' (sanitized: '{}')", table, quoted_table_name))?
+        };
+
+        // Check if 'time' column exists and is not datetime type - if so, parse it
+        if let Ok(time_col) = df.column("time") {
+            match time_col.dtype() {
+                DataType::String => {
+                    log::info!("Time column detected as String type, converting to DateTime");
+                    // For Polars 0.48, use simplified strptime
+                    df = df.lazy()
+                        .with_column(
+                            col("time").str().to_datetime(
+                                Some(TimeUnit::Microseconds),
+                                None,  // format - None for auto-detection
+                                StrptimeOptions::default(),
+                                lit("raise"),  // ambiguous handling
+                            ).alias("time")
+                        )
+                        .collect()
+                        .with_context(|| "Failed to parse time column from string to datetime")?;
+                }
+                DataType::Datetime(_, _) => {
+                    log::debug!("Time column already in DateTime format");
+                }
+                dt => {
+                    log::warn!("Time column has unexpected data type: {:?}", dt);
+                }
+            }
+        }
 
         Ok(df)
     }

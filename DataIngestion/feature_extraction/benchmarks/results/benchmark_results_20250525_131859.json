@@ -1,0 +1,18 @@
+{
+  "current": {
+    "connection_time": 0.06187868118286133,
+    "read_simple_count": 0.012723684310913086,
+    "read_medium_query": 0.004120826721191406,
+    "write_1000_rows": 0.07473921775817871,
+    "write_1000_rows_per_sec": 13379.856385914209,
+    "write_10000_rows": 0.6041860580444336,
+    "write_10000_rows_per_sec": 16551.192909626145,
+    "write_50000_rows": 2.744947671890259,
+    "write_50000_rows_per_sec": 18215.28348683179
+  },
+  "optimized": {
+    "connection_time": 8.106231689453125e-06,
+    "read_simple_count": 1.430511474609375e-06,
+    "error": "object of type 'generator' has no len()"
+  }
+}

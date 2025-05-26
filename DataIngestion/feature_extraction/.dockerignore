@@ -95,7 +95,7 @@ output/
 
 # Other subdirectories not needed for data_analysis context
 pre_process/
-feature/
+# feature/  # Commented out - needed by benchmark.dockerfile
 feature-gpu/
 era_detection/
 era_detection_rust/
@@ -105,3 +105,4 @@ config/
 # Don't ignore these (needed by data_analysis Dockerfile):
 # data_analysis/
 # data_processing_config.json
+# feature/  # Also needed by benchmark.dockerfile

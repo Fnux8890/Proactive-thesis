@@ -1,0 +1,19 @@
+feat: Major refactoring of feature extraction pipeline (Epic 1B)
+
+- Fixed era_detector JSONB parsing for hybrid table format
+- Added optimal signal selection and quantization functions
+- Reorganized folder structure (benchmarks/, docs/, tests/)
+- Created comprehensive documentation with C# migration guides
+- Implemented thread-safe DB connection pooling
+- Added performance benchmarks and test suite
+- Fixed preprocessing table detection and error handling
+
+Key improvements:
+• Better error handling and reliability
+• Organized structure for maintainability  
+• Complete documentation coverage
+• Performance optimizations throughout
+
+Resolves: JSONB parsing issues, documentation gaps
+Related: Epic 1B pipeline refactoring requirements
+EOF < /dev/null

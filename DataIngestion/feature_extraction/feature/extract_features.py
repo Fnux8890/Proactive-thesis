@@ -24,17 +24,19 @@ import logging
 import os
 import random
 from typing import Any
+from pathlib import Path
 
 import numpy as np  # Added for np.number
 import pandas as original_pandas  # Use this for true pandas operations
 import sqlalchemy
+from sqlalchemy import text
 import sys  # For checking loaded modules
 import json
 import time
 import textwrap
 from tsfresh.feature_extraction import MinimalFCParameters, EfficientFCParameters
 from tsfresh import extract_features
-from db_utils import SQLAlchemyPostgresConnector
+from ..db_utils_optimized import SQLAlchemyPostgresConnector
 from . import config
 from .feature_utils import (
     select_relevant_features,
@@ -42,24 +44,40 @@ from .feature_utils import (
 )
 from .feature_utils_supervised import select_tsfresh_features
 
+# Import dtype helpers from backend
+from ..backend.dtypes import is_numeric as is_numeric_dtype, is_datetime as is_datetime64_dtype
+
+# Conditional import for cuDF checking
+try:
+    import cudf
+    HAS_CUDF = True
+except ImportError:
+    cudf = None
+    HAS_CUDF = False
+
 
 # Conditionally import and alias pd
+# Ensure 'pd' always refers to original_pandas, and 'gpd' to cudf.pandas if available.
+# Assumes 'original_pandas' is defined earlier (e.g., import pandas as original_pandas, or original_pandas = pd after import pandas as pd)
+pd = original_pandas
+gpd = None # Will store cudf.pandas if available
+
 if config.USE_GPU_FLAG:
     try:
-        import cudf.pandas as pd  # pd becomes cudf.pandas
+        import cudf.pandas as gpd  # gpd becomes cudf.pandas
         import cudf  # For explicit cudf.DataFrame, etc.
-
-        logging.info("Running in GPU mode with cudf.pandas and cudf.")
+        # pd remains original_pandas
+        logging.info("Running in GPU mode with cudf.pandas (as gpd) and original pandas (as pd).")
     except ImportError as e:
         logging.error(
             f"Failed to import GPU libraries (cudf): {e}. Falling back to CPU mode."
         )
         os.environ["USE_GPU"] = "false"  # Force fallback for current script execution
-        pd = original_pandas  # Ensure pd is original_pandas
-        # No need to re-import cudf if it failed; it won't be used.
+        # pd is already original_pandas, gpd remains None or unimported
+        logging.info("Fallback to CPU mode: using original pandas (as pd).")
 else:
-    pd = original_pandas  # pd is original_pandas
-    logging.info("Running in CPU mode with pandas.")
+    # pd is already original_pandas, gpd is None
+    logging.info("Running in CPU mode with pandas (as pd).")
 
 
 logging.basicConfig(
@@ -84,7 +102,7 @@ FC_PARAMS_NAME = "Custom (preprocess_config.json-Guided)"
 USE_GPU_FLAG = config.USE_GPU_FLAG
 
 # Paths
-consolidated_data_file_path = config.CONSOLIDATED_DATA_FILE_PATH
+# Note: consolidated_data_file_path removed as we now read directly from TimescaleDB
 era_definitions_dir_path = config.ERA_DEFINITIONS_DIR_PATH
 OUTPUT_PATH = config.OUTPUT_PATH
 SELECTED_OUTPUT_PATH = config.SELECTED_OUTPUT_PATH
@@ -105,6 +123,54 @@ kind_to_fc_parameters_global: dict[str, Any] = {}
 # -----------------------------------------------------------------
 # Promote a plain SQL table to Timescale hypertable if needed
 # ----------------------------------------------------------------
+
+
+def save_dataframe_to_parquet(
+    df: pd.DataFrame, 
+    output_path: Path, 
+    use_gpu_flag: bool = False,
+    df_type_name: str = "dataframe"
+) -> None:
+    """
+    Save a DataFrame to Parquet format with proper handling for cuDF/pandas.
+    
+    Args:
+        df: DataFrame to save (pandas or cuDF)
+        output_path: Path where to save the parquet file
+        use_gpu_flag: Whether GPU processing is enabled
+        df_type_name: Descriptive name for logging (e.g., "full features", "selected features")
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Get compression setting from environment with default
+    compression = os.getenv("PARQUET_COMPRESSION", "snappy")
+    
+    try:
+        if (
+            use_gpu_flag
+            and "cudf" in sys.modules
+            and isinstance(df, cudf.DataFrame)
+        ):
+            # cuDF path: consistent with pandas behavior for index handling
+            # Standardize index=False for both backends
+            df.to_parquet(output_path, compression=compression, index=False)
+            logging.info(f"Successfully wrote {df_type_name} to {output_path} using cuDF with compression={compression}, index=False")
+        else:
+            # Convert cuDF to pandas if needed
+            df_to_save = df
+            if "cudf" in sys.modules and isinstance(df, cudf.DataFrame):
+                df_to_save = df.to_pandas()
+            # Use consistent parameters for deterministic output
+            df_to_save.to_parquet(
+                output_path,
+                index=False,
+                compression=compression
+            )
+            logging.info(f"Successfully wrote {df_type_name} to {output_path} using pandas with compression={compression}")
+            
+    except Exception as e:
+        logging.error(f"Failed to write {df_type_name} to Parquet: {e}", exc_info=True)
+        raise
 
 
 def perform_feature_selection(features_df, consolidated_df, target_column_name):
@@ -141,6 +207,13 @@ def perform_feature_selection(features_df, consolidated_df, target_column_name):
                     "Falling back to unsupervised feature selection."
                 )
                 return select_relevant_features(original_features_df_for_fallback)
+
+            # Extract the target series
+            y_series = consolidated_df[target_column_name]
+            
+            # Initialize aligned versions
+            features_df_aligned = features_df
+            y_series_aligned = y_series
 
             if len(y_series) < len(features_df):
                 logging.warning(
@@ -188,7 +261,6 @@ def perform_feature_selection(features_df, consolidated_df, target_column_name):
                     "Falling back to unsupervised selection."
                 )
                 return select_relevant_features(original_features_df_for_fallback)
-                return select_relevant_features(features_df)
 
             logging.info(
                 f"Shape of feature matrix for selection: {features_df_aligned.shape}"
@@ -245,42 +317,166 @@ def main() -> None:
     start_time_main = time.time()
 
     logging.info("Starting feature extraction …")
-    logging.info(f"Loading consolidated data from: {consolidated_data_file_path}")
+    
+    # Initialize database connector
+    connector = SQLAlchemyPostgresConnector(
+        user=config.DB_USER,
+        password=config.DB_PASSWORD,
+        host=config.DB_HOST,
+        port=config.DB_PORT,
+        db_name=config.DB_NAME
+    )
+    
     try:
-        # Determine if using GPU for pandas operations
-        # pd is already aliased to cudf.pandas or original_pandas at the top of the script
-        # Determine if using GPU for pandas operations
-        if USE_GPU_FLAG and "cudf" in sys.modules:
-            # Load with original_pandas then convert to cuDF for robust JSONL parsing
-            temp_pandas_df = original_pandas.read_json(
-                consolidated_data_file_path, lines=True, orient="records"
-            )
-            if temp_pandas_df.empty:
-                logging.error(
-                    f"Consolidated data file is empty: {consolidated_data_file_path}. Exiting."
-                )
+        # Query to fetch data from preprocessed_features hypertable
+        # JSONB features column will be expanded into separate columns
+        query = """
+        SELECT 
+            time,
+            era_identifier,
+            jsonb_each_text(features) as (feature_name, feature_value)
+        FROM preprocessed_features
+        ORDER BY time
+        """
+        
+        # For wide format, we need a different query that pivots the JSONB data
+        # Add optional date filtering via environment variables
+        start_date = os.getenv("FEATURE_EXTRACTION_START_DATE", "")
+        end_date = os.getenv("FEATURE_EXTRACTION_END_DATE", "")
+        
+        # Build parameterized date filter to prevent SQL injection
+        date_filter = ""
+        query_params = {}
+        
+        if start_date or end_date:
+            filters = []
+            if start_date:
+                filters.append("time >= :start_date")
+                query_params['start_date'] = start_date
+            if end_date:
+                filters.append("time <= :end_date")
+                query_params['end_date'] = end_date
+            date_filter = f"WHERE {' AND '.join(filters)}"
+            logging.info(f"Applying date filter with params: {query_params}")
+        
+        wide_query = f"""
+        WITH feature_data AS (
+            SELECT 
+                time,
+                era_identifier,
+                (jsonb_each_text(features)).key as feature_name,
+                (jsonb_each_text(features)).value::float as feature_value
+            FROM preprocessed_features
+            {date_filter}
+        )
+        SELECT 
+            time,
+            era_identifier,
+            jsonb_object_agg(feature_name, feature_value) as features
+        FROM feature_data
+        GROUP BY time, era_identifier
+        ORDER BY time
+        """
+        
+        logging.info("Loading data from TimescaleDB preprocessed_features hypertable...")
+        
+        # Use chunked loading for large datasets
+        chunk_size = int(os.getenv("FEATURE_EXTRACTION_CHUNK_SIZE", "10000"))
+        
+        # Check if we should use chunked loading
+        if chunk_size > 0:
+            logging.info(f"Using chunked loading with chunk size: {chunk_size}")
+            
+            # Use generator to avoid holding all chunks in memory
+            def process_chunks():
+                for chunk_num, chunk in enumerate(connector.fetch_data_to_pandas(text(wide_query).bindparams(**query_params) if query_params else text(wide_query), chunksize=chunk_size)):
+                    if chunk.empty:
+                        continue
+                        
+                    logging.info(f"Processing chunk {chunk_num + 1} with {len(chunk)} rows")
+                    
+                    # Expand the JSONB features column into separate columns
+                    features_expanded = original_pandas.json_normalize(chunk['features'])
+                    # Reset indices to ensure proper alignment
+                    chunk_time_era = chunk[['time', 'era_identifier']].reset_index(drop=True)
+                    features_expanded = features_expanded.reset_index(drop=True)
+                    chunk_df = original_pandas.concat([
+                        chunk_time_era, 
+                        features_expanded
+                    ], axis=1)
+                    
+                    yield chunk_df
+            
+            # Process chunks using generator to avoid memory duplication
+            chunk_generator = process_chunks()
+            
+            # Accumulate chunks in a list to avoid quadratic complexity
+            chunk_list = []
+            chunk_count = 0
+            total_rows = 0
+            
+            for chunk in chunk_generator:
+                chunk_count += 1
+                chunk_rows = len(chunk)
+                total_rows += chunk_rows
+                
+                # Process chunk immediately while it's in memory
+                logging.info(f"Processing chunk {chunk_count} with {chunk_rows} rows")
+                
+                # Add chunk to list for later concatenation
+                chunk_list.append(chunk)
+                
+                # Log progress for large datasets
+                if chunk_count % 10 == 0:
+                    logging.info(f"Processed {chunk_count} chunks, {total_rows} total rows")
+            
+            if not chunk_list:
+                logging.error("No data found in preprocessed_features hypertable. Exiting.")
                 return
-            consolidated_df = cudf.DataFrame.from_pandas(temp_pandas_df)
-            del temp_pandas_df  # Free memory
-            logging.info("Loaded consolidated data into cuDF DataFrame.")
+            
+            # Perform single concatenation at the end for O(n) complexity
+            logging.info(f"Concatenating {len(chunk_list)} chunks into final DataFrame...")
+            consolidated_df = original_pandas.concat(chunk_list, ignore_index=True)
+            
+            # Clear the chunk list to free memory
+            chunk_list.clear()
+            logging.info(f"Total rows loaded: {len(consolidated_df)}")
+            
         else:
-            consolidated_df = original_pandas.read_json(
-                consolidated_data_file_path, lines=True, orient="records"
-            )
-            if consolidated_df.empty:
-                logging.error(
-                    f"Consolidated data file is empty: {consolidated_data_file_path}. Exiting."
-                )
+            # Non-chunked loading for smaller datasets
+            temp_df = connector.fetch_data_to_pandas(text(wide_query).bindparams(**query_params) if query_params else text(wide_query))
+            
+            if temp_df.empty:
+                logging.error("No data found in preprocessed_features hypertable. Exiting.")
                 return
-            logging.info("Loaded consolidated data into pandas DataFrame.")
+                
+            # Expand the JSONB features column into separate columns
+            features_expanded = original_pandas.json_normalize(temp_df['features'])
+            # Reset indices to ensure proper alignment
+            temp_time_era = temp_df[['time', 'era_identifier']].reset_index(drop=True)
+            features_expanded = features_expanded.reset_index(drop=True)
+            consolidated_df = original_pandas.concat([
+                temp_time_era, 
+                features_expanded
+            ], axis=1)
+        
+        # Convert to GPU DataFrame if needed
+        if USE_GPU_FLAG and "cudf" in sys.modules:
+            consolidated_df = cudf.DataFrame.from_pandas(consolidated_df)
+            logging.info("Loaded data from TimescaleDB into cuDF DataFrame.")
+        else:
+            logging.info("Loaded data from TimescaleDB into pandas DataFrame.")
 
         logging.info(f"Consolidated data shape: {consolidated_df.shape}")
 
         # Convert 'time' column to datetime objects using the appropriate pandas module (pd could be cudf.pandas or original_pandas)
         if "time" in consolidated_df.columns:
-            consolidated_df["time"] = pd.to_datetime(
-                consolidated_df["time"], unit="ms", errors="coerce"
-            )  # Assuming time is ms epoch
+            # Check if time is already datetime64 type (PostgreSQL timestamps are returned as datetime64[ns])
+            if not is_datetime64_dtype(consolidated_df["time"]):
+                # Only convert if not already datetime
+                consolidated_df["time"] = pd.to_datetime(
+                    consolidated_df["time"], errors="coerce"
+                )  # Let pandas infer the format
             consolidated_df.dropna(
                 subset=["time"], inplace=True
             )  # Drop rows where time conversion failed
@@ -315,6 +511,9 @@ def main() -> None:
             nan_equivalent_value = (
                 cudf.NA
             )  # Use cudf.NA for GPU dataframes if applicable
+
+        # Initialize config_data to prevent NameError if file loading fails
+        config_data = {}
 
         if os.path.exists(config_file_path):
             logging.info(
@@ -359,63 +558,12 @@ def main() -> None:
                         logging.info(
                             f"Applying sentinel replacements based on map: {sentinel_map_for_replacement_parsed}"
                         )
-                        detailed_replacement_counts = {}
-                        is_cudf_df = (
-                            USE_GPU_FLAG
-                            and "cudf" in sys.modules
-                            and isinstance(consolidated_df, cudf.DataFrame)
+                        # Use backend helper for vectorized sentinel replacement
+                        from ..backend.dtypes import replace_sentinels
+                        consolidated_df = replace_sentinels(consolidated_df, sentinel_map_for_replacement_parsed)
+                        logging.info(
+                            "Sentinel value replacement applied to numeric columns using vectorized operations."
                         )
-
-                        for col_name in consolidated_df.columns:
-                            if pd.api.types.is_numeric_dtype(consolidated_df[col_name]):
-                                col_specific_counts = {}
-                                for (
-                                    val_to_find,
-                                    val_to_substitute,
-                                ) in sentinel_map_for_replacement_parsed.items():
-                                    # Count occurrences of the sentinel value
-                                    # Note: For cuDF, .sum() on a boolean series returns a scalar in a Series/DataFrame, so .item() is needed.
-                                    # For pandas, .sum() on a boolean series returns an int/float scalar directly.
-                                    try:
-                                        matches = (
-                                            consolidated_df[col_name] == val_to_find
-                                        )
-                                        count_of_sentinel = matches.sum()
-                                        if is_cudf_df and hasattr(
-                                            count_of_sentinel, "item"
-                                        ):  # Check if it's a cuDF scalar object
-                                            count_of_sentinel = count_of_sentinel.item()
-                                        else:  # Pandas or cuDF already gave a Python scalar
-                                            count_of_sentinel = int(count_of_sentinel)
-
-                                        if count_of_sentinel > 0:
-                                            consolidated_df[col_name] = consolidated_df[
-                                                col_name
-                                            ].replace(val_to_find, val_to_substitute)
-                                            col_specific_counts[str(val_to_find)] = (
-                                                count_of_sentinel
-                                            )
-                                    except Exception as e:
-                                        logging.error(
-                                            f"Error during sentinel count/replace for col '{col_name}', value '{val_to_find}': {e}"
-                                        )
-
-                                if col_specific_counts:
-                                    detailed_replacement_counts[col_name] = (
-                                        col_specific_counts
-                                    )
-
-                        if detailed_replacement_counts:
-                            logging.info(
-                                f"Sentinel replacements report: {json.dumps(detailed_replacement_counts)}"
-                            )
-                            logging.info(
-                                "Sentinel value replacement applied to numeric columns based on configuration."
-                            )
-                        else:
-                            logging.info(
-                                "No sentinel values were found/replaced based on current configuration and data."
-                            )
                     else:
                         logging.info(
                             "No valid sentinel replacement rules derived from config (e.g., map is empty after parsing or sentinels not found)."
@@ -455,7 +603,7 @@ def main() -> None:
         all_numeric_df_cols = {
             col
             for col in consolidated_df.columns
-            if pd.api.types.is_numeric_dtype(consolidated_df[col])
+            if is_numeric_dtype(consolidated_df[col])
             and col not in ["time", "id"]
             and not col.startswith("era_level_")
         }
@@ -549,12 +697,12 @@ def main() -> None:
 
     except FileNotFoundError:
         logging.error(
-            f"Consolidated data file not found: {consolidated_data_file_path}. Exiting."
+            "Consolidated data file not found (DB load failed). Exiting."
         )
         return
     except Exception as e:
         logging.error(
-            f"Error loading consolidated data from {consolidated_data_file_path}: {e}"
+            f"Error loading consolidated data from database: {e}"
         )
         import traceback
 
@@ -572,175 +720,225 @@ def main() -> None:
         return
     logging.info(f"Loaded {len(era_definitions_df)} era definitions.")
 
-    # # --- Iterate through Eras and Extract Features ---
-    # all_era_features = []
-    # total_rows_processed = 0
-    # all_sensor_cols = set() # To track all unique sensor columns actually used
-    # df_module = pd if not USE_GPU_FLAG else original_pandas # For creating small DataFrames consistently
-    #
-    # # Ensure 'id' column (as era_id) is string type for tsfresh compatibility if it's created
-    # # This is more relevant if we create an empty df with era_id, ensure it's object/string.
-    #
-    # for era_idx, era in enumerate(era_definitions_df.itertuples()):
-    #     logging.info(f"Processing Era {era.era_id} ({era_idx + 1}/{len(era_definitions_df)}): Start {era.start_time}, End {era.end_time}")
-    #
-    #     # Slice consolidated_df for the current era
-    #     # Ensure 'time' in consolidated_df is datetime64[ns] for comparison
-    #     if pd.api.types.is_datetime64_any_dtype(consolidated_df['time']):
-    #         time_condition = (consolidated_df['time'] >= era.start_time) & (consolidated_df['time'] < era.end_time)
-    #     else:
-    #         # Fallback or error if time is not in expected format - though earlier checks should prevent this.
-    #         logging.error(f"ERA: {era.era_id} - 'time' column in consolidated_df is not datetime. Current type: {consolidated_df['time'].dtype}. Skipping era.")
-    #         all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]})) # Keep structure
-    #         continue
-    #
-    #     era_data_slice = consolidated_df.loc[time_condition].copy()
-    #
-    #     if era_data_slice.empty:
-    #         logging.warning(f"Era {era.era_id} contained no rows after slicing, skipping.")
-    #         all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]}))
-    #         continue
-    #
-    #     # Add 'id' column for tsfresh, using the era.era_id. Must be string.
-    #     era_data_slice['id'] = str(era.era_id)
-    #
-    #     total_rows_processed += len(era_data_slice)
-    #
-    #     current_era_numeric_cols = {
-    #         col for col in era_data_slice.columns
-    #         if pd.api.types.is_numeric_dtype(era_data_slice[col]) and \
-    #            col not in ['time', 'id'] and not col.startswith('era_level_')
-    #     }
-    #     sensor_columns_for_melt = list(current_era_numeric_cols & set(kind_to_fc_parameters_global.keys()))
-    #
-    #     if not sensor_columns_for_melt:
-    #         logging.warning(f"ERA: {era.era_id} - No numeric sensor columns eligible for tsfresh. Skipping.")
-    #         all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]}))
-    #         continue
-    #
-    #     all_sensor_cols.update(sensor_columns_for_melt)
-    #
-    #     melt_id_vars = ['id', 'time'] # 'id' is now era.era_id (string)
-    #
-    #     logging.info(f"Melting data for era {era.era_id} using sensors: {sensor_columns_for_melt}")
-    #     era_data_slice_long = df_module.melt(
-    #         era_data_slice,
-    #         id_vars=melt_id_vars,
-    #         value_vars=sensor_columns_for_melt,
-    #         var_name='kind',
-    #         value_name='value'
-    #     )
-    #
-    #     if era_data_slice_long.empty:
-    #         logging.warning(f"ERA: {era.era_id} - Melted data is empty. Skipping feature extraction.")
-    #         all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]}))
-    #         continue
-    #
-    #     logging.info("Extracting features for era %s (%d kinds from %d sensors)...",
-    #                  era.era_id, era_data_slice_long['kind'].nunique(), len(sensor_columns_for_melt))
-    #
-    #     try:
-    #         era_specific_kind_to_fc = {
-    #             kind: kind_to_fc_parameters_global[kind]
-    #             for kind in sensor_columns_for_melt
-    #             if kind in era_data_slice_long['kind'].unique() and kind in kind_to_fc_parameters_global
-    #         }
-    #
-    #         if not era_specific_kind_to_fc:
-    #             logging.warning(f"ERA: {era.era_id} - 'era_specific_kind_to_fc' is empty. Tsfresh might use defaults or fail.")
-    #
-    #         tsfresh_features_for_era = extract_features(
-    #             era_data_slice_long,
-    #             column_id="id",
-    #             column_sort="time",
-    #             column_kind="kind",
-    #             column_value="value",
-    #             kind_to_fc_parameters=era_specific_kind_to_fc if era_specific_kind_to_fc else None,
-    #             default_fc_parameters=None, # Explicitly no global fallback here, rely on kind_to_fc_parameters_global logic
-    #             n_jobs=0 # Serial processing per era, parallelization is across eras if script is run multiple times or by orchestrator
-    #         )
-    #
-    #         if not tsfresh_features_for_era.empty:
-    #             if tsfresh_features_for_era.index.name == 'id':
-    #                 tsfresh_features_for_era = tsfresh_features_for_era.reset_index()
-    #             elif 'id' not in tsfresh_features_for_era.columns:
-    #                 tsfresh_features_for_era['id'] = str(era.era_id)
-    #         else: # tsfresh_features_for_era is empty
-    #             tsfresh_features_for_era = df_module.DataFrame({'id': [str(era.era_id)]})
-    #
-    #         all_era_features.append(tsfresh_features_for_era)
-    #         num_actual_features = len(tsfresh_features_for_era.columns) -1 if 'id' in tsfresh_features_for_era.columns else len(tsfresh_features_for_era.columns)
-    #         logging.info(f"Successfully extracted {num_actual_features} features for era {era.era_id}.")
-    #
-    #     except Exception as e:
-    #         logging.error(f"Error during feature extraction for era {era.era_id}: {e}", exc_info=True)
-    #         all_era_features.append(df_module.DataFrame({'id': [str(era.era_id)]}))
-    #
-    # logging.info(f"Total rows processed across all eras: {total_rows_processed}")
-    # logging.info(f"Unique sensor columns used for melting across all eras: {all_sensor_cols}")
-    #
-    # valid_features = [f for f in all_era_features if f is not None and not f.empty and len(f.columns) > 1]
-    #
-    # if not valid_features:
-    #     logging.warning("No features extracted for any era, or features only contained 'id'. Output will be empty.")
-    #     final_features = original_pandas.DataFrame()
-    # else:
-    #     logging.info(f"Concatenating features from {len(valid_features)} eras.")
-    #     # Handle potential mix of cuDF and pandas DataFrames if GPU path had issues
-    #     processed_valid_features = []
-    #     is_any_cudf = False
-    #     if USE_GPU_FLAG and 'cudf' in sys.modules:
-    #         for f_item in valid_features:
-    #             if isinstance(f_item, cudf.DataFrame):
-    #                 is_any_cudf = True
-    #                 processed_valid_features.append(f_item)
-    #             elif isinstance(f_item, original_pandas.DataFrame):
-    #                 logging.info("Converting a pandas DataFrame to cuDF for concatenation.")
-    #                 try:
-    #                     processed_valid_features.append(cudf.DataFrame.from_pandas(f_item))
-    #                     is_any_cudf = True # Mark that we now have cuDF dfs
-    #                 except Exception as e_conv_pd_cudf:
-    #                     logging.error(f"Failed to convert pandas df to cudf: {e_conv_pd_cudf}. Using original pandas df.")
-    #                     processed_valid_features.append(f_item) # Keep as pandas
-    #             else:
-    #                 processed_valid_features.append(f_item) # Should not happen
-    #     else: # Not using GPU or cudf not available
-    #         processed_valid_features = valid_features
-    #
-    #     if is_any_cudf and USE_GPU_FLAG and 'cudf' in sys.modules:
-    #         logging.info("Attempting concatenation with cuDF.")
-    #         try:
-    #             final_features = cudf.concat(processed_valid_features, ignore_index=True) # ignore_index=True as 'id' is now a column
-    #         except Exception as e_concat_cudf:
-    #             logging.error(f"cuDF concatenation failed: {e_concat_cudf}. Falling back to pandas concatenation.")
-    #             pandas_features_list = [f.to_pandas() if ('cudf' in sys.modules and isinstance(f, cudf.DataFrame)) else f for f in processed_valid_features]
-    #             final_features = original_pandas.concat(pandas_features_list, ignore_index=True)
-    #     else:
-    #         logging.info("Using pandas for feature concatenation.")
-    #         pandas_features_list = [f.to_pandas() if ('cudf' in sys.modules and isinstance(f, cudf.DataFrame)) else f for f in processed_valid_features]
-    #         final_features = original_pandas.concat(pandas_features_list, ignore_index=True)
-    #
-    # if 'id' in final_features.columns:
-    #     final_features.rename(columns={'id': 'era_id'}, inplace=True) # Rename 'id' (which was era_id) to 'era_id'
-    #     # Set era_id as index if it's not already, for consistency, though not strictly necessary for parquet.
-    #     if final_features.index.name != 'era_id' and 'era_id' in final_features.columns:
-    #         # Ensure era_id is unique before setting as index if that's a requirement downstream
-    #         # For now, we assume it might not be unique if multiple eras produce same features (unlikely with tsfresh)
-    #         pass # final_features = final_features.set_index('era_id', drop=False) # drop=False keeps it as a column too
-    #
-    # logging.info(f"Final features extracted. Shape: {final_features.shape}")
+    # Initialize valid_features list (needed even if era loop is commented out)
+    valid_features: list[pd.DataFrame] = []
 
-    # Initialize final_features to an empty DataFrame if the main loop is commented out.
-    # This is to prevent NameError for the code below and to make the script parsable,
-    # especially when debugging by commenting out the era processing loop.
-    if "final_features" not in locals():
-        logging.info(
-            "final_features was not defined (era processing loop likely commented out). Initializing to empty DataFrame."
-        )
-        if USE_GPU_FLAG and "cudf" in sys.modules:
-            final_features = cudf.DataFrame()
+    # --- Iterate through Eras and Extract Features ---
+    all_era_features: list[pd.DataFrame] = []
+    total_rows_processed = 0
+    all_sensor_cols = set() # To track all unique sensor columns actually used
+    df_module = pd if USE_GPU_FLAG else original_pandas # For creating small DataFrames consistently
+
+    # Ensure 'id' column (as era_id) is string type for tsfresh compatibility if it's created
+    # This is more relevant if we create an empty df with era_id, ensure it's object/string.
+
+    for era_idx, era in enumerate(era_definitions_df.itertuples()):
+        logging.info(f"Processing Era {era.era_id} ({era_idx + 1}/{len(era_definitions_df)}): Start {era.start_time}, End {era.end_time}")
+
+        # Slice consolidated_df for the current era
+        # Check if 'time' column is datetime type, handling both pandas and cuDF DataFrames
+        is_datetime = False
+        # Use backend dtype helper for consistent checking
+        if is_datetime64_dtype(consolidated_df['time']):
+            time_condition = (consolidated_df['time'] >= era.start_time) & (consolidated_df['time'] < era.end_time)
         else:
-            final_features = original_pandas.DataFrame()
+            # Fallback or error if time is not in expected format - though earlier checks should prevent this.
+            logging.error(f"ERA: {era.era_id} - 'time' column in consolidated_df is not datetime. Current type: {consolidated_df['time'].dtype}. Skipping era.")
+            all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]})) # Keep structure
+            continue
+
+        era_data_slice = consolidated_df.loc[time_condition].copy()
+
+        if era_data_slice.empty:
+            logging.warning(f"Era {era.era_id} contained no rows after slicing, skipping.")
+            all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]}))
+            continue
+
+        # Add 'id' column for tsfresh, using the era.era_id. Must be string.
+        era_data_slice['id'] = str(era.era_id)
+
+        total_rows_processed += len(era_data_slice)
+
+        current_era_numeric_cols = {
+            col for col in era_data_slice.columns
+            if is_numeric_dtype(era_data_slice[col]) and \
+               col not in ['time', 'id'] and not col.startswith('era_level_')
+        }
+        sensor_columns_for_melt = list(current_era_numeric_cols & set(kind_to_fc_parameters_global.keys()))
+
+        if not sensor_columns_for_melt:
+            logging.warning(f"ERA: {era.era_id} - No numeric sensor columns eligible for tsfresh. Skipping.")
+            all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]}))
+            continue
+
+        all_sensor_cols.update(sensor_columns_for_melt)
+
+        melt_id_vars = ['id', 'time'] # 'id' is now era.era_id (string)
+
+        logging.info(f"Melting data for era {era.era_id} using sensors: {sensor_columns_for_melt}")
+        # Use appropriate melt function based on DataFrame type
+        if USE_GPU_FLAG and 'cudf' in sys.modules and hasattr(era_data_slice, '__module__') and 'cudf' in era_data_slice.__module__:
+            # Use cuDF's melt for cuDF DataFrames
+            era_data_slice_long = era_data_slice.melt(
+                id_vars=melt_id_vars,
+                value_vars=sensor_columns_for_melt,
+                var_name='kind',
+                value_name='value'
+            )
+        else:
+            # Use pandas melt for pandas DataFrames
+            era_data_slice_long = era_data_slice.melt(
+                id_vars=melt_id_vars,
+                value_vars=sensor_columns_for_melt,
+                var_name='kind',
+                value_name='value'
+            )
+
+        if era_data_slice_long.empty:
+            logging.warning(f"ERA: {era.era_id} - Melted data is empty. Skipping feature extraction.")
+            all_era_features.append(df_module.DataFrame({'era_id': [str(era.era_id)]}))
+            continue
+
+        # Prepare data for tsfresh (expects pandas DataFrame)
+        era_data_for_tsfresh = era_data_slice_long
+        if config.USE_GPU_FLAG and gpd is not None and isinstance(era_data_slice_long, gpd.DataFrame):
+            logging.debug(f"ERA: {era.era_id} - Converting cuDF DataFrame (gpd.DataFrame) to pandas DataFrame for tsfresh.")
+            era_data_for_tsfresh = era_data_slice_long.to_pandas()
+        elif not isinstance(era_data_slice_long, pd.DataFrame): # Check if it's not already a pandas DataFrame
+             logging.warning(f"ERA: {era.era_id} - era_data_slice_long is neither cudf.pandas.DataFrame nor pandas.DataFrame. Type: {type(era_data_slice_long)}. Attempting .to_pandas() if available.")
+             if hasattr(era_data_slice_long, 'to_pandas'):
+                 try:
+                     era_data_for_tsfresh = era_data_slice_long.to_pandas()
+                 except Exception as e_conv:
+                     logging.error(f"ERA: {era.era_id} - Failed to convert to pandas: {e_conv}. Proceeding with original type.")
+                     # era_data_for_tsfresh remains era_data_slice_long in this error case
+             else: # Cannot convert
+                 logging.error(f"ERA: {era.era_id} - Cannot convert to pandas. Proceeding with original type {type(era_data_slice_long)}.")
+                 # era_data_for_tsfresh remains era_data_slice_long in this error case
+
+        # At this point, era_data_for_tsfresh should ideally be a pandas DataFrame.
+        logging.info("Extracting features for era %s (%d kinds from %d sensors)...",
+                     era.era_id, 
+                     era_data_for_tsfresh['kind'].nunique() if not era_data_for_tsfresh.empty else 0, 
+                     len(sensor_columns_for_melt))
+
+        try:
+            unique_kinds_in_data = []
+            if not era_data_for_tsfresh.empty:
+                # .unique() on a pandas Series returns a NumPy array, which is fine for 'in' checks.
+                unique_kinds_in_data = era_data_for_tsfresh['kind'].unique()
+
+            era_specific_kind_to_fc = {
+                kind: kind_to_fc_parameters_global[kind]
+                for kind in sensor_columns_for_melt
+                if kind in unique_kinds_in_data and kind in kind_to_fc_parameters_global
+            }
+
+            if not era_specific_kind_to_fc:
+                logging.warning(f"ERA: {era.era_id} - 'era_specific_kind_to_fc' is empty. Tsfresh might use defaults or fail.")
+
+            tsfresh_features_for_era = extract_features(
+                era_data_for_tsfresh, # Pass the (now ideally pandas) DataFrame
+                column_id="id",
+                column_sort="time",
+                column_kind="kind",
+                column_value="value",
+                kind_to_fc_parameters=era_specific_kind_to_fc if era_specific_kind_to_fc else None,
+                default_fc_parameters=None, # Explicitly no global fallback here, rely on kind_to_fc_parameters_global logic
+                n_jobs=1 # Serial processing per era, parallelization is across eras if script is run multiple times or by orchestrator
+            )
+
+            if not tsfresh_features_for_era.empty:
+                if tsfresh_features_for_era.index.name == 'id':
+                    tsfresh_features_for_era = tsfresh_features_for_era.reset_index()
+                elif 'id' not in tsfresh_features_for_era.columns:
+                    tsfresh_features_for_era['id'] = str(era.era_id)
+            else: # tsfresh_features_for_era is empty
+                tsfresh_features_for_era = df_module.DataFrame({'id': [str(era.era_id)]})
+
+            all_era_features.append(tsfresh_features_for_era)
+            num_actual_features = len(tsfresh_features_for_era.columns) -1 if 'id' in tsfresh_features_for_era.columns else len(tsfresh_features_for_era.columns)
+            logging.info(f"Successfully extracted {num_actual_features} features for era {era.era_id}.")
+
+        except Exception as e:
+            logging.error(f"Error during feature extraction for era {era.era_id}: {e}", exc_info=True)
+            all_era_features.append(df_module.DataFrame({'id': [str(era.era_id)]}))
+
+    logging.info(f"Total rows processed across all eras: {total_rows_processed}")
+    logging.info(f"Unique sensor columns used for melting across all eras: {all_sensor_cols}")
+
+    valid_features = [f for f in all_era_features if f is not None and not f.empty and len(f.columns) > 1]
+
+    if not valid_features:
+        logging.warning("No features extracted for any era, or features only contained 'id'. Output will be empty.")
+        final_features = original_pandas.DataFrame()
+    else:
+        logging.info(f"Concatenating features from {len(valid_features)} eras.")
+        
+        # Determine if we should use GPU or CPU based on USE_GPU_FLAG and availability
+        if USE_GPU_FLAG and 'cudf' in sys.modules:
+            # GPU path: Count DataFrame types to determine optimal strategy
+            cudf_count = sum(1 for f in valid_features if isinstance(f, cudf.DataFrame))
+            pandas_count = len(valid_features) - cudf_count
+            
+            if cudf_count == 0 and pandas_count > 0:
+                # All pandas, convert to cuDF for GPU processing
+                logging.info(f"Converting all {pandas_count} pandas DataFrames to cuDF for GPU concatenation.")
+                try:
+                    processed_valid_features = [cudf.DataFrame.from_pandas(f) for f in valid_features]
+                    final_features = cudf.concat(processed_valid_features, ignore_index=True)
+                except Exception as e:
+                    logging.error(f"GPU processing failed: {e}. Cannot proceed without GPU when USE_GPU_FLAG is set.")
+                    raise RuntimeError("GPU processing required but failed. Check CUDA installation and GPU availability.")
+            elif pandas_count > 0:
+                # Mixed types, convert minority to majority
+                if cudf_count >= pandas_count:
+                    # More cuDF than pandas, convert pandas to cuDF
+                    logging.info(f"Converting {pandas_count} pandas DataFrames to cuDF (keeping {cudf_count} cuDF).")
+                    processed_valid_features = []
+                    for f in valid_features:
+                        if isinstance(f, cudf.DataFrame):
+                            processed_valid_features.append(f)
+                        else:
+                            processed_valid_features.append(cudf.DataFrame.from_pandas(f))
+                    final_features = cudf.concat(processed_valid_features, ignore_index=True)
+                else:
+                    # More pandas than cuDF, convert cuDF to pandas
+                    logging.info(f"Converting {cudf_count} cuDF DataFrames to pandas (keeping {pandas_count} pandas).")
+                    processed_valid_features = []
+                    for f in valid_features:
+                        if isinstance(f, cudf.DataFrame):
+                            processed_valid_features.append(f.to_pandas())
+                        else:
+                            processed_valid_features.append(f)
+                    final_features = original_pandas.concat(processed_valid_features, ignore_index=True)
+            else:
+                # All cuDF
+                logging.info(f"All {cudf_count} DataFrames are already cuDF. Using GPU concatenation.")
+                final_features = cudf.concat(valid_features, ignore_index=True)
+        else:
+            # CPU path: Convert any cuDF to pandas
+            logging.info("Using CPU processing. Converting any cuDF DataFrames to pandas.")
+            processed_valid_features = []
+            for f in valid_features:
+                if 'cudf' in sys.modules and isinstance(f, cudf.DataFrame):
+                    processed_valid_features.append(f.to_pandas())
+                else:
+                    processed_valid_features.append(f)
+            final_features = original_pandas.concat(processed_valid_features, ignore_index=True)
+
+    if 'id' in final_features.columns:
+        final_features.rename(columns={'id': 'era_id'}, inplace=True) # Rename 'id' (which was era_id) to 'era_id'
+        # Set era_id as index if it's not already, for consistency, though not strictly necessary for parquet.
+        if final_features.index.name != 'era_id' and 'era_id' in final_features.columns:
+            # Ensure era_id is unique before setting as index if that's a requirement downstream
+            # For now, we assume it might not be unique if multiple eras produce same features (unlikely with tsfresh)
+            pass # final_features = final_features.set_index('era_id', drop=False) # drop=False keeps it as a column too
+
+    logging.info(f"Final features extracted. Shape: {final_features.shape}")
+
+    # Remove the fallback initialization since we've uncommented the era processing loop
+    # The final_features variable will now be properly defined by the era processing
 
     if final_features.empty:
         logging.error(
@@ -750,24 +948,12 @@ def main() -> None:
 
     # Save to parquet
     logging.info(f"Writing final features to: {OUTPUT_PATH}")
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        df_to_save = final_features.copy()
-        if (
-            USE_GPU_FLAG
-            and "cudf" in sys.modules
-            and isinstance(df_to_save, cudf.DataFrame)
-        ):
-            df_to_save.to_parquet(OUTPUT_PATH)
-        else:
-            if hasattr(
-                df_to_save, "to_pandas"
-            ):  # If it's cuDF but USE_GPU_FLAG is false, or mixed type result
-                df_to_save = df_to_save.to_pandas()
-            df_to_save.to_parquet(OUTPUT_PATH, engine="pyarrow")
-        logging.info(f"Successfully wrote full feature set to {OUTPUT_PATH}")
-    except Exception as e:
-        logging.error(f"Failed to write full features to Parquet: {e}", exc_info=True)
+    save_dataframe_to_parquet(
+        final_features, 
+        OUTPUT_PATH, 
+        USE_GPU_FLAG, 
+        "full feature set"
+    )
 
     # --- Perform Feature Selection (First Instance) ---
     logging.info(
@@ -786,27 +972,12 @@ def main() -> None:
 
     # --- Save Selected Features (First Instance) ---
     if not selected_features.empty:
-        SELECTED_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            df_to_save_selected = selected_features.copy()
-            if (
-                USE_GPU_FLAG
-                and "cudf" in sys.modules
-                and isinstance(df_to_save_selected, cudf.DataFrame)
-            ):
-                df_to_save_selected.to_parquet(SELECTED_OUTPUT_PATH)
-            else:
-                if hasattr(df_to_save_selected, "to_pandas"):
-                    df_to_save_selected = df_to_save_selected.to_pandas()
-                df_to_save_selected.to_parquet(SELECTED_OUTPUT_PATH, engine="pyarrow")
-            logging.info(
-                f"Successfully wrote selected feature set to {SELECTED_OUTPUT_PATH}"
-            )
-        except Exception as e:
-            logging.error(
-                f"Failed to write selected features to Parquet {SELECTED_OUTPUT_PATH}: {e}",
-                exc_info=True,
-            )
+        save_dataframe_to_parquet(
+            selected_features,
+            SELECTED_OUTPUT_PATH,
+            USE_GPU_FLAG,
+            "selected feature set"
+        )
     else:
         logging.warning(
             f"Selected features DataFrame is empty after first selection. Skipping save to {SELECTED_OUTPUT_PATH}"
@@ -833,6 +1004,14 @@ def main() -> None:
                     f"'era_id' column missing from selected_features before DB write. Columns: {db_ready_features.columns}"
                 )
             else:
+                # Dispose the existing connector before creating a new one
+                if 'connector' in locals() and hasattr(connector, 'engine') and connector.engine:
+                    try:
+                        connector.engine.dispose()
+                        logging.info("Disposed existing SQLAlchemy engine before creating new connector")
+                    except Exception as e:
+                        logging.warning(f"Error disposing existing connector: {e}")
+                
                 connector = SQLAlchemyPostgresConnector(
                     user=DB_USER,
                     password=DB_PASSWORD,
@@ -878,271 +1057,200 @@ def main() -> None:
             logging.info(
                 "SQLAlchemy engine disposed after initial selected features DB operations."
             )
-    if not valid_features:
-        logging.warning("No features extracted for any era. Output will be empty.")
-        # Create an empty DataFrame. Use original_pandas if pd might be cuDF alias.
-        final_features = original_pandas.DataFrame()
-    else:
-        logging.info(f"Concatenating features from {len(valid_features)} eras.")
-        # If USE_GPU is true and all valid_features are cuDF DataFrames, use cudf.concat.
-        # Otherwise, convert all to pandas and use original_pandas.concat.
-        all_are_cudf = (
-            USE_GPU_FLAG
-            and "cudf" in sys.modules
-            and all(isinstance(f, cudf.DataFrame) for f in valid_features)
-        )
-
-        if all_are_cudf:
-            logging.info(
-                "All feature sets are cuDF and USE_GPU is true. Using cuDF concatenation."
-            )
-            try:
-                final_features = cudf.concat(valid_features, ignore_index=False)
-            except Exception as e_concat_cudf:
-                logging.error(
-                    f"cuDF concatenation failed: {e_concat_cudf}. Falling back to pandas concatenation."
-                )
-                pandas_features_list = [
-                    f.to_pandas() for f in valid_features
-                ]  # All were cuDF, so to_pandas() is safe
-                final_features = original_pandas.concat(
-                    pandas_features_list, ignore_index=False
-                )
-        else:
-            logging.info(
-                "Using pandas for feature concatenation (either mixed types, all pandas, or GPU off)."
-            )
-            pandas_features_list = []
-            for f_item in valid_features:
-                if "cudf" in sys.modules and isinstance(f_item, cudf.DataFrame):
-                    pandas_features_list.append(f_item.to_pandas())
-                elif isinstance(f_item, original_pandas.DataFrame):
-                    pandas_features_list.append(f_item)
-                # Silently skip if not a recognized DataFrame type, though this shouldn't happen with earlier checks.
-
-            if pandas_features_list:
-                final_features = original_pandas.concat(
-                    pandas_features_list, ignore_index=False
-                )
-            else:
-                logging.warning(
-                    "No valid DataFrames to concatenate after potential conversions. Output will be empty."
-                )
-                final_features = original_pandas.DataFrame()
-
-    logging.info(f"Final features extracted. Shape: {final_features.shape}")
+    # This block is commented out because the era loop that populates valid_features is also commented out
+    # if not valid_features:
+    #     logging.warning("No features extracted for any era. Output will be empty.")
+    #     # Create an empty DataFrame. Use original_pandas if pd might be cuDF alias.
+    #     final_features = original_pandas.DataFrame()
+    # else:
+    #     logging.info(f"Concatenating features from {len(valid_features)} eras.")
+    #     # If USE_GPU is true and all valid_features are cuDF DataFrames, use cudf.concat.
+    #     # Otherwise, convert all to pandas and use original_pandas.concat.
+    #     all_are_cudf = (
+    #         USE_GPU_FLAG
+    #         and "cudf" in sys.modules
+    #         and all(isinstance(f, cudf.DataFrame) for f in valid_features)
+    #     )
+    #
+    #     if all_are_cudf:
+    #         logging.info(
+    #             "All feature sets are cuDF and USE_GPU is true. Using cuDF concatenation."
+    #         )
+    #         try:
+    #             final_features = cudf.concat(valid_features, ignore_index=False)
+    #         except Exception as e_concat_cudf:
+    #             logging.error(
+    #                 f"cuDF concatenation failed: {e_concat_cudf}. Falling back to pandas concatenation."
+    #             )
+    #             pandas_features_list = [
+    #                 f.to_pandas() for f in valid_features
+    #             ]  # All were cuDF, so to_pandas() is safe
+    #             final_features = original_pandas.concat(
+    #                 pandas_features_list, ignore_index=False
+    #             )
+    #     else:
+    #         logging.info(
+    #             "Using pandas for feature concatenation (either mixed types, all pandas, or GPU off)."
+    #         )
+    #         pandas_features_list = []
+    #         for f_item in valid_features:
+    #             if "cudf" in sys.modules and isinstance(f_item, cudf.DataFrame):
+    #                 pandas_features_list.append(f_item.to_pandas())
+    #             elif isinstance(f_item, original_pandas.DataFrame):
+    #                 pandas_features_list.append(f_item)
+    #             # Silently skip if not a recognized DataFrame type, though this shouldn't happen with earlier checks.
+    #
+    #         if pandas_features_list:
+    #             final_features = original_pandas.concat(
+    #                 pandas_features_list, ignore_index=False
+    #             )
+    #         else:
+    #             logging.warning(
+    #                 "No valid DataFrames to concatenate after potential conversions. Output will be empty."
+    #             )
+    #             final_features = original_pandas.DataFrame()
+    #
+    # logging.info(f"Final features extracted. Shape: {final_features.shape}")
 
     # Runtime assertion for final_features
     assert (
         not final_features.empty
     ), "Tsfresh returned 0 features (final_features DataFrame is empty after concatenation)"
 
-    # Save to parquet
-    logging.info(f"Writing final features to: {OUTPUT_PATH}")
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
-    try:
-        if (
-            USE_GPU_FLAG
-            and "cudf" in sys.modules
-            and isinstance(final_features, cudf.DataFrame)
-        ):
-            final_features.to_parquet(OUTPUT_PATH)
-            logging.info("Successfully wrote features to Parquet using cuDF.")
-        elif isinstance(
-            final_features, original_pandas.DataFrame
-        ):  # Could be pandas from start or after cudf concat failure
-            final_features.to_parquet(OUTPUT_PATH, engine="pyarrow")
-            logging.info("Successfully wrote features to Parquet using pandas.")
-        # This case handles if final_features is cuDF but USE_GPU_FLAG became false (should not happen ideally)
-        # or if cudf.concat was used but then a fallback made it pandas, covered by above elif.
-        elif "cudf" in sys.modules and isinstance(final_features, cudf.DataFrame):
-            logging.warning(
-                "Final_features is cuDF, but conditions for direct cuDF save not met. Converting to pandas."
-            )
-            final_features.to_pandas().to_parquet(OUTPUT_PATH, engine="pyarrow")
-            logging.info(
-                "Successfully wrote features to Parquet after cuDF to pandas conversion."
-            )
-        else:
-            # This case should ideally not be reached if final_features is always a DataFrame type (cudf or pandas)
-            logging.error(
-                f"Final_features is of an unexpected type ({type(final_features)}) or state. Cannot save to Parquet."
-            )
+    # NOTE: This section appears to be dead code - final_features is already saved above at line 840-846
+    # Commenting out to avoid duplicate save to same path
+    # # Save to parquet
+    # logging.info(f"Writing final features to: {OUTPUT_PATH}")
+    # save_dataframe_to_parquet(
+    #     final_features,
+    #     OUTPUT_PATH,
+    #     USE_GPU_FLAG,
+    #     "final features"
+    # )
 
-        SELECTED_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        # Determine how to save based on whether it's cuDF or pandas
-        if (
-            USE_GPU_FLAG
-            and "cudf" in sys.modules
-            and isinstance(selected_features, cudf.DataFrame)
-        ):
-            selected_features.to_parquet(SELECTED_OUTPUT_PATH)
-            logging.info(
-                "Selected feature set (cuDF) saved to %s", SELECTED_OUTPUT_PATH
-            )
-        elif isinstance(selected_features, original_pandas.DataFrame):
-            selected_features.to_parquet(SELECTED_OUTPUT_PATH, engine="pyarrow")
-            logging.info(
-                "Selected feature set (pandas) saved to %s", SELECTED_OUTPUT_PATH
-            )
-        elif "cudf" in sys.modules and isinstance(
-            selected_features, cudf.DataFrame
-        ):  # Should be caught by first if, but as a fallback
-            logging.warning(
-                "Selected_features is cuDF, but conditions for direct cuDF save not met. Converting to pandas."
-            )
-            selected_features.to_pandas().to_parquet(
-                SELECTED_OUTPUT_PATH, engine="pyarrow"
-            )
-            logging.info(
-                "Selected feature set (cuDF to pandas) saved to %s",
-                SELECTED_OUTPUT_PATH,
-            )
-        else:
-            logging.error(
-                f"Selected_features is of an unexpected type ({type(selected_features)}) or state. Cannot save to {SELECTED_OUTPUT_PATH}."
-            )
-    except FileNotFoundError as e_parquet_fnf:
-        logging.error(
-            f"Parquet save error: File not found - {e_parquet_fnf}. Check paths.",
-            exc_info=True,
-        )
-    except PermissionError as e_parquet_perm:
-        logging.error(
-            f"Parquet save error: Permission denied - {e_parquet_perm}. Check permissions.",
-            exc_info=True,
-        )
-    except Exception as e_parquet_generic:
-        logging.error(
-            f"Generic error during Parquet saving: {e_parquet_generic}", exc_info=True
-        )
-    finally:
-        logging.info("Parquet saving attempt concluded.")
-    if selected_features.empty:
-        logging.warning(
-            f"Selected features DataFrame is empty. Skipping save to {SELECTED_OUTPUT_PATH}"
-        )
-    else:
-        logging.info(f"Selected features saved to: {SELECTED_OUTPUT_PATH}")
+    # NOTE: The following section was removed as it appeared to be orphaned dead code
+    # with undefined selected_features and orphaned except blocks
+    
+    # # Optionally store the selected features in the database
+    # try:
+    #     if not selected_features.empty:
+    #         connector = SQLAlchemyPostgresConnector(
+    #             user=DB_USER,
+    #             password=DB_PASSWORD,
+    #             host=DB_HOST,
+    #             port=DB_PORT,
+    #             db_name=DB_NAME,
+    #         )
+    #         df_for_db = selected_features.copy()
+    #         df_for_db.index.name = "id"
+    #         df_for_db = df_for_db.reset_index()
+    #         if hasattr(df_for_db, "to_pandas"):
+    #             df_for_db = df_for_db.to_pandas()
+    #         connector.write_dataframe(
+    #             df_for_db,
+    #             FEATURES_TABLE,
+    #             if_exists="replace",
+    #             index=False,
+    #         )
+    #         logging.info("Selected features written to table '%s'", FEATURES_TABLE)
+    # except sqlalchemy.exc.SQLAlchemyError as e_db_final_select:
+    #     logging.error(
+    #         f"Database error during final selected features storage: {e_db_final_select}",
+    #         exc_info=True,
+    #     )
+    # except Exception as e_final_select:
+    #     logging.error(
+    #         f"Unexpected error during final selected features storage: {e_final_select}",
+    #         exc_info=True,
+    #     )
+    # finally:
+    #     # Ensure connector is closed if opened
+    #     if (
+    #         "connector" in locals()
+    #         and hasattr(connector, "engine")
+    #         and connector.engine is not None
+    #     ):
+    #         try:
+    #             connector.engine.dispose()
+    #             logging.info(
+    #                 "SQLAlchemy engine disposed after final selected features DB operations."
+    #             )
+    #         except Exception as e_dispose:
+    #             logging.error(f"Error disposing SQLAlchemy engine: {e_dispose}")
 
-    # Optionally store the selected features in the database
-    try:
-        if not selected_features.empty:
-            connector = SQLAlchemyPostgresConnector(
-                user=DB_USER,
-                password=DB_PASSWORD,
-                host=DB_HOST,
-                port=DB_PORT,
-                db_name=DB_NAME,
-            )
-            df_for_db = selected_features.copy()
-            df_for_db.index.name = "id"
-            df_for_db = df_for_db.reset_index()
-            if hasattr(df_for_db, "to_pandas"):
-                df_for_db = df_for_db.to_pandas()
-            connector.write_dataframe(
-                df_for_db,
-                FEATURES_TABLE,
-                if_exists="replace",
-                index=False,
-            )
-            logging.info("Selected features written to table '%s'", FEATURES_TABLE)
-    except sqlalchemy.exc.SQLAlchemyError as e_db_final_select:
-        logging.error(
-            f"Database error during final selected features storage: {e_db_final_select}",
-            exc_info=True,
-        )
-    except Exception as e_final_select:
-        logging.error(
-            f"Unexpected error during final selected features storage: {e_final_select}",
-            exc_info=True,
-        )
-    finally:
-        # Ensure connector is closed if opened
-        if (
-            "connector" in locals()
-            and hasattr(connector, "engine")
-            and connector.engine is not None
-        ):
-            try:
-                connector.engine.dispose()
-                logging.info(
-                    "SQLAlchemy engine disposed after final selected features DB operations."
-                )
-            except Exception as e_dispose:
-                logging.error(f"Error disposing SQLAlchemy engine: {e_dispose}")
-
-    # --- Gather info for the report ---
-    parquet_file_path_str = str(OUTPUT_PATH.resolve())  # Get absolute path
-    parquet_file_size_bytes = 0
-    if OUTPUT_PATH.exists():  # Check if file exists before getting size
-        parquet_file_size_bytes = OUTPUT_PATH.stat().st_size
-    parquet_file_size_mb = parquet_file_size_bytes / (1024 * 1024)
-
-    df_rows, df_cols = 0, 0  # Initialize
-    if not final_features.empty:
-        df_rows, df_cols = final_features.shape
+    # # --- Gather info for the report ---
+    # # NOTE: This section is also dead code not inside any function
+    # parquet_file_path_str = str(OUTPUT_PATH.resolve())  # Get absolute path
+    # parquet_file_size_bytes = 0
+    # if OUTPUT_PATH.exists():  # Check if file exists before getting size
+    #     parquet_file_size_bytes = OUTPUT_PATH.stat().st_size
+    # parquet_file_size_mb = parquet_file_size_bytes / (1024 * 1024)
+    #
+    # df_rows, df_cols = 0, 0  # Initialize
+    # if not final_features.empty:
+    #     df_rows, df_cols = final_features.shape
 
 
-    # -----------------------------------------------------------------
-    # 2.  Melt to long format on GPU if possible
-    # -----------------------------------------------------------------
-    numeric_cols = [
-        c
-        for c in wide_df.columns
-        if c not in ("era_id", "time") and wide_df[c].dtype.kind in ("i", "f")
-    ]
-
-    melt_id_vars = ["era_id", "time"]
-
-    long_df = wide_df.melt(
-        id_vars=melt_id_vars,
-        value_vars=numeric_cols,
-        var_name="kind",
-        value_name="value",
-    )
-
-    logging.info("Long dataframe shape (before tsfresh): %s", long_df.shape)
-
-    if os.getenv("USE_GPU", "false").lower() == "true":
-        long_df = long_df.to_pandas()
-
-    # -----------------------------------------------------------------
-    # 3.  tsfresh extraction (single shot)
-    # -----------------------------------------------------------------
-    features = extract_features(
-        long_df,
-        column_id="era_id",
-        column_sort="time",
-        column_kind="kind",
-        column_value="value",
-        kind_to_fc_parameters=kind_to_fc_parameters_global,
-        default_fc_parameters=None,
-        n_jobs=os.cpu_count() - 2,
-    )
-
-    if features.index.name == "era_id":
-        features.reset_index(inplace=True)
-
-    logging.info("Raw feature matrix shape: %s", features.shape)
-
-    selected = perform_feature_selection(features, consolidated_df, TARGET_COLUMN)
-
-    df_for_db = selected.copy()
-    df_for_db.index.name = "id"
-    df_for_db = df_for_db.reset_index()
-    if hasattr(df_for_db, "to_pandas"):
-        df_for_db = df_for_db.to_pandas()
-
-    connector.write_dataframe(
-        df_for_db,
-        FEATURES_TABLE,
-        if_exists="replace",
-        index=False,
-    )
-
-    with connector.engine.begin() as c:
-        make_hypertable_if_needed(c, FEATURES_TABLE, "era_id")
+    # # -----------------------------------------------------------------
+    # # 2.  Melt to long format on GPU if possible
+    # # -----------------------------------------------------------------
+    # # NOTE: This section is legacy code - wide_df is not defined
+    # numeric_cols = [
+    #     c
+    #     for c in wide_df.columns
+    #     if c not in ("era_id", "time") and wide_df[c].dtype.kind in ("i", "f")
+    # ]
+    #
+    # melt_id_vars = ["era_id", "time"]
+    #
+    # long_df = wide_df.melt(
+    #     id_vars=melt_id_vars,
+    #     value_vars=numeric_cols,
+    #     var_name="kind",
+    #     value_name="value",
+    # )
+    #
+    # # logging.info("Long dataframe shape (before tsfresh): %s", long_df.shape)
+    #
+    # if os.getenv("USE_GPU", "false").lower() == "true":
+    #     long_df = long_df.to_pandas()
+    #
+    # # -----------------------------------------------------------------
+    # # 3.  tsfresh extraction (single shot)
+    # # -----------------------------------------------------------------
+    # features = extract_features(
+    #     long_df,
+    #     column_id="era_id",
+    #     column_sort="time",
+    #     column_kind="kind",
+    #     column_value="value",
+    #     kind_to_fc_parameters=kind_to_fc_parameters_global,
+    #     default_fc_parameters=None,
+    #     n_jobs=os.cpu_count() - 2,
+    # )
+    #
+    # if features.index.name == "era_id":
+    #     features.reset_index(inplace=True)
+    #
+    # logging.info("Raw feature matrix shape: %s", features.shape)
+    #
+    # selected = perform_feature_selection(features, consolidated_df, TARGET_COLUMN)
+    #
+    # df_for_db = selected.copy()
+    # df_for_db.index.name = "id"
+    # df_for_db = df_for_db.reset_index()
+    # if hasattr(df_for_db, "to_pandas"):
+    #     df_for_db = df_for_db.to_pandas()
+    #
+    # connector.write_dataframe(
+    #     df_for_db,
+    #     FEATURES_TABLE,
+    #     if_exists="replace",
+    #     index=False,
+    # )
+    #
+    # with connector.engine.begin() as c:
+    #     make_hypertable_if_needed(c, FEATURES_TABLE, "era_id")
 
 
 if __name__ == "__main__":

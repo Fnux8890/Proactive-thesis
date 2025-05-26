@@ -17,6 +17,7 @@ import numpy as np
 # from tsflex.features import FeatureExtractor  # Removing unused import
 # from tsflex.helpers import get_window_centers # Removing unused import
 import pandas as pd
+from sqlalchemy import text
 from db_utils import SQLAlchemyPostgresConnector
 
 logging.basicConfig(level=logging.INFO,
@@ -48,9 +49,13 @@ def fetch_to_cudf() -> cudf.DataFrame:
         base_q += " WHERE era_identifier = :era"
         params = {"era": FILTER_ERA}
 
-    pdf = connector.fetch_data_to_pandas(base_q if params is None
-                                         else connector.engine.execute(base_q,
-                                                                       params))
+    # Pass the query string and parameters directly to fetch_data_to_pandas
+    if params is None:
+        pdf = connector.fetch_data_to_pandas(base_q)
+    else:
+        # Use SQLAlchemy's text() with bound parameters
+        query_with_params = text(base_q).bindparams(**params)
+        pdf = connector.fetch_data_to_pandas(query_with_params)
     if pdf.empty:
         raise RuntimeError("Empty fetch")
 

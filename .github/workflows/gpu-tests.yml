@@ -1,0 +1,156 @@
+name: GPU Backend Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'DataIngestion/feature_extraction/**'
+      - '.github/workflows/gpu-tests.yml'
+
+jobs:
+  test-cpu-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd DataIngestion/feature_extraction
+        pip install uv
+        uv pip install -r requirements.txt
+        uv pip install pytest pytest-cov
+    
+    - name: Run CPU backend tests
+      env:
+        USE_GPU: "false"
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: postgres
+      run: |
+        cd DataIngestion/feature_extraction
+        uv run pytest tests/ -v --cov=. --cov-report=xml -m "not gpu"
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./DataIngestion/feature_extraction/coverage.xml
+        flags: cpu-backend
+
+  test-gpu-backend:
+    runs-on: ubuntu-latest
+    container:
+      image: rapidsai/rapidsai:23.10-cuda12.0-runtime-ubuntu22.04-py3.10
+      options: --gpus all
+    
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        apt-get update
+        apt-get install -y git build-essential
+    
+    - name: Install Python dependencies
+      run: |
+        cd DataIngestion/feature_extraction
+        pip install uv
+        uv pip install -r requirements_gpu.txt
+        uv pip install pytest pytest-cov
+    
+    - name: Run GPU backend tests
+      env:
+        USE_GPU: "true"
+        DB_HOST: postgres
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: postgres
+      run: |
+        cd DataIngestion/feature_extraction
+        uv run pytest tests/ -v --cov=. --cov-report=xml -m "not cpu_only"
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./DataIngestion/feature_extraction/coverage.xml
+        flags: gpu-backend
+
+  backend-compatibility:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Check for direct pandas/cudf imports
+      run: |
+        cd DataIngestion/feature_extraction
+        
+        # Check for direct imports outside backend module
+        echo "Checking for direct pandas imports..."
+        if grep -r "^import pandas" --include="*.py" --exclude-dir="backend" .; then
+          echo "ERROR: Found direct pandas imports outside backend module"
+          exit 1
+        fi
+        
+        echo "Checking for direct cudf imports..."
+        if grep -r "^import cudf" --include="*.py" --exclude-dir="backend" .; then
+          echo "ERROR: Found direct cudf imports outside backend module"
+          exit 1
+        fi
+        
+        echo "✓ No direct pandas/cudf imports found outside backend module"
+    
+    - name: Check for proper backend usage
+      run: |
+        cd DataIngestion/feature_extraction
+        
+        # Check that files use backend imports
+        echo "Checking for backend.pd usage..."
+        if ! grep -r "from.*backend import.*pd" --include="*.py" --exclude-dir="backend" .; then
+          echo "WARNING: No backend imports found. Ensure new code uses the backend adapter."
+        fi
+        
+        echo "✓ Backend adapter pattern check complete"

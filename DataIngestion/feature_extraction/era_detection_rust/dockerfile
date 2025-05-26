@@ -9,6 +9,8 @@
     
     # ---------- builder stage ----------
     FROM rust:alpine AS builder
+    ARG CACHEBUST
+    RUN echo "Cachebuster value: $CACHEBUST"
     WORKDIR /app
     RUN apk add --no-cache build-base
     # re-use the already-compiled deps
@@ -20,6 +22,13 @@
     FROM debian:bookworm-slim
     RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
     COPY --from=builder /app/target/release/era_detector /usr/local/bin/era_detector
-    ENV RUST_LOG=trace
+    ENV RUST_LOG=debug
+    ENV RUST_BACKTRACE=full
+    # Ensure logs are not buffered
+    ENV RUST_LOG_STYLE=always
+    # The DB_DSN env var is set in docker-compose.yml and will be picked up automatically by clap
+    # Add a simple test to verify the binary exists and is executable
+    RUN era_detector --help || echo "Binary help failed"
     ENTRYPOINT ["era_detector"]
+    # No CMD needed - the default table name "preprocessed_features" in the Rust code is correct
     

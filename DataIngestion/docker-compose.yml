@@ -87,6 +87,83 @@ services:
     networks:
       - ingestion-net
 
+
+  era_detector:
+    build:
+      context: ./feature_extraction/era_detection_rust
+      dockerfile: dockerfile # Corrected case
+      args:
+        CACHEBUST: ${CACHEBUST:-2} # Optional: if your Dockerfile uses it
+    container_name: era_detector # ADDED
+    # entrypoint: /bin/bash # Reverted: Use Dockerfile's ENTRYPOINT
+    command: [
+      "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
+      "--output-dir", "/app/data/shared_processed/era_labels",
+      "--output-suffix", "_eras",
+      "--db-dsn", "postgresql://postgres:postgress@db:5432/postgres",
+      "--signal-cols", "dli_sum,co2_status,light_intensity_lux,co2_measured_ppm,co2_required_ppm,radiation_w_m2,sun_radiation_forecast_w_m2,curtain_2_percent,vent_pos_1_percent,curtain_1_percent,vent_pos_2_percent",
+      "--resample-every", "5m",
+      "--pelt-min-size", "48",
+      "--bocpd-lambda", "200.0",
+      "--hmm-states", "5"
+    ]
+    environment:
+      RUST_LOG: debug # Set to debug for more verbose logs; can be info, warn, error
+      DB_DSN: postgresql://postgres:postgres@db:5432/postgres # Ensure this matches your TimescaleDB setup
+      # Add any other environment variables your Rust application might require
+    volumes: # MODIFIED
+      # Mount for Parquet input override
+      - ./feature_extraction/data/processed:/app/data/shared_processed:rw
+      # Optional: Mount for logs written to file by Rust app, if configured
+      # - ./feature_extraction/era_detection_rust/era_detector_logs:/app/logs:rw
+    depends_on:
+      db:
+        condition: service_healthy # Ensures TimescaleDB is ready
+      raw_prep_lite:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 
+              capabilities: [gpu]
+    networks:
+      - ingestion-net
+
+  feature_extractor:
+    build:
+      context: ./feature_extraction/feature
+      dockerfile: feature.dockerfile
+    container_name: feature_extractor
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DB_DSN: postgresql://postgres:postgres@db:5432/postgres
+      ERA_DEFINITIONS_PATH_ENV: /app/data/input_eras/era_labels 
+      ERA_ID_COLUMN_KEY_ENV: era_level_B 
+      USE_GPU: ${USE_GPU:-true}
+    volumes:
+      # Mount for era definition files (output from era_detector)
+      - ./feature_extraction/data/processed:/app/data/input_eras:ro
+      # Mount for the script to write its output features
+      - ./feature_extraction/data/features:/app/data/output_features:rw
+      # Mount the source code for easier development
+      - ./feature_extraction/feature:/app:rw
+    depends_on:
+      db:
+        condition: service_healthy
+      era_detector: 
+        condition: service_completed_successfully
+    networks:
+      - ingestion-net
+    deploy: 
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 
+              capabilities: [gpu]
+
   # --- Python Pipeline Services ---
   # data-prep:
   #   build:
@@ -278,30 +355,19 @@ services:
         condition: service_completed_successfully
     networks:
       - ingestion-net
+    deploy: 
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 
+              capabilities: [gpu]
 
   # Stage B: Dynamic Era Discovery
-  era_detector:
-    build:
-      context: ./feature_extraction/era_detection_rust
-      dockerfile: Dockerfile
-    container_name: era_detector
-    environment:
-      - DB_DSN=postgresql://postgres:postgres@db:5432/postgres?sslmode=prefer
-    volumes:
-      # Input for era_detector is output from raw_prep_lite.
-      # The internal path /app/data/shared_processed matches the CMD in the era_detector Dockerfile.
-      - ./feature_extraction/data/processed:/app/data/shared_processed:rw
-      - ./feature_extraction/era_detection_rust/era_detector_logs:/app/logs:rw # Logs specific to era_detector
-    # The Dockerfile's ENTRYPOINT ["era_detector"] and CMD will be used.
-    # Arguments from the Dockerfile's CMD are used by default.
-    # They can be overridden if needed, e.g., via `docker-compose run era_detector --input-parquet /new/path.parquet`
-    depends_on:
-      raw_prep_lite:
-        condition: service_completed_successfully
-      db:
-        condition: service_healthy
-    networks:
-      - ingestion-net
+  # The era_detector service definition previously here has been consolidated
+  # with the one defined earlier in this file (around line 88).
+  # The consolidated service defaults to database input but can be overridden
+  # to use Parquet input via `docker-compose run era_detector --input-parquet ...`
 
   # Stage C: Auto-Era-Config Generator
   # auto_era_gen:

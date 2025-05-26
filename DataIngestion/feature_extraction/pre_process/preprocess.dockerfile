@@ -22,6 +22,7 @@ RUN apt-get update && \
 COPY db_utils.py .
 COPY processing_steps.py .
 COPY database_operations.py .
+COPY database_operations_hybrid.py .
 COPY data_preparation_utils.py .
 COPY data_enrichment_utils.py .
 COPY preprocess.py .
@@ -32,7 +33,4 @@ COPY phenotype.json .
 COPY phenotype.schema.json .
 COPY create_preprocessed_hypertable.sql /app/create_preprocessed_hypertable.sql
 
-CMD ["sh", "-c", "\
-     psql postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-postgres} \
-          -f /app/create_preprocessed_hypertable.sql && \
-     python preprocess.py"]
+CMD ["python", "preprocess.py"]
