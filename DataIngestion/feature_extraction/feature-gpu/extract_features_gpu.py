@@ -42,24 +42,20 @@ def fetch_to_cudf() -> cudf.DataFrame:
         port=DB_PORT,
         db_name=DB_NAME,
     )
-    base_q = "SELECT time, era_identifier, features FROM preprocessed_features"
+    base_q = "SELECT * FROM preprocessed_wide"
     params: dict[str, Any] | None = None
     if FILTER_ERA:
         base_q += " WHERE era_identifier = :era"
         params = {"era": FILTER_ERA}
 
     pdf = connector.fetch_data_to_pandas(base_q if params is None
-                                         else connector.engine.execute(base_q,
-                                                                       params))
+                                         else connector.engine.execute(base_q, params))
     if pdf.empty:
         raise RuntimeError("Empty fetch")
 
-    # explode JSONB → columns (pdf["features"] is already a Series of dicts)
-    feat_pdf = pd.json_normalize(pdf["features"])
-    full_pdf = pd.concat([pdf[["time", "era_identifier"]], feat_pdf], axis=1)
-    logging.info("Loaded %s rows, %s columns", *full_pdf.shape)
+    logging.info("Loaded %s rows, %s columns", *pdf.shape)
 
-    cdf = cudf.from_pandas(full_pdf)
+    cdf = cudf.from_pandas(pdf)
     # ensure correct dtypes
     cdf["time"] = cudf.to_datetime(cdf["time"])
     return cdf

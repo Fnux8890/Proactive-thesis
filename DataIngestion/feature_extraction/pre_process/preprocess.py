@@ -18,8 +18,8 @@ from processing_steps import OutlierHandler, ImputationHandler, DataSegmenter
 from database_operations import (
     fetch_source_data, 
     run_sql_script, 
-    verify_table_exists, 
-    save_to_timescaledb,
+    verify_table_exists,
+    save_wide_to_timescaledb,
     fetch_and_prepare_external_weather_for_era,
     fetch_and_prepare_energy_prices_for_era
 )
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     fetch_weather_script_path = current_script_dir / "fetch_external_weather.py"
     fetch_energy_script_path = current_script_dir / "fetch_energy.py"
     phenotype_ingest_script_path = current_script_dir / "phenotype_ingest.py"
-    sql_script_path = current_script_dir / "create_preprocessed_hypertable.sql" 
+    sql_script_path = current_script_dir / "create_preprocessed_wide.sql"
 
     scripts_to_run = {
         "External Weather Data Fetch": fetch_weather_script_path,
@@ -134,8 +134,8 @@ if __name__ == "__main__":
         engine = create_engine(db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800)
         if not run_sql_script(engine, sql_script_path):
              print(f"Warning: SQL script execution failed or script not found: {sql_script_path}")
-        if not verify_table_exists(engine, "preprocessed_features"):
-             print("Warning: Table 'preprocessed_features' does not exist after script execution attempt.")
+        if not verify_table_exists(engine, "preprocessed_wide"):
+             print("Warning: Table 'preprocessed_wide' does not exist after script execution attempt.")
         
         literature_phenotypes_df = load_literature_phenotypes(engine)
 
@@ -500,9 +500,9 @@ if __name__ == "__main__":
             processed_segment_paths_era.append(str(output_path))
             current_era_summary_items.append((f"Segment {i+1} Saved Path", str(output_path)))
             
-            if engine and verify_table_exists(engine, "preprocessed_features"):
-                time_col_for_saving = app_config.get('common_settings',{}).get('time_col', 'time')
-                save_to_timescaledb(df=df_scaled, era_identifier=era_id, engine=engine, time_col=time_col_for_saving)
+            if engine and verify_table_exists(engine, "preprocessed_wide"):
+                rows = save_wide_to_timescaledb(df_scaled, era_id, engine)
+                print(f"Inserted {rows} rows into preprocessed_wide")
         
         current_era_summary_items.append(("Processed Segment Paths", processed_segment_paths_era))
         generate_summary_report(current_era_summary_items, OUTPUT_DATA_DIR, SUMMARY_REPORT_FILENAME_TEMPLATE.format(era_identifier=era_id))

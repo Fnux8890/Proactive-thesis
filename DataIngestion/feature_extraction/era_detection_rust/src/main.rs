@@ -40,7 +40,7 @@ struct Cli {
 
     /// Name of the table / materialised view that holds the
     /// densified, resampled features you want to detect eras on.
-    #[clap(long, default_value = "preprocessed_features")]
+    #[clap(long, default_value = "preprocessed_wide")]
     db_table: String,
 
 

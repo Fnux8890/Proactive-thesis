@@ -135,60 +135,27 @@ def verify_table_exists(engine, table_name: str) -> bool:
         print(f"Error verifying table '{table_name}': {e}")
         return False
 
-def save_to_timescaledb(df: pd.DataFrame, era_identifier: str, engine, time_col: str = 'time') -> bool:
-    """
-    Save processed data to the preprocessed_features TimescaleDB hypertable.
-    """
-    if df.empty:
+def save_wide_to_timescaledb(df_wide: pd.DataFrame, era_identifier: str, engine) -> int:
+    """Insert a wide DataFrame directly into the preprocessed_wide hypertable."""
+    if df_wide.empty:
         print(f"DataFrame is empty, skipping save to TimescaleDB for era '{era_identifier}'")
-        return False
-        
-    print(f"\n--- Saving Processed Data to TimescaleDB for Era: {era_identifier} ---")
-    
+        return 0
+
+    wide = df_wide.copy()
+    wide['era_identifier'] = era_identifier
     try:
-        result_df = pd.DataFrame()
-        
-        if time_col in df.columns:
-            result_df['time'] = df[time_col]
-        elif df.index.name == time_col:
-            result_df['time'] = df.index
-        else:
-            print(f"Error: Time column '{time_col}' not found in DataFrame or index.")
-            return False
-            
-        result_df['era_identifier'] = era_identifier
-        
-        features_list = []
-        
-        for _, row in df.iterrows():
-            features = {}
-            for col_df in df.columns: # Renamed col to col_df to avoid clash with outer time_col
-                if col_df != time_col: 
-                    val = row[col_df]
-                    if pd.isna(val):
-                        features[col_df] = None
-                    elif isinstance(val, (int, float, bool, str)):
-                        features[col_df] = val
-                    else:
-                        features[col_df] = str(val)
-            features_list.append(features)
-            
-        result_df['features'] = features_list
-        
-        print(f"Inserting {len(result_df)} rows into preprocessed_features table...")
-        import json # Moved import here
-        
-        result_df['features'] = result_df['features'].apply(json.dumps)
-        
-        result_df.to_sql('preprocessed_features', engine, if_exists='append', index=False, 
-                         method='multi', chunksize=1000)
-        
-        print(f"Successfully saved {len(result_df)} rows to TimescaleDB for era '{era_identifier}'")
-        return True
-            
+        wide.to_sql(
+            'preprocessed_wide',
+            engine,
+            if_exists='append',
+            index_label='time',
+            method='multi',
+            chunksize=10000
+        )
+        return len(wide)
     except Exception as e:
-        print(f"Error saving data to TimescaleDB for era '{era_identifier}': {e}")
-        return False
+        print(f"Error saving wide data to TimescaleDB for era '{era_identifier}': {e}")
+        return 0
 
 def fetch_and_prepare_external_weather_for_era(era_start_date_str: str, era_end_date_str: str, target_frequency: str, time_col_name: str, engine) -> pd.DataFrame:
     """Fetches weather data from public.external_weather_aarhus, sets DatetimeIndex, and resamples."""

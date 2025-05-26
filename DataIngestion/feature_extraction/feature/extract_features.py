@@ -1,8 +1,8 @@
 """Feature extraction script.
 
-This script connects to the TimescaleDB instance, reads the `preprocessed_features` hypertable
- (written by the preprocessing pipeline), unfolds the JSONB `features` column into a wide
-DataFrame, converts it to the long format expected by *tsfresh*, and finally extracts a rich
+This script connects to the TimescaleDB instance, reads the `preprocessed_wide` hypertable
+ (written by the preprocessing pipeline) where each feature already has its own column,
+converts it to the long format expected by *tsfresh*, and finally extracts a rich
 set of statistical features which are persisted back into the database.  The output
 table is automatically promoted to a TimescaleDB hypertable so downstream steps can
 query it efficiently.
