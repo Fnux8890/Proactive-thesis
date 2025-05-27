@@ -27,4 +27,16 @@ futures-util = "0.3"
 
 # Added for logging
 env_logger = "0.11"
-log = "0.4" 
+log = "0.4"
+
+# Added for parallel processing
+rayon = "1.10"
+crossbeam-channel = "0.5"
+num_cpus = "1.16"
+
+# Added for progress tracking
+indicatif = "0.17"
+
+# Added for performance metrics
+once_cell = "1.19"
+parking_lot = "0.12" 
