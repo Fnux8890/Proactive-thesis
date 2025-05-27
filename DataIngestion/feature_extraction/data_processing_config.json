@@ -895,7 +895,15 @@
                 "strategy": "backward_fill",
                 "limit": 3
             }
-        ]
+        ],
+        "sentinel_value_rules": {
+            "default_sentinels": {
+                "columns_with_sentinel": [
+                    "dli_sum"
+                ],
+                "sentinel_value": -1
+            }
+        }
     },
     "segmentation": {
         "min_gap_hours": 24,

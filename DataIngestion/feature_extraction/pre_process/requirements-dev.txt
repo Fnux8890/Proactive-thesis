@@ -1,0 +1,23 @@
+# Development dependencies
+-r requirements.txt
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-watch>=4.2.0
+hypothesis>=6.92.0
+
+# Linting and formatting
+mypy>=1.8.0
+ruff>=0.1.0
+
+# Type stubs
+pandas-stubs>=2.1.0
+types-requests>=2.31.0
+sqlalchemy-stubs>=0.4
+
+# Debugging
+ipdb>=0.13.13
+
+# Pre-commit
+pre-commit>=3.5.0

@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # build tools for any wheels that need compiling
 RUN apt-get update && \
@@ -19,16 +19,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
-COPY db_utils.py .
-COPY processing_steps.py .
-COPY database_operations.py .
-COPY database_operations_hybrid.py .
-COPY data_preparation_utils.py .
-COPY data_enrichment_utils.py .
+COPY core ./core
+COPY utils ./utils
+COPY external ./external
 COPY preprocess.py .
-COPY fetch_external_weather.py .
-COPY fetch_energy.py .
-COPY phenotype_ingest.py .
 COPY phenotype.json .
 COPY phenotype.schema.json .
 COPY create_preprocessed_hypertable.sql /app/create_preprocessed_hypertable.sql

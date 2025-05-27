@@ -48,6 +48,7 @@ impl Metrics {
         self.processing_times.insert(operation, duration);
     }
 
+    #[allow(dead_code)]
     pub fn record_bytes_processed(&mut self, bytes: u64) {
         self.total_bytes_processed += bytes;
     }

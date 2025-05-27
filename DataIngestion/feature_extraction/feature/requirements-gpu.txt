@@ -1,0 +1,13 @@
+# GPU-accelerated libraries for feature extraction
+# These are optional - pipeline will fall back to CPU if not available
+
+# RAPIDS suite (requires CUDA 11.0+ and GPU with compute capability 6.0+)
+cupy-cuda11x>=12.0.0
+cudf-cu11>=23.10.0
+cuml-cu11>=23.10.0
+
+# For custom CUDA kernels
+numba>=0.58.0
+
+# GPU memory profiling
+pynvml>=11.5.0

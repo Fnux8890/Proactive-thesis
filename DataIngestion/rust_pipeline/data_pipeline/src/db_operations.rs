@@ -3,6 +3,7 @@ use crate::db::DbPool;
 use crate::errors::PipelineError;
 use crate::metrics::METRICS;
 use crate::retry::{db_retry_config, retry_with_backoff};
+use crate::TARGET_COLUMNS;
 use csv::Writer;
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
@@ -19,6 +20,13 @@ const MAX_CONCURRENT_DB_OPS: usize = 4;
 
 /// Batch size for database inserts
 const DB_BATCH_SIZE: usize = 5000;
+
+/// Check if null value logging is enabled via environment variable
+fn is_null_logging_enabled() -> bool {
+    std::env::var("ENABLE_NULL_LOGGING")
+        .unwrap_or_else(|_| "false".to_string())
+        .to_lowercase() == "true"
+}
 
 /// Database operations handler
 pub struct DbOperations {
@@ -173,6 +181,7 @@ impl DbOperations {
 
         let mut skipped_count = 0;
         let mut inserted_count = 0;
+        let mut null_columns_log = Vec::new();
 
         for (i, record) in records.iter().enumerate() {
             if record.timestamp_utc.is_none() {
@@ -189,6 +198,71 @@ impl DbOperations {
                     let _ = csv_writer.flush();
                 }
                 continue;
+            }
+            
+            // Track null values for each column (only if logging is enabled)
+            if is_null_logging_enabled() {
+                let mut null_fields = Vec::new();
+                
+                // Check each field for null values
+                if record.air_temp_c.is_none() { null_fields.push("air_temp_c"); }
+                if record.air_temp_middle_c.is_none() { null_fields.push("air_temp_middle_c"); }
+                if record.outside_temp_c.is_none() { null_fields.push("outside_temp_c"); }
+                if record.relative_humidity_percent.is_none() { null_fields.push("relative_humidity_percent"); }
+                if record.humidity_deficit_g_m3.is_none() { null_fields.push("humidity_deficit_g_m3"); }
+                if record.radiation_w_m2.is_none() { null_fields.push("radiation_w_m2"); }
+                if record.light_intensity_lux.is_none() { null_fields.push("light_intensity_lux"); }
+                if record.light_intensity_umol.is_none() { null_fields.push("light_intensity_umol"); }
+                if record.outside_light_w_m2.is_none() { null_fields.push("outside_light_w_m2"); }
+                if record.co2_measured_ppm.is_none() { null_fields.push("co2_measured_ppm"); }
+                if record.co2_required_ppm.is_none() { null_fields.push("co2_required_ppm"); }
+                if record.co2_dosing_status.is_none() { null_fields.push("co2_dosing_status"); }
+                if record.co2_status.is_none() { null_fields.push("co2_status"); }
+                if record.rain_status.is_none() { null_fields.push("rain_status"); }
+                if record.vent_pos_1_percent.is_none() { null_fields.push("vent_pos_1_percent"); }
+                if record.vent_pos_2_percent.is_none() { null_fields.push("vent_pos_2_percent"); }
+                if record.vent_lee_afd3_percent.is_none() { null_fields.push("vent_lee_afd3_percent"); }
+                if record.vent_wind_afd3_percent.is_none() { null_fields.push("vent_wind_afd3_percent"); }
+                if record.vent_lee_afd4_percent.is_none() { null_fields.push("vent_lee_afd4_percent"); }
+                if record.vent_wind_afd4_percent.is_none() { null_fields.push("vent_wind_afd4_percent"); }
+                if record.curtain_1_percent.is_none() { null_fields.push("curtain_1_percent"); }
+                if record.curtain_2_percent.is_none() { null_fields.push("curtain_2_percent"); }
+                if record.curtain_3_percent.is_none() { null_fields.push("curtain_3_percent"); }
+                if record.curtain_4_percent.is_none() { null_fields.push("curtain_4_percent"); }
+                if record.window_1_percent.is_none() { null_fields.push("window_1_percent"); }
+                if record.window_2_percent.is_none() { null_fields.push("window_2_percent"); }
+                if record.lamp_grp1_no3_status.is_none() { null_fields.push("lamp_grp1_no3_status"); }
+                if record.lamp_grp2_no3_status.is_none() { null_fields.push("lamp_grp2_no3_status"); }
+                if record.lamp_grp3_no3_status.is_none() { null_fields.push("lamp_grp3_no3_status"); }
+                if record.lamp_grp4_no3_status.is_none() { null_fields.push("lamp_grp4_no3_status"); }
+                if record.lamp_grp1_no4_status.is_none() { null_fields.push("lamp_grp1_no4_status"); }
+                if record.lamp_grp2_no4_status.is_none() { null_fields.push("lamp_grp2_no4_status"); }
+                if record.measured_status_bool.is_none() { null_fields.push("measured_status_bool"); }
+                if record.heating_setpoint_c.is_none() { null_fields.push("heating_setpoint_c"); }
+                if record.pipe_temp_1_c.is_none() { null_fields.push("pipe_temp_1_c"); }
+                if record.pipe_temp_2_c.is_none() { null_fields.push("pipe_temp_2_c"); }
+                if record.flow_temp_1_c.is_none() { null_fields.push("flow_temp_1_c"); }
+                if record.flow_temp_2_c.is_none() { null_fields.push("flow_temp_2_c"); }
+                if record.temperature_forecast_c.is_none() { null_fields.push("temperature_forecast_c"); }
+                if record.sun_radiation_forecast_w_m2.is_none() { null_fields.push("sun_radiation_forecast_w_m2"); }
+                if record.temperature_actual_c.is_none() { null_fields.push("temperature_actual_c"); }
+                if record.sun_radiation_actual_w_m2.is_none() { null_fields.push("sun_radiation_actual_w_m2"); }
+                if record.vpd_hpa.is_none() { null_fields.push("vpd_hpa"); }
+                if record.humidity_deficit_afd3_g_m3.is_none() { null_fields.push("humidity_deficit_afd3_g_m3"); }
+                if record.relative_humidity_afd3_percent.is_none() { null_fields.push("relative_humidity_afd3_percent"); }
+                if record.humidity_deficit_afd4_g_m3.is_none() { null_fields.push("humidity_deficit_afd4_g_m3"); }
+                if record.relative_humidity_afd4_percent.is_none() { null_fields.push("relative_humidity_afd4_percent"); }
+                
+                // Log null values if any exist
+                if !null_fields.is_empty() {
+                    null_columns_log.push((
+                        record.source_file.as_deref().unwrap_or("Unknown").to_string(),
+                        batch_idx,
+                        i,
+                        record.timestamp_utc.as_ref().map(|t| t.to_string()).unwrap_or_default(),
+                        null_fields.join(",")
+                    ));
+                }
             }
 
             let row_values: Vec<&(dyn ToSql + Sync)> = vec![
@@ -281,6 +355,32 @@ impl DbOperations {
                 batch_idx, skipped_count
             );
         }
+        
+        // Write null column log to a separate file (only if logging is enabled)
+        if is_null_logging_enabled() && !null_columns_log.is_empty() {
+            let null_log_path = format!("/app/logs/null_columns_batch_{}.txt", batch_idx);
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&null_log_path)
+            {
+                use std::io::Write;
+                writeln!(&mut file, "=== Batch {} Null Columns Report ===", batch_idx).ok();
+                writeln!(&mut file, "Total records with nulls: {}", null_columns_log.len()).ok();
+                writeln!(&mut file, "Format: SourceFile | BatchIdx | RecordIdx | Timestamp | NullColumns").ok();
+                writeln!(&mut file, "========================================").ok();
+                
+                for (source_file, batch, idx, timestamp, null_cols) in &null_columns_log {
+                    writeln!(&mut file, "{} | {} | {} | {} | {}", 
+                        source_file, batch, idx, timestamp, null_cols).ok();
+                }
+                
+                info!(
+                    "Batch {}: Logged {} records with null columns to {}",
+                    batch_idx, null_columns_log.len(), null_log_path
+                );
+            }
+        }
 
         info!(
             "Batch {}: Successfully inserted {} records",
@@ -348,135 +448,70 @@ impl DbOperations {
     }
 }
 
-// Column definitions
-const TARGET_COLUMNS: [&str; 62] = [
-    "time",
-    "source_system",
-    "source_file",
-    "format_type",
-    "uuid",
-    "lamp_group",
-    "air_temp_c",
-    "air_temp_middle_c",
-    "outside_temp_c",
-    "relative_humidity_percent",
-    "humidity_deficit_g_m3",
-    "radiation_w_m2",
-    "light_intensity_lux",
-    "light_intensity_umol",
-    "outside_light_w_m2",
-    "co2_measured_ppm",
-    "co2_required_ppm",
-    "co2_dosing_status",
-    "co2_status",
-    "rain_status",
-    "vent_pos_1_percent",
-    "vent_pos_2_percent",
-    "vent_lee_afd3_percent",
-    "vent_wind_afd3_percent",
-    "vent_lee_afd4_percent",
-    "vent_wind_afd4_percent",
-    "curtain_1_percent",
-    "curtain_2_percent",
-    "curtain_3_percent",
-    "curtain_4_percent",
-    "window_1_percent",
-    "window_2_percent",
-    "lamp_grp1_no3_status",
-    "lamp_grp2_no3_status",
-    "lamp_grp3_no3_status",
-    "lamp_grp4_no3_status",
-    "lamp_grp1_no4_status",
-    "lamp_grp2_no4_status",
-    "measured_status_bool",
-    "heating_setpoint_c",
-    "pipe_temp_1_c",
-    "pipe_temp_2_c",
-    "flow_temp_1_c",
-    "flow_temp_2_c",
-    "temperature_forecast_c",
-    "sun_radiation_forecast_w_m2",
-    "temperature_actual_c",
-    "sun_radiation_actual_w_m2",
-    "vpd_hpa",
-    "humidity_deficit_afd3_g_m3",
-    "relative_humidity_afd3_percent",
-    "humidity_deficit_afd4_g_m3",
-    "relative_humidity_afd4_percent",
-    "behov",
-    "status_str",
-    "timer_on",
-    "timer_off",
-    "dli_sum",
-    "oenske_ekstra_lys",
-    "lampe_timer_on",
-    "lampe_timer_off",
-    "value",
-];
-
+/// Get column types for the sensor_data table
 fn get_column_types() -> Vec<Type> {
     vec![
-        Type::TIMESTAMPTZ,
-        Type::TEXT,
-        Type::TEXT,
-        Type::TEXT,
-        Type::TEXT,
-        Type::TEXT,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::BOOL,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::BOOL,
-        Type::BOOL,
-        Type::BOOL,
-        Type::BOOL,
-        Type::BOOL,
-        Type::BOOL,
-        Type::BOOL,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::FLOAT8,
-        Type::INT4,
-        Type::TEXT,
-        Type::INT4,
-        Type::INT4,
-        Type::FLOAT8,
-        Type::TEXT,
-        Type::INT8,
-        Type::INT8,
-        Type::FLOAT8,
+        Type::TIMESTAMPTZ,          // time
+        Type::TEXT,                 // source_system
+        Type::TEXT,                 // source_file
+        Type::TEXT,                 // format_type
+        Type::TEXT,                 // uuid
+        Type::VARCHAR,              // lamp_group
+        Type::FLOAT8,               // air_temp_c
+        Type::FLOAT8,               // air_temp_middle_c
+        Type::FLOAT8,               // outside_temp_c
+        Type::FLOAT8,               // relative_humidity_percent
+        Type::FLOAT8,               // humidity_deficit_g_m3
+        Type::FLOAT8,               // radiation_w_m2
+        Type::FLOAT8,               // light_intensity_lux
+        Type::FLOAT8,               // light_intensity_umol
+        Type::FLOAT8,               // outside_light_w_m2
+        Type::FLOAT8,               // co2_measured_ppm
+        Type::FLOAT8,               // co2_required_ppm
+        Type::FLOAT8,               // co2_dosing_status
+        Type::FLOAT8,               // co2_status
+        Type::BOOL,                 // rain_status
+        Type::FLOAT8,               // vent_pos_1_percent
+        Type::FLOAT8,               // vent_pos_2_percent
+        Type::FLOAT8,               // vent_lee_afd3_percent
+        Type::FLOAT8,               // vent_wind_afd3_percent
+        Type::FLOAT8,               // vent_lee_afd4_percent
+        Type::FLOAT8,               // vent_wind_afd4_percent
+        Type::FLOAT8,               // curtain_1_percent
+        Type::FLOAT8,               // curtain_2_percent
+        Type::FLOAT8,               // curtain_3_percent
+        Type::FLOAT8,               // curtain_4_percent
+        Type::FLOAT8,               // window_1_percent
+        Type::FLOAT8,               // window_2_percent
+        Type::BOOL,                 // lamp_grp1_no3_status
+        Type::BOOL,                 // lamp_grp2_no3_status
+        Type::BOOL,                 // lamp_grp3_no3_status
+        Type::BOOL,                 // lamp_grp4_no3_status
+        Type::BOOL,                 // lamp_grp1_no4_status
+        Type::BOOL,                 // lamp_grp2_no4_status
+        Type::BOOL,                 // measured_status_bool
+        Type::FLOAT8,               // heating_setpoint_c
+        Type::FLOAT8,               // pipe_temp_1_c
+        Type::FLOAT8,               // pipe_temp_2_c
+        Type::FLOAT8,               // flow_temp_1_c
+        Type::FLOAT8,               // flow_temp_2_c
+        Type::FLOAT8,               // temperature_forecast_c
+        Type::FLOAT8,               // sun_radiation_forecast_w_m2
+        Type::FLOAT8,               // temperature_actual_c
+        Type::FLOAT8,               // sun_radiation_actual_w_m2
+        Type::FLOAT8,               // vpd_hpa
+        Type::FLOAT8,               // humidity_deficit_afd3_g_m3
+        Type::FLOAT8,               // relative_humidity_afd3_percent
+        Type::FLOAT8,               // humidity_deficit_afd4_g_m3
+        Type::FLOAT8,               // relative_humidity_afd4_percent
+        Type::INT4,                 // behov
+        Type::TEXT,                 // status_str
+        Type::INT4,                 // timer_on
+        Type::INT4,                 // timer_off
+        Type::FLOAT8,               // dli_sum
+        Type::TEXT,                 // oenske_ekstra_lys
+        Type::INT8,                 // lampe_timer_on
+        Type::INT8,                 // lampe_timer_off
+        Type::FLOAT8,               // value
     ]
 }

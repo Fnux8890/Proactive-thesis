@@ -16,3 +16,8 @@ requests
 pvlib
 astral
 pytest
+pydantic
+pydantic-settings
+eval-type-backport
+typing_extensions
+

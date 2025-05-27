@@ -89,6 +89,7 @@ pub fn db_retry_config() -> RetryConfig {
 }
 
 /// Retry configuration for file operations
+#[allow(dead_code)]
 pub fn file_retry_config() -> RetryConfig {
     RetryConfig {
         max_attempts: 3,

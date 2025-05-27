@@ -143,3 +143,4 @@ DataIngestion/rust_pipeline/data_pipeline/output/sensor_data_upsampled.csv
 DataIngestion/feature_extraction/era_detection_rust/output/*
 DataIngestion/feature_extraction/era_detection_rust/target/*
 utilities/dc-rust/target/*
+DataIngestion/rust_pipeline/pipeline_logs/*

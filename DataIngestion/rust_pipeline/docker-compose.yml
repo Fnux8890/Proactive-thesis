@@ -27,6 +27,8 @@ services:
       REDIS_URL: redis://redis:6379
       # Pass Database URL if needed (assumes db is running on ingestion-net)
       DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      # Enable/disable null value logging (set to "true" to enable, "false" or unset to disable)
+      ENABLE_NULL_LOGGING: "false"
     # deploy: # Commented out resource limits
     #   resources:
     #     limits:

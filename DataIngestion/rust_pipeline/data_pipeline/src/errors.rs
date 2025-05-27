@@ -53,6 +53,7 @@ pub enum PipelineError {
     #[error("Merge script execution failed: {0}")]
     MergeScriptError(String),
     #[error("Channel communication error: {0}")]
+    #[allow(dead_code)]
     ChannelError(String),
 }
 

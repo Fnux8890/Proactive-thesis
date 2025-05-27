@@ -38,7 +38,10 @@
       "Bash(gh status:*)",
       "Bash(gh issue:*)",
       "Bash(gh pr:*)",
-      "Bash(gh repo:*)"
+      "Bash(gh repo:*)",
+      "Bash(pip show:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
     ],
     "deny": []
   }

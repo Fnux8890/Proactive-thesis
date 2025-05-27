@@ -12,15 +12,18 @@ use std::time::Instant;
 /// Result of processing a single file
 #[derive(Debug)]
 pub struct FileProcessResult {
+    #[allow(dead_code)]
     pub config_index: usize,
     pub file_path: String,
     pub records: Vec<ParsedRecord>,
     pub error: Option<String>,
+    #[allow(dead_code)]
     pub processing_time_ms: u128,
 }
 
 /// Parallel file processor using Rayon
 pub struct ParallelProcessor {
+    #[allow(dead_code)]
     num_workers: usize,
 }
 
@@ -31,6 +34,7 @@ impl ParallelProcessor {
         Self { num_workers }
     }
 
+    #[allow(dead_code)]
     pub fn with_workers(num_workers: usize) -> Self {
         info!("Initializing ParallelProcessor with {} custom workers", num_workers);
         Self { num_workers }
@@ -100,6 +104,7 @@ impl ParallelProcessor {
 }
 
 /// Producer-Consumer pattern for batch processing
+#[allow(dead_code)]
 pub struct BatchProcessor<T: Send + 'static> {
     sender: Sender<Option<T>>,
     receiver: Receiver<Option<T>>,
@@ -107,6 +112,7 @@ pub struct BatchProcessor<T: Send + 'static> {
 }
 
 impl<T: Send + 'static> BatchProcessor<T> {
+    #[allow(dead_code)]
     pub fn new(buffer_size: usize) -> Self {
         let (sender, receiver) = bounded(buffer_size);
         Self {
@@ -116,15 +122,18 @@ impl<T: Send + 'static> BatchProcessor<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn sender(&self) -> Sender<Option<T>> {
         self.sender.clone()
     }
 
+    #[allow(dead_code)]
     pub fn receiver(&self) -> Receiver<Option<T>> {
         self.receiver.clone()
     }
 
     /// Process items in batches
+    #[allow(dead_code)]
     pub async fn process_batches<F, Fut>(
         &self,
         batch_size: usize,

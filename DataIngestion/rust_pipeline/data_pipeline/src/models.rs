@@ -1,3 +1,6 @@
+// Allow dead code for data models that are primarily used for deserialization
+#![allow(dead_code)]
+
 use serde::{Deserialize, Deserializer, Serialize};
 use serde::de::{self, Visitor};
 use std::collections::HashMap;
@@ -95,6 +98,7 @@ where
 
 // Enum to represent parsed sensor values more explicitly
 #[derive(Debug, Clone)] // Add Debug and Clone
+#[allow(dead_code)]
 pub enum SensorValue {
     Number(f64),
     Empty,
