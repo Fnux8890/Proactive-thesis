@@ -100,7 +100,7 @@ services:
       "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
       "--output-dir", "/app/data/shared_processed/era_labels",
       "--output-suffix", "_eras",
-      "--db-dsn", "postgresql://postgres:postgress@db:5432/postgres",
+      "--db-dsn", "postgresql://postgres:postgres@db:5432/postgres",
       "--signal-cols", "dli_sum,co2_status,light_intensity_lux,co2_measured_ppm,co2_required_ppm,radiation_w_m2,sun_radiation_forecast_w_m2,curtain_2_percent,vent_pos_1_percent,curtain_1_percent,vent_pos_2_percent",
       "--resample-every", "5m",
       "--pelt-min-size", "48",
