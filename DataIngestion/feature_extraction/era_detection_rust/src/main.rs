@@ -85,7 +85,7 @@ struct Cli {
     parallel_processing: bool,
 
     /// Maximum number of signals to process concurrently
-    #[clap(long, default_value_t = 8)]
+    #[clap(long, default_value_t = 12)]
     max_concurrent_signals: usize,
 }
 
@@ -194,6 +194,12 @@ fn main() -> Result<()> {
 }
 
 fn run_main() -> Result<()> {
+    // Ultra-early log to stderr, bypasses 'log' crate.
+    eprintln!("--- era_detector run_main CALLED (raw stderr check) ---");
+
+    // Early log using the 'log' crate. Confirms logger is initialized.
+    log::info!("--- era_detector run_main started (logger check) ---");
+
     // let cli = Cli::parse(); // Original line
     let cli = match Cli::try_parse() {
         Ok(parsed_cli) => {
@@ -211,7 +217,7 @@ fn run_main() -> Result<()> {
         }
     };
     
-    log::debug!("CLI arguments (obtained via try_parse): {:?}", cli);
+    log::info!("Parsed CLI arguments: {:?}", cli);
     log::info!("DB_DSN from env/args: {:?}", cli.db_dsn);
 
     if cli.input_parquet.is_none() && cli.db_dsn.is_none() {
@@ -219,13 +225,38 @@ fn run_main() -> Result<()> {
         anyhow::bail!("❌ Supply either --input-parquet or --db-dsn (or set DB_DSN env var)");
     }
 
-    log::info!("Era Detector application started.");
-    log::info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    // Moved EraDb initialization earlier with explicit logging
+    log::info!("Attempting to initialize EraDb. Provided DSN: {:?}", cli.db_dsn);
+    let era_db = match EraDb::new(cli.db_dsn.as_deref()) {
+        Ok(instance) => {
+            log::info!("SUCCESS: EraDb initialized successfully.");
+            Arc::new(instance)
+        }
+        Err(e) => {
+            // Convert 'e' to an anyhow::Error if it isn't already, then add context.
+            // If 'e' comes from a function returning Result<_, anyhow::Error>,
+            // it's already an anyhow::Error. If it's Result<_, OtherErrorType>,
+            // anyhow!(e) will wrap it.
+            let init_error = anyhow::anyhow!(e).context(format!(
+                "EraDb initialization failed. DSN used: {:?}",
+                cli.db_dsn
+            ));
+            log::error!("CRITICAL_ERROR_DB_INITIALIZATION_FAILED: {:?}", init_error);
+            
+            // Log the full error chain
+            let mut source = init_error.source();
+            let mut depth = 0;
+            while let Some(err_source) = source {
+                depth += 1;
+                log::error!("  Cause [{}]: {}", depth, err_source);
+                source = err_source.source();
+            }
+            return Err(init_error);
+        }
+    };
 
-    // Initialize EraDb with connection pool, passing DSN if provided
-    log::info!("Initializing database connection pool...");
-    let era_db = Arc::new(EraDb::new(cli.db_dsn.as_deref()).context("Failed to initialize EraDb connection pool")?);
-    log::info!("Database connection pool initialized successfully");
+    log::info!("Era Detector application core logic started (after DB init attempt).");
+    log::info!("Version: {}", env!("CARGO_PKG_VERSION"));
 
 
     let start_time_main = std::time::Instant::now();
@@ -414,7 +445,7 @@ fn run_main() -> Result<()> {
                                     );
                                     None // This None is for filter_map, if coverage is too low
                                 }
-                            }
+                            }   
                             _ => {
                                 log::trace!(
                                     "Column '{}' (dtype: {:?}) ignored (not a numeric signal type for auto-selection).",
@@ -425,12 +456,11 @@ fn run_main() -> Result<()> {
                             }
                         }
                     } else {
-                        // s.as_series() returned None, so we can't process this column for coverage.
                         log::warn!(
-                            "Column '{}' could not be represented as a Series for coverage check.",
+                            "Column '{}' could not be represented as a Series for coverage check during auto-selection.",
                             s.name()
                         );
-                        None // This None is for filter_map, if as_series() fails
+                        None
                     }
                 })
                 .collect();
@@ -625,6 +655,14 @@ fn run_main() -> Result<()> {
             }
             let era_a_series = Series::new("era_level_A".into(), era_a_values);
             let df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
+            // Delete old Level A data for this signal before saving new data
+            era_db_clone.as_ref().delete_era_labels_for_signal(
+                "era_labels_level_a",       // The target table
+                signal_name_to_process,     // The current signal
+                'A',                        // The current level
+                "PELT"                      // The current stage
+            ).with_context(|| format!("Failed to delete old Level A labels from DB for signal '{}'", signal_name_to_process))?;
+
             era_db_clone.as_ref().save_era_labels(
                 &df_out_a, 
                 "era_level_A", 
@@ -748,6 +786,10 @@ fn run_main() -> Result<()> {
                 }
                 let era_a_series = Series::new("era_level_A".into(), era_a_values);
                 let df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
+
+                // ADDED: Delete old Level A data for this signal
+                era_db_clone.as_ref().delete_era_labels_for_signal("era_labels_level_a", signal_name_to_process, 'A', "PELT")
+                    .with_context(|| format!("Failed to delete old Level A labels from DB for signal '{}'", signal_name_to_process))?;
                 era_db_clone.as_ref().save_era_labels(
                     &df_out_a, 
                     "era_level_A", 
@@ -781,6 +823,10 @@ fn run_main() -> Result<()> {
                     .collect();
                 let era_b_series = Series::new("era_level_B".into(), era_labels);
                 let df_out_b = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_b_series.into()])?;
+
+                // ADDED: Delete old Level B data for this signal
+                era_db_clone.as_ref().delete_era_labels_for_signal("era_labels_level_b", signal_name_to_process, 'B', "BOCPD")
+                    .with_context(|| format!("Failed to delete old Level B labels from DB for signal '{}'", signal_name_to_process))?;
                 era_db_clone.as_ref().save_era_labels(
                     &df_out_b, 
                     "era_level_B", 
@@ -804,6 +850,10 @@ fn run_main() -> Result<()> {
                 
                 let era_c_series = Series::new("era_level_C".into(), final_states_as_i32);
                 let df_out_c = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_c_series.into()])?;
+
+                // ADDED: Delete old Level C data for this signal
+                era_db_clone.as_ref().delete_era_labels_for_signal("era_labels_level_c", signal_name_to_process, 'C', "HMM")
+                    .with_context(|| format!("Failed to delete old Level C labels from DB for signal '{}'", signal_name_to_process))?;
                 era_db_clone.as_ref().save_era_labels(
                     &df_out_c, 
                     "era_level_C", 

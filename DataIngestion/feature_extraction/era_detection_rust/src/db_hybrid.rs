@@ -1,6 +1,7 @@
 // src/db_hybrid.rs - Updated to support both JSONB and hybrid table structures
 use anyhow::{Context, Result};
 use std::io::{Write, Cursor, Read};
+use chrono::{TimeZone, Utc}; // NaiveDateTime might no longer be needed directly here
 
 use polars::prelude::*;
 use r2d2_postgres::{PostgresConnectionManager, r2d2};
@@ -334,10 +335,16 @@ impl EraDb {
 
             if era_id != cur {
                 if seg_len > 0 {
+                    let seg_start_str = Utc.timestamp_micros(seg_start).single()
+                        .with_context(|| format!("Failed to convert seg_start ({}) to DateTime<Utc> for CSV", seg_start))?
+                        .format("%Y-%m-%d %H:%M:%S.%6f+00").to_string();
+                    let prev_ts_str = Utc.timestamp_micros(prev_ts).single()
+                        .with_context(|| format!("Failed to convert prev_ts ({}) to DateTime<Utc> for CSV", prev_ts))?
+                        .format("%Y-%m-%d %H:%M:%S.%6f+00").to_string();
                     writeln!(
                         csv_data,
                         "{},{},{},{},{},{},{}",
-                        signal, level, stage, cur, seg_start, prev_ts, seg_len
+                        signal, level, stage, cur, seg_start_str, prev_ts_str, seg_len
                     )?;
                 }
                 cur = era_id;
@@ -349,10 +356,16 @@ impl EraDb {
         }
         
         if df.height() > 0 {
+            let seg_start_str = Utc.timestamp_micros(seg_start).single()
+                .with_context(|| format!("Failed to convert seg_start ({}) to DateTime<Utc> for CSV (end of segments)", seg_start))?
+                .format("%Y-%m-%d %H:%M:%S.%6f+00").to_string();
+            let prev_ts_str = Utc.timestamp_micros(prev_ts).single()
+                .with_context(|| format!("Failed to convert prev_ts ({}) to DateTime<Utc> for CSV (end of segments)", prev_ts))?
+                .format("%Y-%m-%d %H:%M:%S.%6f+00").to_string();
             writeln!(
                 csv_data,
                 "{},{},{},{},{},{},{}",
-                signal, level, stage, cur, seg_start, prev_ts, seg_len
+                signal, level, stage, cur, seg_start_str, prev_ts_str, seg_len
             )?;
         }
 
@@ -375,6 +388,49 @@ impl EraDb {
             .with_context(|| format!("Failed to write data for COPY era_segments"))?;
         writer.finish()
             .with_context(|| format!("COPY era_segments failed during finish"))?;
+        Ok(())
+    }
+
+    pub fn delete_era_labels_for_signal(
+        &self,
+        target_table_name_raw: &str,
+        signal_name: &str,
+        level_char: char,
+        stage_str: &str,
+    ) -> Result<()> {
+        let table_name = quote_identifier(target_table_name_raw)
+            .with_context(|| format!("Failed to quote table name for delete: {}", target_table_name_raw))?;
+        let mut conn = self.pool.get().with_context(|| {
+            format!(
+                "Failed to get connection from pool for deleting labels from table: {}",
+                target_table_name_raw
+            )
+        })?;
+
+        let delete_sql = format!(
+            "DELETE FROM {} WHERE signal_name = $1 AND level = $2 AND stage = $3",
+            table_name
+        );
+
+        let level_str = level_char.to_string(); // Convert char to string for query parameter
+
+        let rows_affected = conn.execute(&delete_sql, &[&signal_name, &level_str, &stage_str])
+            .with_context(|| {
+                format!(
+                    "Failed to delete old era labels for signal '{}', level '{}', stage '{}' from table '{}'",
+                    signal_name, level_char, stage_str, target_table_name_raw
+                )
+            })?;
+
+        log::warn!(
+            "(DEBUG) Deleted {} old era labels for signal '{}', level '{}', stage '{}' from table '{}'",
+            rows_affected,
+            signal_name,
+            level_char,
+            stage_str,
+            target_table_name_raw
+        );
+
         Ok(())
     }
 }
