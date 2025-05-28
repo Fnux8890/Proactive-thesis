@@ -280,19 +280,51 @@ impl EraDb {
             return Ok(());
         }
 
+        // Use a transaction to ensure atomicity of delete + insert
+        let mut conn = self.pool.get()
+            .with_context(|| "Failed to get connection from pool for transaction")?;
+        
+        let mut transaction = conn.transaction()
+            .with_context(|| "Failed to start transaction for era label save")?;
+
+        // First, delete old data within the transaction
+        let delete_sql = format!(
+            "DELETE FROM {} WHERE signal_name = $1 AND level = $2 AND stage = $3",
+            target_table_name
+        );
+        let level_str = level_char.to_string();
+        
+        let rows_deleted = transaction.execute(&delete_sql, &[&signal_name, &level_str, &stage_str])
+            .with_context(|| {
+                format!(
+                    "Failed to delete old era labels for signal '{}', level '{}', stage '{}'",
+                    signal_name, level_char, stage_str
+                )
+            })?;
+
+        if rows_deleted > 0 {
+            log::debug!(
+                "Deleted {} old era labels for signal '{}', level '{}', stage '{}'",
+                rows_deleted, signal_name, level_char, stage_str
+            );
+        }
+
+        // Then, insert new data within the same transaction
         let copy_sql = format!(
             "COPY {} (signal_name, level, stage, era_id, start_time, end_time, rows) FROM STDIN CSV",
             target_table_name
         );
         
-        let _data_len = csv_data.len();
-        let mut conn = self.pool.get().with_context(|| format!("Failed to get connection from pool for saving"))?;
-        let mut writer = conn.copy_in(&copy_sql)
+        let mut writer = transaction.copy_in(&copy_sql)
             .with_context(|| format!("Failed to start COPY for table '{}'", target_table_name_raw))?;
         writer.write_all(&csv_data[..])
             .with_context(|| format!("Failed to write data for COPY to table '{}'", target_table_name_raw))?;
         writer.finish()
             .with_context(|| format!("COPY to table '{}' failed during finish", target_table_name_raw))?;
+        
+        // Commit the transaction
+        transaction.commit()
+            .with_context(|| format!("Failed to commit transaction for table '{}'", target_table_name_raw))?;
         
         Ok(())
     }
@@ -372,65 +404,5 @@ impl EraDb {
         Ok(csv_data)
     }
 
-    #[allow(dead_code)]
-    pub fn copy_segments_from_csv(
-        &self,
-        csv_data: &[u8],
-    ) -> Result<()> {
-        let stmt = "COPY era_labels \
-                    (signal_name,level,stage,era_id,start_time,end_time,rows) \
-                    FROM STDIN CSV";
-        let _data_len = csv_data.len();
-        let mut conn = self.pool.get().with_context(|| "Failed to get connection from pool")?;
-        let mut writer = conn.copy_in(stmt)
-            .with_context(|| format!("Failed to start COPY for era_segments"))?;
-        writer.write_all(&csv_data[..])
-            .with_context(|| format!("Failed to write data for COPY era_segments"))?;
-        writer.finish()
-            .with_context(|| format!("COPY era_segments failed during finish"))?;
-        Ok(())
-    }
 
-    pub fn delete_era_labels_for_signal(
-        &self,
-        target_table_name_raw: &str,
-        signal_name: &str,
-        level_char: char,
-        stage_str: &str,
-    ) -> Result<()> {
-        let table_name = quote_identifier(target_table_name_raw)
-            .with_context(|| format!("Failed to quote table name for delete: {}", target_table_name_raw))?;
-        let mut conn = self.pool.get().with_context(|| {
-            format!(
-                "Failed to get connection from pool for deleting labels from table: {}",
-                target_table_name_raw
-            )
-        })?;
-
-        let delete_sql = format!(
-            "DELETE FROM {} WHERE signal_name = $1 AND level = $2 AND stage = $3",
-            table_name
-        );
-
-        let level_str = level_char.to_string(); // Convert char to string for query parameter
-
-        let rows_affected = conn.execute(&delete_sql, &[&signal_name, &level_str, &stage_str])
-            .with_context(|| {
-                format!(
-                    "Failed to delete old era labels for signal '{}', level '{}', stage '{}' from table '{}'",
-                    signal_name, level_char, stage_str, target_table_name_raw
-                )
-            })?;
-
-        log::warn!(
-            "(DEBUG) Deleted {} old era labels for signal '{}', level '{}', stage '{}' from table '{}'",
-            rows_affected,
-            signal_name,
-            level_char,
-            stage_str,
-            target_table_name_raw
-        );
-
-        Ok(())
-    }
 }

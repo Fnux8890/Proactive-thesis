@@ -3,10 +3,11 @@
         "1": {
             "Name": "Docker DB (Timescale)",
             "Group": "Servers",
-            "Host": "db",
+            "Host": "localhost",
             "Port": 5432,
             "MaintenanceDB": "postgres",
             "Username": "postgres",
+            "Password": "postgres",
             "SSLMode": "prefer"
         }
     }

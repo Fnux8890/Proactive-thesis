@@ -55,9 +55,7 @@ services:
       - ./simulation_data_prep/create_extra_dbs.sql:/docker-entrypoint-initdb.d/01_create_extra_dbs.sql:ro # Adjusted path
       # Volume for pre_process SQL script (if not already handled by preprocess_feat service CMD)
       - ./feature_extraction/pre_process/create_preprocessed_hypertable.sql:/docker-entrypoint-initdb.d/02_create_preprocessed_hypertable.sql:ro
-      - ./feature_extraction/pre_process/phenotype_ingest.py:/app/phenotype_ingest.py:ro # Make accessible if needed by init
-      - ./feature_extraction/pre_process/phenotype.json:/app/phenotype.json:ro
-      - ./feature_extraction/pre_process/db_utils.py:/app/db_utils.py:ro
+      - ./feature_extraction/pre_process:/app/preprocess_assets:ro # Mount entire pre_process directory
       - postgres-data:/var/lib/postgresql/data
     networks:
       - ingestion-net

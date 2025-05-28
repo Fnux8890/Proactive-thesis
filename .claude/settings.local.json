@@ -41,7 +41,9 @@
       "Bash(gh repo:*)",
       "Bash(pip show:*)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(timeout 300 cargo check --quiet)",
+      "Bash(timeout 30 cargo check --message-format=short 2 >& 1)"
     ],
     "deny": []
   }

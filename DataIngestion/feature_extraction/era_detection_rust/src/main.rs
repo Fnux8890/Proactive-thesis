@@ -655,14 +655,8 @@ fn run_main() -> Result<()> {
             }
             let era_a_series = Series::new("era_level_A".into(), era_a_values);
             let df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
-            // Delete old Level A data for this signal before saving new data
-            era_db_clone.as_ref().delete_era_labels_for_signal(
-                "era_labels_level_a",       // The target table
-                signal_name_to_process,     // The current signal
-                'A',                        // The current level
-                "PELT"                      // The current stage
-            ).with_context(|| format!("Failed to delete old Level A labels from DB for signal '{}'", signal_name_to_process))?;
-
+            
+            // Note: Deletion is now handled inside save_era_labels as part of transaction
             era_db_clone.as_ref().save_era_labels(
                 &df_out_a, 
                 "era_level_A", 
@@ -787,9 +781,7 @@ fn run_main() -> Result<()> {
                 let era_a_series = Series::new("era_level_A".into(), era_a_values);
                 let df_out_a = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_a_series.into()])?;
 
-                // ADDED: Delete old Level A data for this signal
-                era_db_clone.as_ref().delete_era_labels_for_signal("era_labels_level_a", signal_name_to_process, 'A', "PELT")
-                    .with_context(|| format!("Failed to delete old Level A labels from DB for signal '{}'", signal_name_to_process))?;
+                // Note: Deletion is now handled inside save_era_labels as part of transaction
                 era_db_clone.as_ref().save_era_labels(
                     &df_out_a, 
                     "era_level_A", 
@@ -824,9 +816,7 @@ fn run_main() -> Result<()> {
                 let era_b_series = Series::new("era_level_B".into(), era_labels);
                 let df_out_b = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_b_series.into()])?;
 
-                // ADDED: Delete old Level B data for this signal
-                era_db_clone.as_ref().delete_era_labels_for_signal("era_labels_level_b", signal_name_to_process, 'B', "BOCPD")
-                    .with_context(|| format!("Failed to delete old Level B labels from DB for signal '{}'", signal_name_to_process))?;
+                // Note: Deletion is now handled inside save_era_labels as part of transaction
                 era_db_clone.as_ref().save_era_labels(
                     &df_out_b, 
                     "era_level_B", 
@@ -851,9 +841,7 @@ fn run_main() -> Result<()> {
                 let era_c_series = Series::new("era_level_C".into(), final_states_as_i32);
                 let df_out_c = DataFrame::new(vec![time_col_series_task_local.as_ref().clone(), era_c_series.into()])?;
 
-                // ADDED: Delete old Level C data for this signal
-                era_db_clone.as_ref().delete_era_labels_for_signal("era_labels_level_c", signal_name_to_process, 'C', "HMM")
-                    .with_context(|| format!("Failed to delete old Level C labels from DB for signal '{}'", signal_name_to_process))?;
+                // Note: Deletion is now handled inside save_era_labels as part of transaction
                 era_db_clone.as_ref().save_era_labels(
                     &df_out_c, 
                     "era_level_C", 
