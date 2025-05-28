@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from tsfresh.feature_selection import select_features
 from tsfresh.utilities.dataframe_functions import impute
 

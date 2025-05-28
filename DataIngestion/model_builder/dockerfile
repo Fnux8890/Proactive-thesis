@@ -1,14 +1,33 @@
 FROM rapidsai/base:25.04-cuda12.8-py3.12
+
+# Install build tools for LightGBM GPU support
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages including LightGBM with GPU support
 RUN pip install --no-cache-dir uv \
-    && uv pip install --system --no-cache-dir torch==2.3.* pytorch-lightning==2.* \
+    && uv pip install --system --no-cache-dir \
+    torch==2.3.* pytorch-lightning==2.* \
     pandas==2.* pyarrow==15.* \
-    scikit-learn==1.* matplotlib==3.* \
+    scikit-learn==1.* matplotlib==3.* seaborn==0.13.* \
     typing-extensions joblib==1.4.* \
-    mlflow-skinny
+    mlflow-skinny \
+    sqlalchemy==2.* psycopg2-binary \
+    && uv pip install --system --no-cache-dir lightgbm --config-settings=cmake.define.USE_GPU=ON
+
 # Create a writable /tmp/mlflow directory for potential client-side staging
 RUN mkdir -p /tmp/mlflow && chmod 777 /tmp/mlflow
+
 ENV PYTHONUNBUFFERED=1
+ENV CUDA_LAUNCH_BLOCKING=1
 
 WORKDIR /app
 COPY src/ ./src/
+
+# Default to LSTM training, but allow override
 CMD ["python", "-m", "src.training.train_surrogate"]

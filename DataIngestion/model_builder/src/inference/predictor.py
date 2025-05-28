@@ -3,7 +3,7 @@ import joblib
 import numpy as np
 from pathlib import Path
 import os # Import os to read environment variable
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional
 import logging
 
 # Use numpy typing if available (requires numpy >= 1.20)

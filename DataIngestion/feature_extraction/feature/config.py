@@ -18,7 +18,7 @@ DB_PORT = env("DB_PORT", "5432")
 DB_NAME = env("DB_NAME", "postgres")
 
 # Table name for database storage of selected features
-FEATURES_TABLE = env("FEATURES_TABLE", "tsfresh_selected_features")
+FEATURES_TABLE = env("FEATURES_TABLE", "tsfresh_features")
 
 # GPU flag used throughout the pipeline
 USE_GPU_FLAG = env("USE_GPU", "false").lower() == "true"
@@ -34,6 +34,9 @@ OUTPUT_PATH = Path(env("OUTPUT_PATH", "output/features.parquet"))
 SELECTED_OUTPUT_PATH = Path(
     env("SELECTED_OUTPUT_PATH", "output/features_selected.parquet")
 )
+
+# Era detection configuration
+ERA_ID_COLUMN_KEY = env("ERA_ID_COLUMN_KEY", "era_level_B")
 
 # Supervised feature selection settings
 USE_SUPERVISED_SELECTION = env("USE_SUPERVISED_SELECTION", "false").lower() == "true"

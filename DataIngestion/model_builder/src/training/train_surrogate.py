@@ -16,7 +16,7 @@ from pytorch_lightning.loggers import MLFlowLogger
 import matplotlib.pyplot as plt
 
 # New imports for refactored structure
-from ..config import GlobalConfig, DataConfig, ModelConfig, TrainerConfig # Relative import
+from ..config import GlobalConfig, DataConfig # Relative import
 from ..models.components import LSTMBackbone
 from ..models.lstm_regressor import LSTMRegressor
 
@@ -282,7 +282,7 @@ def train_model(args, cfg: GlobalConfig):
     max_epochs = cfg.trainer.max_epochs
     # Log smoke test only if applicable
     if args.smoke_test:
-        logger.warning(f"Smoke test: Limiting training to 1 epoch.")
+        logger.warning("Smoke test: Limiting training to 1 epoch.")
     else:
         logger.info(f"Training for {max_epochs} epochs.") # Log the determined epochs
 
@@ -530,8 +530,10 @@ if __name__ == "__main__":
     config = GlobalConfig()
 
     # Override paths from args if provided
-    if args.data_dir: config.data_dir = args.data_dir
-    if args.model_dir: config.model_dir = args.model_dir
+    if args.data_dir:
+        config.data_dir = args.data_dir
+    if args.model_dir:
+        config.model_dir = args.model_dir
 
     # Determine GPU tag (used for output path AND default epochs)
     gpu_tag = os.getenv("GPU_TAG", "default_gpu")

@@ -23,8 +23,14 @@ mod level_a;
 mod level_b;
 mod level_c;
 mod db_hybrid;
+mod column_selection;
+mod optimal_signals;
+
 // Use hybrid DB module that auto-detects table structure
 use crate::db_hybrid::EraDb;
+use crate::column_selection::select_columns;
+use crate::optimal_signals::OptimalSignals;
+use crate::io::coverage;
 
 /// Where the program should read the input data from.
 /// * `--input-parquet  some_file.parquet`  (old behaviour)
@@ -89,52 +95,47 @@ struct Cli {
     max_concurrent_signals: usize,
 }
 
-/// Optimal signal groups based on empirical coverage analysis
-struct OptimalSignals {
-    /// Primary signals with highest coverage and reliability
-    primary: Vec<&'static str>,
-    /// Secondary signals with moderate coverage
-    secondary: Vec<&'static str>,
-}
 
-impl OptimalSignals {
-    fn new() -> Self {
-        Self {
-            primary: vec![
-                "dli_sum",                // 100% - Primary light metric
-                "radiation_w_m2",         // 4.2% - Solar radiation
-                "outside_temp_c",         // 3.8% - External temperature
-                "co2_measured_ppm",       // 3.8% - Growth indicator
-                "air_temp_middle_c",      // 3.5% - Internal climate
-                "air_temp_c",             // Alternative temperature signal
-                "relative_humidity_percent", // Humidity control
-                "light_intensity_umol",   // Light intensity
-            ],
-            secondary: vec![
-                "pipe_temp_1_c",          // 3.5% - Heating system
-                "curtain_1_percent",      // 3.7% - Light control
-                "humidity_deficit_g_m3",  // 3.5% - Humidity control
-                "heating_setpoint_c",     // Heating control
-                "vpd_hpa",                // Vapor pressure deficit
-                "total_lamps_on",         // Artificial lighting status
-            ],
+/// Parses a JSON string and extracts numeric values for specified keys
+fn parse_json_features(json_str: &str, all_keys: &std::collections::HashSet<String>) -> Result<std::collections::HashMap<String, Option<f64>>> {
+    let mut result = std::collections::HashMap::new();
+    
+    match serde_json::from_str::<serde_json::Value>(json_str) {
+        Ok(serde_json::Value::Object(map)) => {
+            for key in all_keys {
+                let value = map.get(key).and_then(|val| {
+                    match val {
+                        serde_json::Value::Number(n) => n.as_f64(),
+                        _ => {
+                            log::warn!("Non-numeric value found for key '{}': {:?}", key, val);
+                            None
+                        }
+                    }
+                });
+                result.insert(key.clone(), value);
+            }
+        }
+        Ok(other) => {
+            log::warn!("Expected JSON object but got: {:?}", other);
+            for key in all_keys {
+                result.insert(key.clone(), None);
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to parse JSON: {}. Content: {}", e, json_str);
+            for key in all_keys {
+                result.insert(key.clone(), None);
+            }
         }
     }
-
-    fn get_all(&self) -> Vec<&str> {
-        let mut all = self.primary.clone();
-        all.extend(self.secondary.iter());
-        all
-    }
+    
+    Ok(result)
 }
 
 /// Helper function to persist a given era level's DataFrame to the database.
 /// Connects to DB, builds CSV, and copies data for a specific signal, level, and stage.
 
 
-fn coverage(series: &Series) -> f32 {
-    (series.len() - series.null_count()) as f32 / series.len() as f32
-}
 
 /// Quantizes a signal from f64 to u8 values
 fn quantize_signal_f64(signal: &[f64], max_val: u8) -> (Vec<u8>, f64, f64) {
@@ -151,7 +152,6 @@ fn quantize_signal_f64(signal: &[f64], max_val: u8) -> (Vec<u8>, f64, f64) {
     }
     
     let range = max_val_signal - min_val;
-    let _scale = max_val as f64 / range; // Prefixed with underscore to silence warning
     
     let quantized: Vec<u8> = signal
         .iter()
@@ -299,50 +299,46 @@ fn run_main() -> Result<()> {
     if df_main.column("features").is_ok() && df_main.column("features")?.dtype() == &DataType::String {
         log::info!("'features' column found (JSONB as string). Parsing and unnesting...");
 
-        // Parse JSON manually using serde_json
+        // Parse JSON manually using serde_json with improved error handling
         let features_series = df_main.column("features")?;
         let features_ca = features_series.str()?;
         
         // Collect all unique keys from the JSON objects
         let mut all_keys = std::collections::HashSet::new();
-        for opt_str in features_ca.into_iter() {
+        let mut parse_errors = 0;
+        for (idx, opt_str) in features_ca.into_iter().enumerate() {
             if let Some(json_str) = opt_str {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
-                    if let serde_json::Value::Object(map) = parsed {
+                match serde_json::from_str::<serde_json::Value>(json_str) {
+                    Ok(serde_json::Value::Object(map)) => {
                         all_keys.extend(map.keys().cloned());
+                    }
+                    Ok(_other) => {
+                        log::warn!("Row {}: Expected JSON object but got non-object value", idx);
+                        parse_errors += 1;
+                    }
+                    Err(e) => {
+                        log::error!("Row {}: JSON parse error: {}. Content preview: {}...", 
+                            idx, e, &json_str[..json_str.len().min(100)]);
+                        parse_errors += 1;
                     }
                 }
             }
         }
         
+        if parse_errors > 0 {
+            log::warn!("Encountered {} JSON parsing errors out of {} rows", parse_errors, df_main.height());
+        }
+        
+        log::info!("Found {} unique keys in JSON features", all_keys.len());
+        
         // Create new columns for each key found
         let mut new_columns = vec![];
-        for key in all_keys {
+        for key in &all_keys {
             let mut values = Vec::with_capacity(df_main.height());
             for opt_str in features_ca.into_iter() {
                 if let Some(json_str) = opt_str {
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
-                        if let serde_json::Value::Object(map) = parsed {
-                            if let Some(val) = map.get(&key) {
-                                match val {
-                                    serde_json::Value::Number(n) => {
-                                        if let Some(f) = n.as_f64() {
-                                            values.push(Some(f));
-                                        } else {
-                                            values.push(None);
-                                        }
-                                    }
-                                    _ => values.push(None),
-                                }
-                            } else {
-                                values.push(None);
-                            }
-                        } else {
-                            values.push(None);
-                        }
-                    } else {
-                        values.push(None);
-                    }
+                    let parsed_values = parse_json_features(json_str, &all_keys)?;
+                    values.push(parsed_values.get(key).copied().flatten());
                 } else {
                     values.push(None);
                 }
@@ -614,8 +610,23 @@ fn run_main() -> Result<()> {
         .filter(|&name| name.as_str() != "time")
         .collect();
     
+    // Adaptive parallelism based on available resources
+    let num_cpus = num_cpus::get();
+    let optimal_parallelism = std::cmp::min(
+        signal_columns.len(),
+        std::cmp::min(cli.max_concurrent_signals, num_cpus)
+    );
+    
     let processing_results: Vec<Result<()>> = if cli.parallel_processing && signal_columns.len() > 1 {
-        log::info!("Processing {} signals in parallel", signal_columns.len());
+        log::info!("Processing {} signals in parallel (optimal parallelism: {}, CPUs: {})", 
+            signal_columns.len(), optimal_parallelism, num_cpus);
+        
+        // Configure rayon thread pool
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(optimal_parallelism)
+            .build_global()
+            .unwrap_or_else(|e| log::warn!("Failed to set thread pool size: {}", e));
+        
         signal_columns.par_iter().map(|&signal_name_to_process| {
             let era_db_clone = Arc::clone(&era_db);
             let feature_df_task_local = Arc::clone(&feature_df_arc);
@@ -714,8 +725,7 @@ fn run_main() -> Result<()> {
             let viterbi_states_c = level_c::viterbi_path_from_observations(
                 &hmm_signal_vec_u8, 
                 cli.hmm_states, 
-                cli.quant_max_val, 
-                cli.hmm_iterations 
+                cli.quant_max_val
             )?;
             log::info!("Level C for '{}': HMM Viterbi path calculated. Num states in path: {}, Time: {:.2?}", 
                 signal_name_to_process,
@@ -834,7 +844,7 @@ fn run_main() -> Result<()> {
                     .with_context(|| format!("HMM signal column '{}' not found in feature_df", signal_name_to_process))?;
                 let hmm_signal_vec = io::series_to_vec_f64(hmm_signal_column.as_series().expect("Series conversion failed for HMM"))?;
                 let (quantized_data, _min_val, _max_val) = quantize_signal_f64(&hmm_signal_vec, cli.quant_max_val); // Prefixed unused vars
-                let predicted_states = level_c::viterbi_path_from_observations(&quantized_data, cli.hmm_states, cli.quant_max_val, cli.hmm_iterations)?;
+                let predicted_states = level_c::viterbi_path_from_observations(&quantized_data, cli.hmm_states, cli.quant_max_val)?;
                 let final_states_as_i32: Vec<i32> = predicted_states.into_iter().map(|s| s as i32).collect();
                 log::info!("Level C for '{}': HMM predicted {} states. Time: {:.2?}", signal_name_to_process, cli.hmm_states, hmm_start_time.elapsed());
                 

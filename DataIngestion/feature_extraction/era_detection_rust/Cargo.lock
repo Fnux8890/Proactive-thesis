@@ -825,6 +825,7 @@ dependencies = [
  "lazy_static",
  "log",
  "ndarray 0.13.1",
+ "num_cpus",
  "polars",
  "postgres",
  "r2d2",

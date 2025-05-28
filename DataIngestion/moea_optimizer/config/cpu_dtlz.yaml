@@ -1,0 +1,70 @@
+# CPU NSGA-III configuration for DTLZ benchmark problems
+# Inherits from base.yaml and overrides specific settings
+
+meta:
+  description: "CPU-based NSGA-III on DTLZ test suite"
+  experiment_name: "cpu_dtlz_benchmark"
+  
+# Override hardware settings
+hardware:
+  device: "cpu"
+  n_parallel: 4  # CPU cores for parallel evaluation
+
+# Problem configuration
+problem:
+  suite: "dtlz"
+  problems:
+    - name: "DTLZ1"
+      n_var: 7
+      n_obj: 3
+      k: 5  # n_var - n_obj + 1
+    - name: "DTLZ2" 
+      n_var: 12
+      n_obj: 3
+      k: 10
+    - name: "DTLZ3"
+      n_var: 12
+      n_obj: 3 
+      k: 10
+    - name: "DTLZ4"
+      n_var: 12
+      n_obj: 3
+      k: 10
+      alpha: 100  # DTLZ4 specific parameter
+    - name: "DTLZ5"
+      n_var: 12
+      n_obj: 3
+      k: 10
+    - name: "DTLZ6"
+      n_var: 12
+      n_obj: 3
+      k: 10
+    - name: "DTLZ7"
+      n_var: 22
+      n_obj: 3
+      k: 20
+
+# Algorithm specific overrides
+algorithm:
+  population_size: 92  # Adjusted for 3-obj NSGA-III reference points
+  n_generations: 400   # More generations for convergence analysis
+
+# Evaluation specifics for DTLZ
+evaluation:
+  # Reference points for hypervolume calculation
+  reference_point: [11.0, 11.0, 11.0]  # For DTLZ1
+  
+  # Problem-specific reference points
+  dtlz_references:
+    DTLZ1: [11.0, 11.0, 11.0]
+    DTLZ2: [2.5, 2.5, 2.5]
+    DTLZ3: [2.5, 2.5, 2.5]
+    DTLZ4: [2.5, 2.5, 2.5]
+    DTLZ5: [2.5, 2.5, 2.5]
+    DTLZ6: [2.5, 2.5, 2.5]
+    DTLZ7: [1.0, 1.0, 7.0]
+
+# Output configuration
+output:
+  experiment_dir: "cpu_dtlz"
+  save_interval: 50

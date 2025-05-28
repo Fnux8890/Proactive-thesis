@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import numpy as np
 import sqlalchemy
 
@@ -16,7 +15,6 @@ except Exception:  # pragma: no cover - cudf optional
     cudf_pd = None
 
 import pandas as pd
-
 
 # ---------------------------------------------------------------------------
 # Feature selection

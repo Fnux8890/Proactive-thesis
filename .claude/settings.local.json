@@ -43,7 +43,9 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Bash(timeout 300 cargo check --quiet)",
-      "Bash(timeout 30 cargo check --message-format=short 2 >& 1)"
+      "Bash(timeout 30 cargo check --message-format=short 2 >& 1)",
+      "Bash(ruff check:*)",
+      "Bash(uv pip list:*)"
     ],
     "deny": []
   }

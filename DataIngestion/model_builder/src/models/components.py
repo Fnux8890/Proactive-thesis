@@ -1,6 +1,5 @@
 # Core neural network building blocks (nn.Module) 
 
-import torch
 import torch.nn as nn
 
 class LSTMBackbone(nn.Module):

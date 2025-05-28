@@ -20,32 +20,31 @@ Environment variables (all have sensible defaults for docker-compose):
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-import random
-from typing import Any
+import sys  # For checking loaded modules
+import textwrap
+import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np  # Added for np.number
 import pandas as original_pandas  # Use this for true pandas operations
 import sqlalchemy
 from sqlalchemy import text
-import sys  # For checking loaded modules
-import json
-import time
-import textwrap
-from tsfresh.feature_extraction import MinimalFCParameters, EfficientFCParameters
 from tsfresh import extract_features
+from tsfresh.feature_extraction import EfficientFCParameters, MinimalFCParameters
+
+# Import dtype helpers from backend
+from ..backend.dtypes import is_datetime as is_datetime64_dtype, is_numeric as is_numeric_dtype
 from ..db_utils_optimized import SQLAlchemyPostgresConnector
 from . import config
 from .feature_utils import (
-    select_relevant_features,
     make_hypertable_if_needed,
+    select_relevant_features,
 )
 from .feature_utils_supervised import select_tsfresh_features
-
-# Import dtype helpers from backend
-from ..backend.dtypes import is_numeric as is_numeric_dtype, is_datetime as is_datetime64_dtype
 
 # Conditional import for cuDF checking
 try:
@@ -64,8 +63,8 @@ gpd = None # Will store cudf.pandas if available
 
 if config.USE_GPU_FLAG:
     try:
-        import cudf.pandas as gpd  # gpd becomes cudf.pandas
         import cudf  # For explicit cudf.DataFrame, etc.
+        import cudf.pandas as gpd  # gpd becomes cudf.pandas
         # pd remains original_pandas
         logging.info("Running in GPU mode with cudf.pandas (as gpd) and original pandas (as pd).")
     except ImportError as e:
@@ -126,14 +125,14 @@ kind_to_fc_parameters_global: dict[str, Any] = {}
 
 
 def save_dataframe_to_parquet(
-    df: pd.DataFrame, 
-    output_path: Path, 
+    df: pd.DataFrame,
+    output_path: Path,
     use_gpu_flag: bool = False,
     df_type_name: str = "dataframe"
 ) -> None:
     """
     Save a DataFrame to Parquet format with proper handling for cuDF/pandas.
-    
+
     Args:
         df: DataFrame to save (pandas or cuDF)
         output_path: Path where to save the parquet file
@@ -141,10 +140,10 @@ def save_dataframe_to_parquet(
         df_type_name: Descriptive name for logging (e.g., "full features", "selected features")
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Get compression setting from environment with default
     compression = os.getenv("PARQUET_COMPRESSION", "snappy")
-    
+
     try:
         if (
             use_gpu_flag
@@ -167,7 +166,7 @@ def save_dataframe_to_parquet(
                 compression=compression
             )
             logging.info(f"Successfully wrote {df_type_name} to {output_path} using pandas with compression={compression}")
-            
+
     except Exception as e:
         logging.error(f"Failed to write {df_type_name} to Parquet: {e}", exc_info=True)
         raise
@@ -210,7 +209,7 @@ def perform_feature_selection(features_df, consolidated_df, target_column_name):
 
             # Extract the target series
             y_series = consolidated_df[target_column_name]
-            
+
             # Initialize aligned versions
             features_df_aligned = features_df
             y_series_aligned = y_series
@@ -317,7 +316,7 @@ def main() -> None:
     start_time_main = time.time()
 
     logging.info("Starting feature extraction …")
-    
+
     # Initialize database connector
     connector = SQLAlchemyPostgresConnector(
         user=config.DB_USER,
@@ -326,28 +325,28 @@ def main() -> None:
         port=config.DB_PORT,
         db_name=config.DB_NAME
     )
-    
+
     try:
         # Query to fetch data from preprocessed_features hypertable
         # JSONB features column will be expanded into separate columns
         query = """
-        SELECT 
+        SELECT
             time,
             era_identifier,
             jsonb_each_text(features) as (feature_name, feature_value)
         FROM preprocessed_features
         ORDER BY time
         """
-        
+
         # For wide format, we need a different query that pivots the JSONB data
         # Add optional date filtering via environment variables
         start_date = os.getenv("FEATURE_EXTRACTION_START_DATE", "")
         end_date = os.getenv("FEATURE_EXTRACTION_END_DATE", "")
-        
+
         # Build parameterized date filter to prevent SQL injection
         date_filter = ""
         query_params = {}
-        
+
         if start_date or end_date:
             filters = []
             if start_date:
@@ -358,10 +357,10 @@ def main() -> None:
                 query_params['end_date'] = end_date
             date_filter = f"WHERE {' AND '.join(filters)}"
             logging.info(f"Applying date filter with params: {query_params}")
-        
+
         wide_query = f"""
         WITH feature_data AS (
-            SELECT 
+            SELECT
                 time,
                 era_identifier,
                 (jsonb_each_text(features)).key as feature_name,
@@ -369,7 +368,7 @@ def main() -> None:
             FROM preprocessed_features
             {date_filter}
         )
-        SELECT 
+        SELECT
             time,
             era_identifier,
             jsonb_object_agg(feature_name, feature_value) as features
@@ -377,89 +376,87 @@ def main() -> None:
         GROUP BY time, era_identifier
         ORDER BY time
         """
-        
+
         logging.info("Loading data from TimescaleDB preprocessed_features hypertable...")
-        
+
         # Use chunked loading for large datasets
         chunk_size = int(os.getenv("FEATURE_EXTRACTION_CHUNK_SIZE", "10000"))
-        
+
         # Check if we should use chunked loading
         if chunk_size > 0:
             logging.info(f"Using chunked loading with chunk size: {chunk_size}")
-            
+
             # Use generator to avoid holding all chunks in memory
             def process_chunks():
                 for chunk_num, chunk in enumerate(connector.fetch_data_to_pandas(text(wide_query).bindparams(**query_params) if query_params else text(wide_query), chunksize=chunk_size)):
                     if chunk.empty:
                         continue
-                        
+
                     logging.info(f"Processing chunk {chunk_num + 1} with {len(chunk)} rows")
-                    
+
                     # Expand the JSONB features column into separate columns
                     features_expanded = original_pandas.json_normalize(chunk['features'])
                     # Reset indices to ensure proper alignment
                     chunk_time_era = chunk[['time', 'era_identifier']].reset_index(drop=True)
                     features_expanded = features_expanded.reset_index(drop=True)
                     chunk_df = original_pandas.concat([
-                        chunk_time_era, 
+                        chunk_time_era,
                         features_expanded
                     ], axis=1)
-                    
+
                     yield chunk_df
-            
+
             # Process chunks using generator to avoid memory duplication
             chunk_generator = process_chunks()
-            
+
             # Accumulate chunks in a list to avoid quadratic complexity
             chunk_list = []
-            chunk_count = 0
             total_rows = 0
-            
-            for chunk in chunk_generator:
-                chunk_count += 1
+
+            for chunk_count, chunk in enumerate(chunk_generator, 1):
                 chunk_rows = len(chunk)
                 total_rows += chunk_rows
-                
+
                 # Process chunk immediately while it's in memory
                 logging.info(f"Processing chunk {chunk_count} with {chunk_rows} rows")
-                
+
                 # Add chunk to list for later concatenation
                 chunk_list.append(chunk)
-                
+
                 # Log progress for large datasets
                 if chunk_count % 10 == 0:
                     logging.info(f"Processed {chunk_count} chunks, {total_rows} total rows")
-            
+
             if not chunk_list:
                 logging.error("No data found in preprocessed_features hypertable. Exiting.")
                 return
-            
+
             # Perform single concatenation at the end for O(n) complexity
             logging.info(f"Concatenating {len(chunk_list)} chunks into final DataFrame...")
             consolidated_df = original_pandas.concat(chunk_list, ignore_index=True)
-            
+
             # Clear the chunk list to free memory
             chunk_list.clear()
             logging.info(f"Total rows loaded: {len(consolidated_df)}")
-            
+
         else:
             # Non-chunked loading for smaller datasets
             temp_df = connector.fetch_data_to_pandas(text(wide_query).bindparams(**query_params) if query_params else text(wide_query))
-            
+
             if temp_df.empty:
                 logging.error("No data found in preprocessed_features hypertable. Exiting.")
                 return
-                
+
             # Expand the JSONB features column into separate columns
             features_expanded = original_pandas.json_normalize(temp_df['features'])
             # Reset indices to ensure proper alignment
             temp_time_era = temp_df[['time', 'era_identifier']].reset_index(drop=True)
             features_expanded = features_expanded.reset_index(drop=True)
             consolidated_df = original_pandas.concat([
-                temp_time_era, 
+                temp_time_era,
                 features_expanded
             ], axis=1)
-        
+
         # Convert to GPU DataFrame if needed
         if USE_GPU_FLAG and "cudf" in sys.modules:
             consolidated_df = cudf.DataFrame.from_pandas(consolidated_df)
@@ -520,7 +517,7 @@ def main() -> None:
                 f"Loading sentinel value configuration from: {config_file_path}"
             )
             try:
-                with open(config_file_path, "r") as f:
+                with open(config_file_path) as f:
                     config_data = json.load(f)
 
                 sentinel_replacements_from_config = config_data.get(
@@ -710,9 +707,15 @@ def main() -> None:
         return
 
     # --- Load Era Definitions ---
-    era_definitions_df = load_era_definitions(
-        era_definitions_dir_path, config.ERA_ID_COLUMN_KEY
-    )
+    # TODO: Implement loading era definitions from database or files
+    # For now, create an empty dataframe to prevent undefined variable error
+    era_definitions_df = pd.DataFrame(columns=['era_id', 'start_time', 'end_time'])
+    logging.warning("Era definitions loading not implemented - using empty dataframe")
+
+    # Original code commented out - needs load_era_definitions function
+    # era_definitions_df = load_era_definitions(
+    #     era_definitions_dir_path, config.ERA_ID_COLUMN_KEY
+    # )
     if era_definitions_df.empty:
         logging.error(
             "No era definitions loaded. Cannot proceed with era-based feature extraction. Exiting."
@@ -818,8 +821,8 @@ def main() -> None:
 
         # At this point, era_data_for_tsfresh should ideally be a pandas DataFrame.
         logging.info("Extracting features for era %s (%d kinds from %d sensors)...",
-                     era.era_id, 
-                     era_data_for_tsfresh['kind'].nunique() if not era_data_for_tsfresh.empty else 0, 
+                     era.era_id,
+                     era_data_for_tsfresh['kind'].nunique() if not era_data_for_tsfresh.empty else 0,
                      len(sensor_columns_for_melt))
 
         try:
@@ -874,13 +877,13 @@ def main() -> None:
         final_features = original_pandas.DataFrame()
     else:
         logging.info(f"Concatenating features from {len(valid_features)} eras.")
-        
+
         # Determine if we should use GPU or CPU based on USE_GPU_FLAG and availability
         if USE_GPU_FLAG and 'cudf' in sys.modules:
             # GPU path: Count DataFrame types to determine optimal strategy
             cudf_count = sum(1 for f in valid_features if isinstance(f, cudf.DataFrame))
             pandas_count = len(valid_features) - cudf_count
-            
+
             if cudf_count == 0 and pandas_count > 0:
                 # All pandas, convert to cuDF for GPU processing
                 logging.info(f"Converting all {pandas_count} pandas DataFrames to cuDF for GPU concatenation.")
@@ -889,7 +892,7 @@ def main() -> None:
                     final_features = cudf.concat(processed_valid_features, ignore_index=True)
                 except Exception as e:
                     logging.error(f"GPU processing failed: {e}. Cannot proceed without GPU when USE_GPU_FLAG is set.")
-                    raise RuntimeError("GPU processing required but failed. Check CUDA installation and GPU availability.")
+                    raise RuntimeError("GPU processing required but failed. Check CUDA installation and GPU availability.") from e
             elif pandas_count > 0:
                 # Mixed types, convert minority to majority
                 if cudf_count >= pandas_count:
@@ -949,9 +952,9 @@ def main() -> None:
     # Save to parquet
     logging.info(f"Writing final features to: {OUTPUT_PATH}")
     save_dataframe_to_parquet(
-        final_features, 
-        OUTPUT_PATH, 
-        USE_GPU_FLAG, 
+        final_features,
+        OUTPUT_PATH,
+        USE_GPU_FLAG,
         "full feature set"
     )
 
@@ -1011,7 +1014,7 @@ def main() -> None:
                         logging.info("Disposed existing SQLAlchemy engine before creating new connector")
                     except Exception as e:
                         logging.warning(f"Error disposing existing connector: {e}")
-                
+
                 connector = SQLAlchemyPostgresConnector(
                     user=DB_USER,
                     password=DB_PASSWORD,
@@ -1130,7 +1133,7 @@ def main() -> None:
 
     # NOTE: The following section was removed as it appeared to be orphaned dead code
     # with undefined selected_features and orphaned except blocks
-    
+
     # # Optionally store the selected features in the database
     # try:
     #     if not selected_features.empty:

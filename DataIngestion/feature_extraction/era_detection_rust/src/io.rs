@@ -28,6 +28,11 @@ pub fn series_to_vec_f64(series: &Series) -> Result<Vec<f64>> {
     Ok(ca.into_iter().filter_map(|opt_val| opt_val).collect())
 }
 
+/// Calculate the coverage (non-null ratio) of a series
+pub fn coverage(series: &Series) -> f32 {
+    (series.len() - series.null_count()) as f32 / series.len() as f32
+}
+
 #[allow(dead_code)]
 pub fn series_to_vec_u8(series: &Series) -> Result<Vec<u8>> {
     let s_u8 = series.cast(&DataType::UInt8)

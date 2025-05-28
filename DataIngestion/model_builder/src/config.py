@@ -1,6 +1,6 @@
 # Configuration dataclasses (or Hydra config setup)
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import Dict
 
 @dataclass
 class ModelConfig:

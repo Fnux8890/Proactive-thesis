@@ -1,0 +1,78 @@
+# GPU TensorNSGA-III configuration for DTLZ benchmark problems
+# Inherits from base.yaml and overrides specific settings
+
+meta:
+  description: "GPU-accelerated TensorNSGA-III on DTLZ test suite"
+  experiment_name: "gpu_dtlz_benchmark"
+  
+# Override hardware settings
+hardware:
+  device: "cuda"
+  cuda_device_id: 0
+  n_parallel: 100  # Parallel evaluations on GPU
+  batch_size: 1000  # Batch size for tensor operations
+
+# Use same problem configuration as CPU for fair comparison
+problem:
+  suite: "dtlz"
+  problems:
+    - name: "DTLZ1"
+      n_var: 7
+      n_obj: 3
+      k: 5
+    - name: "DTLZ2" 
+      n_var: 12
+      n_obj: 3
+      k: 10
+    - name: "DTLZ3"
+      n_var: 12
+      n_obj: 3 
+      k: 10
+    - name: "DTLZ4"
+      n_var: 12
+      n_obj: 3
+      k: 10
+      alpha: 100
+    - name: "DTLZ5"
+      n_var: 12
+      n_obj: 3
+      k: 10
+    - name: "DTLZ6"
+      n_var: 12
+      n_obj: 3
+      k: 10
+    - name: "DTLZ7"
+      n_var: 22
+      n_obj: 3
+      k: 20
+
+# Algorithm specific overrides for GPU
+algorithm:
+  population_size: 92
+  n_generations: 400
+  # GPU-specific settings
+  use_torch_compile: true  # Enable torch.compile for speedup
+  mixed_precision: true    # Use FP16 where possible
+
+# Same evaluation settings as CPU for comparison
+evaluation:
+  reference_point: [11.0, 11.0, 11.0]
+  
+  dtlz_references:
+    DTLZ1: [11.0, 11.0, 11.0]
+    DTLZ2: [2.5, 2.5, 2.5]
+    DTLZ3: [2.5, 2.5, 2.5]
+    DTLZ4: [2.5, 2.5, 2.5]
+    DTLZ5: [2.5, 2.5, 2.5]
+    DTLZ6: [2.5, 2.5, 2.5]
+    DTLZ7: [1.0, 1.0, 7.0]
+    
+  # GPU memory monitoring
+  monitor_memory: true
+
+# Output configuration
+output:
+  experiment_dir: "gpu_dtlz"
+  save_interval: 50
+  # Additional GPU profiling
+  save_cuda_profile: true

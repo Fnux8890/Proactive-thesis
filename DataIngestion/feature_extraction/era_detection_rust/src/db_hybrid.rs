@@ -43,6 +43,11 @@ impl EraDb {
         );
         
         let pool = r2d2::Pool::builder()
+            .max_size(20)  // Increase from default 10
+            .min_idle(Some(5))  // Keep 5 idle connections ready
+            .connection_timeout(std::time::Duration::from_secs(30))
+            .max_lifetime(Some(std::time::Duration::from_secs(1800)))  // 30 minutes
+            .idle_timeout(Some(std::time::Duration::from_secs(600)))   // 10 minutes
             .build(manager)
             .with_context(|| "Failed to create R2D2 connection pool")?;
 

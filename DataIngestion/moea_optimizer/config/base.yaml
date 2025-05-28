@@ -1,0 +1,80 @@
+# Base configuration for MOEA optimization experiments
+# Global defaults that can be overridden by specific experiment configs
+
+meta:
+  description: "Global defaults for MOEA benchmarking"
+  version: "1.0.0"
+
+# Random seed configuration
+seeds:
+  numpy: 42
+  torch: 42
+  random: 42
+  replications: 5  # Number of independent runs per experiment
+
+# Algorithm defaults
+algorithm:
+  population_size: 100
+  n_generations: 200
+  verbose: true
+  
+  # NSGA-III specific
+  n_reference_points: 12
+  
+  # Crossover
+  crossover_prob: 0.9
+  crossover_eta: 15
+  
+  # Mutation
+  mutation_prob: 0.1
+  mutation_eta: 20
+
+# Problem defaults
+problem:
+  n_objectives: 3
+  n_constraints: 0
+  
+# Evaluation settings
+evaluation:
+  reference_point: null  # Will be problem-specific
+  ideal_point: null      # Will be problem-specific
+  nadir_point: null      # Will be problem-specific
+  
+  # Metrics to compute
+  metrics:
+    - hypervolume
+    - igd_plus
+    - epsilon_indicator
+    - runtime
+    - n_evaluations
+    
+  # Logging frequency
+  log_interval: 10  # Log every N generations
+  save_interval: 50  # Save population every N generations
+
+# Hardware settings
+hardware:
+  device: "cpu"  # Default to CPU, override for GPU experiments
+  n_parallel: 1
+  batch_size: null  # Auto-determined if not specified
+
+# Output settings
+output:
+  base_dir: "results"
+  save_population: true
+  save_history: true
+  save_plots: true
+  formats:
+    arrays: "npy"  # numpy format for arrays
+    metrics: "csv"  # CSV for tabular data
+    plots: ["png", "pdf"]
+    
+# Visualization settings
+visualization:
+  plot_interval: 20
+  plot_types:
+    - convergence_curve
+    - pareto_front
+    - parallel_coordinates
+  dpi: 300
+  figsize: [10, 8]

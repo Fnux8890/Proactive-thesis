@@ -15,12 +15,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Copy requirements files
 COPY requirements.txt .
+COPY requirements-gpu.txt .
 COPY ../pyproject.toml .
 
 # Install Python dependencies
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -r requirements.txt
+    uv pip install --system -r requirements.txt && \
+    uv pip install --system -r requirements-gpu.txt
 
 # Stage 2: Code validation
 FROM dependencies AS validator

@@ -11,7 +11,6 @@ use rand::thread_rng;
 /// * `num_states` - The number of hidden states for the HMM (N).
 /// * `quant_max_value` - The inclusive maximum value of the quantized observations (e.g., if 0-3, then 3).
 ///                       This is used to determine K, the number of distinct observation symbols (K = quant_max_value + 1).
-/// * `_num_iterations` - Currently unused by the hmmm::HMM::train method, which has its own convergence criteria.
 ///
 /// # Returns
 /// A `Result` containing a `Vec<usize>` of the most likely hidden states, or an error.
@@ -19,7 +18,6 @@ pub fn viterbi_path_from_observations(
     observations: &[u8],
     num_states: usize,
     quant_max_value: u8,
-    _num_iterations: usize, // Kept for API consistency, though not used by hmmm::HMM::train
 ) -> Result<Vec<usize>> {
     log::info!(
         "Attempting Viterbi path calculation: num_states={}, quant_max_value={}, observation_len={}",
@@ -27,7 +25,6 @@ pub fn viterbi_path_from_observations(
         quant_max_value,
         observations.len()
     );
-    log::warn!("The '_num_iterations' parameter is currently not used by the hmmm::HMM::train function.");
 
     if observations.is_empty() {
         log::warn!("Observation sequence is empty. Returning empty Viterbi path.");

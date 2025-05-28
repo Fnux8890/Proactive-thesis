@@ -1,86 +1,623 @@
-"""Enhanced feature extraction integrating GPU preprocessing with tsfresh.
-This is a wrapper around the existing extract_features.py that adds:
-1. GPU-accelerated preprocessing
-2. Validation checks
-3. Performance monitoring
+"""Enhanced Feature Extraction Pipeline with Clean Architecture.
+
+This module implements a modular, maintainable feature extraction pipeline using
+software engineering best practices and design patterns:
+
+- Repository Pattern for data access
+- Factory Pattern for feature extractors
+- Pipeline Pattern for data transformations
+- Strategy Pattern for feature selection methods
+- Dependency Injection for better testability
+
+The pipeline integrates era detection results from multiple tables and performs
+efficient feature extraction using tsfresh.
+
+Usage:
+    python extract_features_enhanced.py
+
+Environment variables:
+    DB_* - Database connection parameters
+    FEATURES_TABLE - Destination table for features
+    USE_GPU - Enable GPU acceleration (true/false)
+    BATCH_SIZE - Number of eras to process in parallel
 """
 
-from pathlib import Path
+from __future__ import annotations
+
 import logging
 import os
 import sys
 import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Protocol
 
-from extract_features import main as original_main
-from features.extract_features_gpu_enhanced import GPUEnhancedFeatureExtractor
-from features.gpu_preprocessing import GPUDataPreprocessor, GPUFeatureSelector, GPUMemoryManager
+import pandas as pd
+from sqlalchemy import text
+from tsfresh import extract_features
+from tsfresh.feature_extraction import EfficientFCParameters, MinimalFCParameters
 
+from . import config
+from .db_utils import SQLAlchemyPostgresConnector
+from .feature_utils import make_hypertable_if_needed
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger(__name__)
-def run_enhanced_extraction():
-    """Run feature extraction with GPU enhancements."""
-    # Check if we should use GPU acceleration
-    use_gpu = os.getenv('USE_GPU', 'true').lower() == 'true'
-    gpu_preprocess = os.getenv('GPU_PREPROCESS', 'true').lower() == 'true'
-    if not use_gpu or not gpu_preprocess:
-        logger.info("Running original feature extraction (GPU disabled)")
-        return original_main()
-    logger.info("Running GPU-enhanced feature extraction")
-    # Initialize GPU components
-    memory_manager = GPUMemoryManager()
-    try:
-        # Log initial memory state
-        memory_manager.log_memory_usage()
-        # Create enhanced extractor
-        extractor = GPUEnhancedFeatureExtractor(
-            use_gpu=True,
-            feature_set=os.getenv('FEATURE_SET', 'efficient'),
-            batch_size=int(os.getenv('BATCH_SIZE', '10000'))
+
+
+# ============================================================================
+# Data Models
+# ============================================================================
+
+@dataclass
+class EraDefinition:
+    """Represents a detected era with metadata."""
+    era_id: str
+    signal_name: str
+    level: str  # A, B, or C
+    stage: str  # PELT, BOCPD, or HMM
+    start_time: datetime
+    end_time: datetime
+    rows: int
+
+    @classmethod
+    def from_db_row(cls, row: dict[str, Any]) -> EraDefinition:
+        """Create from database row."""
+        return cls(
+            era_id=f"{row['signal_name']}_{row['level']}_{row['stage']}_{row['era_id']}",
+            signal_name=row['signal_name'],
+            level=row['level'],
+            stage=row['stage'],
+            start_time=row['start_time'],
+            end_time=row['end_time'],
+            rows=row['rows']
         )
-        # Validate pipeline
-        if not extractor.validate_pipeline():
-            logger.error("Pipeline validation failed")
-            return 1
-        # Load era definitions from environment or database
-        era_definitions = load_era_definitions()
-        if not era_definitions:
-            logger.warning("No era definitions found, falling back to original extraction")
-            return original_main()
-        # Run GPU-enhanced extraction
+
+
+@dataclass
+class FeatureExtractionConfig:
+    """Configuration for feature extraction."""
+    batch_size: int = 1000
+    use_gpu: bool = False
+    feature_set: str = "efficient"  # minimal, efficient, comprehensive
+    n_jobs: int = -1
+    chunk_size: int | None = None
+    era_level: str = "B"  # Which era detection level to use
+    min_era_rows: int = 100  # Minimum rows per era to process
+
+
+# ============================================================================
+# Abstract Base Classes and Protocols
+# ============================================================================
+
+class DataRepository(Protocol):
+    """Protocol for data access operations."""
+
+    def fetch_sensor_data(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        columns: list[str] | None = None
+    ) -> pd.DataFrame:
+        """Fetch sensor data for time range."""
+        ...
+
+    def fetch_era_definitions(
+        self,
+        level: str,
+        signal_name: str | None = None
+    ) -> list[EraDefinition]:
+        """Fetch era definitions from database."""
+        ...
+
+    def save_features(
+        self,
+        features_df: pd.DataFrame,
+        table_name: str,
+        if_exists: str = "append"
+    ) -> None:
+        """Save features to database."""
+        ...
+
+
+class FeatureExtractor(ABC):
+    """Abstract base class for feature extractors."""
+
+    @abstractmethod
+    def extract(self, data: pd.DataFrame, era_id: str) -> pd.DataFrame:
+        """Extract features from data."""
+        pass
+
+    @abstractmethod
+    def get_required_columns(self) -> list[str]:
+        """Get list of required input columns."""
+        pass
+
+
+class DataTransformer(ABC):
+    """Abstract base class for data transformers."""
+
+    @abstractmethod
+    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Transform data."""
+        pass
+
+
+# ============================================================================
+# Concrete Implementations
+# ============================================================================
+
+class TimescaleDBRepository:
+    """Repository implementation for TimescaleDB."""
+
+    def __init__(self, connector: SQLAlchemyPostgresConnector):
+        self.connector = connector
+        self.engine = connector.engine
+
+    def fetch_sensor_data(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        columns: list[str] | None = None
+    ) -> pd.DataFrame:
+        """Fetch sensor data from preprocessed_features_hybrid table."""
+        if columns:
+            # Direct column access for hybrid table
+            cols_sql = ", ".join([f'"{col}"' for col in columns if col != 'time'])
+            query = f"""
+            SELECT
+                time,
+                {cols_sql}
+            FROM preprocessed_features_hybrid
+            WHERE time >= :start_time
+            AND time < :end_time
+            AND time IS NOT NULL
+            ORDER BY time
+            """
+        else:
+            # Fetch all columns
+            query = """
+            SELECT *
+            FROM preprocessed_features_hybrid
+            WHERE time >= :start_time
+            AND time < :end_time
+            AND time IS NOT NULL
+            ORDER BY time
+            """
+
+        logger.info(f"Fetching sensor data from {start_time} to {end_time}")
+        df = pd.read_sql(
+            text(query),
+            self.engine,
+            params={"start_time": start_time, "end_time": end_time}
+        )
+        logger.info(f"Fetched {len(df)} rows with {len(df.columns)} columns")
+        return df
+
+    def fetch_era_definitions(
+        self,
+        level: str,
+        signal_name: str | None = None
+    ) -> list[EraDefinition]:
+        """Fetch era definitions from era_labels_level_* tables."""
+        table_name = f"era_labels_level_{level.lower()}"
+
+        query = f"""
+        SELECT
+            signal_name,
+            level,
+            stage,
+            era_id,
+            start_time,
+            end_time,
+            rows
+        FROM {table_name}
+        WHERE 1=1
+        """
+
+        params = {}
+        if signal_name:
+            query += " AND signal_name = :signal_name"
+            params["signal_name"] = signal_name
+
+        query += " ORDER BY signal_name, start_time"
+
+        logger.info(f"Fetching era definitions from {table_name}")
+        result = self.connector.fetch_data_to_pandas(text(query), **params)
+
+        eras = [EraDefinition.from_db_row(row) for _, row in result.iterrows()]
+        logger.info(f"Fetched {len(eras)} era definitions")
+        return eras
+
+    def fetch_external_data(self) -> dict[str, pd.DataFrame]:
+        """Fetch external data (weather, energy prices, phenotypes)."""
+        external_data = {}
+
+        # Fetch weather data
+        weather_query = """
+        SELECT
+            time,
+            temperature_2m,
+            precipitation,
+            solar_radiation
+        FROM external_weather_data
+        WHERE time IS NOT NULL
+        ORDER BY time
+        """
+        external_data['weather'] = pd.read_sql(text(weather_query), self.engine)
+
+        # Fetch energy prices
+        energy_query = """
+        SELECT
+            time,
+            price_dk1,
+            price_dk2
+        FROM energy_prices
+        WHERE time IS NOT NULL
+        ORDER BY time
+        """
+        external_data['energy'] = pd.read_sql(text(energy_query), self.engine)
+
+        # Fetch phenotype data (static)
+        phenotype_query = """
+        SELECT * FROM phenotypes
+        """
+        external_data['phenotypes'] = pd.read_sql(text(phenotype_query), self.engine)
+
+        return external_data
+
+    def save_features(
+        self,
+        features_df: pd.DataFrame,
+        table_name: str,
+        if_exists: str = "append"
+    ) -> None:
+        """Save features to database."""
+        logger.info(f"Saving {len(features_df)} rows to {table_name}")
+        self.connector.write_dataframe(
+            features_df,
+            table_name,
+            if_exists=if_exists,
+            index=False
+        )
+
+        # Make it a hypertable if new table
+        if if_exists == "replace":
+            with self.engine.begin() as conn:
+                make_hypertable_if_needed(conn, table_name, "era_id")
+
+
+class TsfreshLongFormatTransformer(DataTransformer):
+    """Transforms wide sensor data to tsfresh long format."""
+
+    def __init__(self, value_columns: list[str]):
+        self.value_columns = value_columns
+
+    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Transform to long format expected by tsfresh."""
+        if 'era_id' not in data.columns:
+            raise ValueError("Data must have 'era_id' column")
+
+        if 'time' not in data.columns:
+            raise ValueError("Data must have 'time' column")
+
+        # Filter to only numeric columns
+        numeric_cols = [col for col in self.value_columns
+                       if col in data.columns and
+                       pd.api.types.is_numeric_dtype(data[col])]
+
+        if not numeric_cols:
+            raise ValueError("No numeric columns found for transformation")
+
+        logger.info(f"Melting {len(numeric_cols)} numeric columns to long format")
+
+        # Melt to long format
+        long_df = data.melt(
+            id_vars=['era_id', 'time'],
+            value_vars=numeric_cols,
+            var_name='kind',
+            value_name='value'
+        )
+
+        # Remove NaN values
+        long_df = long_df.dropna(subset=['value'])
+
+        # Ensure proper types
+        long_df['era_id'] = long_df['era_id'].astype(str)
+        long_df['value'] = pd.to_numeric(long_df['value'], errors='coerce')
+
+        logger.info(f"Transformed to long format: {len(long_df)} rows")
+        return long_df
+
+
+class TsfreshFeatureExtractor(FeatureExtractor):
+    """Feature extractor using tsfresh."""
+
+    def __init__(self, feature_set: str = "efficient", n_jobs: int = -1):
+        self.feature_set = feature_set
+        self.n_jobs = n_jobs
+        self.fc_parameters = self._get_fc_parameters()
+
+    def _get_fc_parameters(self):
+        """Get feature calculation parameters based on feature set."""
+        if self.feature_set == "minimal":
+            return MinimalFCParameters()
+        elif self.feature_set == "efficient":
+            return EfficientFCParameters()
+        else:
+            # For comprehensive, use default (all features)
+            return None
+
+    def extract(self, data: pd.DataFrame, era_id: str) -> pd.DataFrame:
+        """Extract features using tsfresh."""
+        if data.empty:
+            logger.warning(f"Empty data for era {era_id}")
+            return pd.DataFrame({'era_id': [era_id]})
+
+        try:
+            features = extract_features(
+                data,
+                column_id="era_id",
+                column_sort="time",
+                column_kind="kind",
+                column_value="value",
+                default_fc_parameters=self.fc_parameters,
+                n_jobs=self.n_jobs,
+                disable_progressbar=True
+            )
+
+            if features.empty:
+                logger.warning(f"No features extracted for era {era_id}")
+                return pd.DataFrame({'era_id': [era_id]})
+
+            # Reset index to get era_id as column
+            features = features.reset_index()
+            features.rename(columns={'id': 'era_id'}, inplace=True)
+
+            logger.info(f"Extracted {len(features.columns)-1} features for era {era_id}")
+            return features
+
+        except Exception as e:
+            logger.error(f"Feature extraction failed for era {era_id}: {e}")
+            return pd.DataFrame({'era_id': [era_id]})
+
+    def get_required_columns(self) -> list[str]:
+        """Get required columns - determined dynamically."""
+        return []  # Tsfresh works with any numeric columns
+
+
+class FeatureExtractionPipeline:
+    """Main pipeline orchestrator using dependency injection."""
+
+    def __init__(
+        self,
+        repository: DataRepository,
+        extractor: FeatureExtractor,
+        transformer: DataTransformer,
+        config: FeatureExtractionConfig
+    ):
+        self.repository = repository
+        self.extractor = extractor
+        self.transformer = transformer
+        self.config = config
+
+    def run(self) -> pd.DataFrame:
+        """Run the complete feature extraction pipeline."""
         start_time = time.time()
-        extractor.run_batch_extraction(
-            era_definitions,
-            output_table=os.getenv('FEATURES_TABLE', 'feature_data')
+
+        # Fetch era definitions
+        eras = self.repository.fetch_era_definitions(
+            level=self.config.era_level
         )
+
+        if not eras:
+            logger.error("No era definitions found")
+            return pd.DataFrame()
+
+        # Filter eras by minimum rows
+        eras = [era for era in eras if era.rows >= self.config.min_era_rows]
+        logger.info(f"Processing {len(eras)} eras with >= {self.config.min_era_rows} rows")
+
+        # Process eras in batches
+        all_features = []
+        for i in range(0, len(eras), self.config.batch_size):
+            batch_eras = eras[i:i + self.config.batch_size]
+            batch_features = self._process_era_batch(batch_eras)
+            if not batch_features.empty:
+                all_features.append(batch_features)
+
+        if not all_features:
+            logger.warning("No features extracted")
+            return pd.DataFrame()
+
+        # Combine all features
+        final_features = pd.concat(all_features, ignore_index=True)
+
         elapsed = time.time() - start_time
-        logger.info(f"GPU-enhanced extraction completed in {elapsed/60:.1f} minutes")
-        # Final memory report
-        memory_manager.log_memory_usage()
-        return 0
-    except Exception as e:
-        logger.error(f"GPU-enhanced extraction failed: {e}")
-        logger.info("Falling back to original extraction")
-        return original_main()
-    finally:
-        # Clean up GPU memory
-        if memory_manager:
-            memory_manager.clear_memory()
-def load_era_definitions():
-    """Load era definitions from database or file."""
-    # This should match your era detection output format
-    # For now, returning empty to trigger fallback
-    return []
-if __name__ == "__main__":
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        logger.info(f"Pipeline completed in {elapsed:.2f} seconds")
+        logger.info(f"Final features shape: {final_features.shape}")
+
+        return final_features
+
+    def _process_era_batch(self, eras: list[EraDefinition]) -> pd.DataFrame:
+        """Process a batch of eras."""
+        batch_features = []
+
+        for era in eras:
+            try:
+                # Fetch sensor data for era
+                sensor_data = self.repository.fetch_sensor_data(
+                    start_time=era.start_time,
+                    end_time=era.end_time
+                )
+
+                if sensor_data.empty:
+                    logger.warning(f"No data for era {era.era_id}")
+                    continue
+
+                # Add era_id column
+                sensor_data['era_id'] = era.era_id
+
+                # Transform to long format
+                long_data = self.transformer.transform(sensor_data)
+
+                # Extract features
+                features = self.extractor.extract(long_data, era.era_id)
+
+                # Add era metadata
+                features['signal_name'] = era.signal_name
+                features['level'] = era.level
+                features['stage'] = era.stage
+                features['start_time'] = era.start_time
+                features['end_time'] = era.end_time
+                features['era_rows'] = era.rows
+
+                batch_features.append(features)
+
+            except Exception as e:
+                logger.error(f"Error processing era {era.era_id}: {e}")
+                continue
+
+        if not batch_features:
+            return pd.DataFrame()
+
+        return pd.concat(batch_features, ignore_index=True)
+
+
+class OptimalSignalSelector:
+    """Selects optimal signals based on coverage and importance."""
+
+    # Optimal signals from analysis
+    PRIMARY_SIGNALS = [
+        "dli_sum",                # 100% - Primary light metric
+        "radiation_w_m2",         # 4.2% - Solar radiation
+        "outside_temp_c",         # 3.8% - External temperature
+        "co2_measured_ppm",       # 3.8% - Growth indicator
+        "air_temp_middle_c",      # 3.5% - Internal climate
+        "air_temp_c",             # Alternative temperature signal
+        "relative_humidity_percent", # Humidity control
+        "light_intensity_umol",   # Light intensity
+    ]
+
+    SECONDARY_SIGNALS = [
+        "pipe_temp_1_c",          # 3.5% - Heating system
+        "curtain_1_percent",      # 3.7% - Light control
+        "humidity_deficit_g_m3",  # 3.5% - Humidity control
+        "heating_setpoint_c",     # Heating control
+        "vpd_hpa",                # Vapor pressure deficit
+        "total_lamps_on",         # Artificial lighting status
+    ]
+
+    @classmethod
+    def get_optimal_columns(cls, available_columns: list[str]) -> list[str]:
+        """Get optimal columns that are available in the data."""
+        optimal = []
+
+        # Add primary signals first
+        for signal in cls.PRIMARY_SIGNALS:
+            if signal in available_columns:
+                optimal.append(signal)
+
+        # Add secondary signals
+        for signal in cls.SECONDARY_SIGNALS:
+            if signal in available_columns:
+                optimal.append(signal)
+
+        return optimal
+
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+def main():
+    """Main entry point for enhanced feature extraction."""
+    # Load configuration
+    extraction_config = FeatureExtractionConfig(
+        batch_size=int(os.getenv("BATCH_SIZE", "100")),
+        use_gpu=config.USE_GPU_FLAG,
+        feature_set=os.getenv("FEATURE_SET", "efficient"),
+        n_jobs=int(os.getenv("N_JOBS", "-1")),
+        era_level=os.getenv("ERA_LEVEL", "B"),
+        min_era_rows=int(os.getenv("MIN_ERA_ROWS", "100"))
     )
-    # Check if validation was requested
-    if len(sys.argv) > 1 and sys.argv[1] == "--validate":
-        from validate_pipeline import PipelineValidator
-        validator = PipelineValidator()
-        success = validator.run_all_checks()
-        sys.exit(0 if success else 1)
-    # Run extraction
-    sys.exit(run_enhanced_extraction())
+
+    logger.info(f"Starting feature extraction with config: {extraction_config}")
+
+    # Create repository
+    connector = SQLAlchemyPostgresConnector(
+        user=config.DB_USER,
+        password=config.DB_PASSWORD,
+        host=config.DB_HOST,
+        port=config.DB_PORT,
+        db_name=config.DB_NAME
+    )
+    repository = TimescaleDBRepository(connector)
+
+    try:
+        # Get available columns from a sample query
+        sample_df = repository.fetch_sensor_data(
+            start_time=datetime(2013, 12, 1),
+            end_time=datetime(2013, 12, 2)
+        )
+
+        if sample_df.empty:
+            logger.error("No data available in preprocessed_features_hybrid")
+            return 1
+
+        available_columns = list(sample_df.columns)
+        logger.info(f"Available columns: {len(available_columns)}")
+
+        # Select optimal columns
+        value_columns = OptimalSignalSelector.get_optimal_columns(available_columns)
+        logger.info(f"Selected {len(value_columns)} optimal signals for processing")
+
+        # Create components
+        transformer = TsfreshLongFormatTransformer(value_columns)
+        extractor = TsfreshFeatureExtractor(
+            feature_set=extraction_config.feature_set,
+            n_jobs=extraction_config.n_jobs
+        )
+
+        # Create and run pipeline
+        pipeline = FeatureExtractionPipeline(
+            repository=repository,
+            extractor=extractor,
+            transformer=transformer,
+            config=extraction_config
+        )
+
+        features_df = pipeline.run()
+
+        if features_df.empty:
+            logger.error("No features extracted")
+            return 1
+
+        # Save features to database
+        features_table = config.FEATURES_TABLE
+        repository.save_features(
+            features_df,
+            features_table,
+            if_exists="replace"
+        )
+
+        logger.info(f"Successfully saved {len(features_df)} feature rows to {features_table}")
+        return 0
+
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
+        return 1
+    finally:
+        # Clean up
+        if connector.engine:
+            connector.engine.dispose()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
