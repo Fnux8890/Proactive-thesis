@@ -55,9 +55,11 @@ logger = logging.getLogger(__name__)
 # Data Models
 # ============================================================================
 
+
 @dataclass
 class EraDefinition:
     """Represents a detected era with metadata."""
+
     era_id: str
     signal_name: str
     level: str  # A, B, or C
@@ -71,18 +73,19 @@ class EraDefinition:
         """Create from database row."""
         return cls(
             era_id=f"{row['signal_name']}_{row['level']}_{row['stage']}_{row['era_id']}",
-            signal_name=row['signal_name'],
-            level=row['level'],
-            stage=row['stage'],
-            start_time=row['start_time'],
-            end_time=row['end_time'],
-            rows=row['rows']
+            signal_name=row["signal_name"],
+            level=row["level"],
+            stage=row["stage"],
+            start_time=row["start_time"],
+            end_time=row["end_time"],
+            rows=row["rows"],
         )
 
 
 @dataclass
 class FeatureExtractionConfig:
     """Configuration for feature extraction."""
+
     batch_size: int = 1000
     use_gpu: bool = False
     feature_set: str = "efficient"  # minimal, efficient, comprehensive
@@ -96,32 +99,21 @@ class FeatureExtractionConfig:
 # Abstract Base Classes and Protocols
 # ============================================================================
 
+
 class DataRepository(Protocol):
     """Protocol for data access operations."""
 
     def fetch_sensor_data(
-        self,
-        start_time: datetime,
-        end_time: datetime,
-        columns: list[str] | None = None
+        self, start_time: datetime, end_time: datetime, columns: list[str] | None = None
     ) -> pd.DataFrame:
         """Fetch sensor data for time range."""
         ...
 
-    def fetch_era_definitions(
-        self,
-        level: str,
-        signal_name: str | None = None
-    ) -> list[EraDefinition]:
+    def fetch_era_definitions(self, level: str, signal_name: str | None = None) -> list[EraDefinition]:
         """Fetch era definitions from database."""
         ...
 
-    def save_features(
-        self,
-        features_df: pd.DataFrame,
-        table_name: str,
-        if_exists: str = "append"
-    ) -> None:
+    def save_features(self, features_df: pd.DataFrame, table_name: str, if_exists: str = "append") -> None:
         """Save features to database."""
         ...
 
@@ -153,6 +145,7 @@ class DataTransformer(ABC):
 # Concrete Implementations
 # ============================================================================
 
+
 class TimescaleDBRepository:
     """Repository implementation for TimescaleDB."""
 
@@ -161,20 +154,17 @@ class TimescaleDBRepository:
         self.engine = connector.engine
 
     def fetch_sensor_data(
-        self,
-        start_time: datetime,
-        end_time: datetime,
-        columns: list[str] | None = None
+        self, start_time: datetime, end_time: datetime, columns: list[str] | None = None
     ) -> pd.DataFrame:
-        """Fetch sensor data from preprocessed_features_hybrid table."""
+        """Fetch sensor data from preprocessed_features table."""
         if columns:
             # Direct column access for hybrid table
-            cols_sql = ", ".join([f'"{col}"' for col in columns if col != 'time'])
+            cols_sql = ", ".join([f'"{col}"' for col in columns if col != "time"])
             query = f"""
             SELECT
                 time,
                 {cols_sql}
-            FROM preprocessed_features_hybrid
+            FROM preprocessed_features
             WHERE time >= :start_time
             AND time < :end_time
             AND time IS NOT NULL
@@ -184,7 +174,7 @@ class TimescaleDBRepository:
             # Fetch all columns
             query = """
             SELECT *
-            FROM preprocessed_features_hybrid
+            FROM preprocessed_features
             WHERE time >= :start_time
             AND time < :end_time
             AND time IS NOT NULL
@@ -192,19 +182,11 @@ class TimescaleDBRepository:
             """
 
         logger.info(f"Fetching sensor data from {start_time} to {end_time}")
-        df = pd.read_sql(
-            text(query),
-            self.engine,
-            params={"start_time": start_time, "end_time": end_time}
-        )
+        df = pd.read_sql(text(query), self.engine, params={"start_time": start_time, "end_time": end_time})
         logger.info(f"Fetched {len(df)} rows with {len(df.columns)} columns")
         return df
 
-    def fetch_era_definitions(
-        self,
-        level: str,
-        signal_name: str | None = None
-    ) -> list[EraDefinition]:
+    def fetch_era_definitions(self, level: str, signal_name: str | None = None) -> list[EraDefinition]:
         """Fetch era definitions from era_labels_level_* tables."""
         table_name = f"era_labels_level_{level.lower()}"
 
@@ -250,7 +232,7 @@ class TimescaleDBRepository:
         WHERE time IS NOT NULL
         ORDER BY time
         """
-        external_data['weather'] = pd.read_sql(text(weather_query), self.engine)
+        external_data["weather"] = pd.read_sql(text(weather_query), self.engine)
 
         # Fetch energy prices
         energy_query = """
@@ -262,30 +244,20 @@ class TimescaleDBRepository:
         WHERE time IS NOT NULL
         ORDER BY time
         """
-        external_data['energy'] = pd.read_sql(text(energy_query), self.engine)
+        external_data["energy"] = pd.read_sql(text(energy_query), self.engine)
 
         # Fetch phenotype data (static)
         phenotype_query = """
         SELECT * FROM phenotypes
         """
-        external_data['phenotypes'] = pd.read_sql(text(phenotype_query), self.engine)
+        external_data["phenotypes"] = pd.read_sql(text(phenotype_query), self.engine)
 
         return external_data
 
-    def save_features(
-        self,
-        features_df: pd.DataFrame,
-        table_name: str,
-        if_exists: str = "append"
-    ) -> None:
+    def save_features(self, features_df: pd.DataFrame, table_name: str, if_exists: str = "append") -> None:
         """Save features to database."""
         logger.info(f"Saving {len(features_df)} rows to {table_name}")
-        self.connector.write_dataframe(
-            features_df,
-            table_name,
-            if_exists=if_exists,
-            index=False
-        )
+        self.connector.write_dataframe(features_df, table_name, if_exists=if_exists, index=False)
 
         # Make it a hypertable if new table
         if if_exists == "replace":
@@ -301,16 +273,16 @@ class TsfreshLongFormatTransformer(DataTransformer):
 
     def transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """Transform to long format expected by tsfresh."""
-        if 'era_id' not in data.columns:
+        if "era_id" not in data.columns:
             raise ValueError("Data must have 'era_id' column")
 
-        if 'time' not in data.columns:
+        if "time" not in data.columns:
             raise ValueError("Data must have 'time' column")
 
         # Filter to only numeric columns
-        numeric_cols = [col for col in self.value_columns
-                       if col in data.columns and
-                       pd.api.types.is_numeric_dtype(data[col])]
+        numeric_cols = [
+            col for col in self.value_columns if col in data.columns and pd.api.types.is_numeric_dtype(data[col])
+        ]
 
         if not numeric_cols:
             raise ValueError("No numeric columns found for transformation")
@@ -318,19 +290,14 @@ class TsfreshLongFormatTransformer(DataTransformer):
         logger.info(f"Melting {len(numeric_cols)} numeric columns to long format")
 
         # Melt to long format
-        long_df = data.melt(
-            id_vars=['era_id', 'time'],
-            value_vars=numeric_cols,
-            var_name='kind',
-            value_name='value'
-        )
+        long_df = data.melt(id_vars=["era_id", "time"], value_vars=numeric_cols, var_name="kind", value_name="value")
 
         # Remove NaN values
-        long_df = long_df.dropna(subset=['value'])
+        long_df = long_df.dropna(subset=["value"])
 
         # Ensure proper types
-        long_df['era_id'] = long_df['era_id'].astype(str)
-        long_df['value'] = pd.to_numeric(long_df['value'], errors='coerce')
+        long_df["era_id"] = long_df["era_id"].astype(str)
+        long_df["value"] = pd.to_numeric(long_df["value"], errors="coerce")
 
         logger.info(f"Transformed to long format: {len(long_df)} rows")
         return long_df
@@ -341,7 +308,13 @@ class TsfreshFeatureExtractor(FeatureExtractor):
 
     def __init__(self, feature_set: str = "efficient", n_jobs: int = -1):
         self.feature_set = feature_set
-        self.n_jobs = n_jobs
+        # Fix n_jobs for tsfresh: -1 means use all CPUs, but tsfresh might need positive number
+        if n_jobs == -1:
+            import multiprocessing
+
+            self.n_jobs = multiprocessing.cpu_count()
+        else:
+            self.n_jobs = max(1, n_jobs)
         self.fc_parameters = self._get_fc_parameters()
 
     def _get_fc_parameters(self):
@@ -358,7 +331,7 @@ class TsfreshFeatureExtractor(FeatureExtractor):
         """Extract features using tsfresh."""
         if data.empty:
             logger.warning(f"Empty data for era {era_id}")
-            return pd.DataFrame({'era_id': [era_id]})
+            return pd.DataFrame({"era_id": [era_id]})
 
         try:
             features = extract_features(
@@ -369,23 +342,23 @@ class TsfreshFeatureExtractor(FeatureExtractor):
                 column_value="value",
                 default_fc_parameters=self.fc_parameters,
                 n_jobs=self.n_jobs,
-                disable_progressbar=True
+                disable_progressbar=True,
             )
 
             if features.empty:
                 logger.warning(f"No features extracted for era {era_id}")
-                return pd.DataFrame({'era_id': [era_id]})
+                return pd.DataFrame({"era_id": [era_id]})
 
             # Reset index to get era_id as column
             features = features.reset_index()
-            features.rename(columns={'id': 'era_id'}, inplace=True)
+            features.rename(columns={"id": "era_id"}, inplace=True)
 
-            logger.info(f"Extracted {len(features.columns)-1} features for era {era_id}")
+            logger.info(f"Extracted {len(features.columns) - 1} features for era {era_id}")
             return features
 
         except Exception as e:
             logger.error(f"Feature extraction failed for era {era_id}: {e}")
-            return pd.DataFrame({'era_id': [era_id]})
+            return pd.DataFrame({"era_id": [era_id]})
 
     def get_required_columns(self) -> list[str]:
         """Get required columns - determined dynamically."""
@@ -400,7 +373,7 @@ class FeatureExtractionPipeline:
         repository: DataRepository,
         extractor: FeatureExtractor,
         transformer: DataTransformer,
-        config: FeatureExtractionConfig
+        config: FeatureExtractionConfig,
     ):
         self.repository = repository
         self.extractor = extractor
@@ -412,9 +385,7 @@ class FeatureExtractionPipeline:
         start_time = time.time()
 
         # Fetch era definitions
-        eras = self.repository.fetch_era_definitions(
-            level=self.config.era_level
-        )
+        eras = self.repository.fetch_era_definitions(level=self.config.era_level)
 
         if not eras:
             logger.error("No era definitions found")
@@ -427,7 +398,7 @@ class FeatureExtractionPipeline:
         # Process eras in batches
         all_features = []
         for i in range(0, len(eras), self.config.batch_size):
-            batch_eras = eras[i:i + self.config.batch_size]
+            batch_eras = eras[i : i + self.config.batch_size]
             batch_features = self._process_era_batch(batch_eras)
             if not batch_features.empty:
                 all_features.append(batch_features)
@@ -452,17 +423,14 @@ class FeatureExtractionPipeline:
         for era in eras:
             try:
                 # Fetch sensor data for era
-                sensor_data = self.repository.fetch_sensor_data(
-                    start_time=era.start_time,
-                    end_time=era.end_time
-                )
+                sensor_data = self.repository.fetch_sensor_data(start_time=era.start_time, end_time=era.end_time)
 
                 if sensor_data.empty:
                     logger.warning(f"No data for era {era.era_id}")
                     continue
 
                 # Add era_id column
-                sensor_data['era_id'] = era.era_id
+                sensor_data["era_id"] = era.era_id
 
                 # Transform to long format
                 long_data = self.transformer.transform(sensor_data)
@@ -471,12 +439,12 @@ class FeatureExtractionPipeline:
                 features = self.extractor.extract(long_data, era.era_id)
 
                 # Add era metadata
-                features['signal_name'] = era.signal_name
-                features['level'] = era.level
-                features['stage'] = era.stage
-                features['start_time'] = era.start_time
-                features['end_time'] = era.end_time
-                features['era_rows'] = era.rows
+                features["signal_name"] = era.signal_name
+                features["level"] = era.level
+                features["stage"] = era.stage
+                features["start_time"] = era.start_time
+                features["end_time"] = era.end_time
+                features["era_rows"] = era.rows
 
                 batch_features.append(features)
 
@@ -495,23 +463,23 @@ class OptimalSignalSelector:
 
     # Optimal signals from analysis
     PRIMARY_SIGNALS = [
-        "dli_sum",                # 100% - Primary light metric
-        "radiation_w_m2",         # 4.2% - Solar radiation
-        "outside_temp_c",         # 3.8% - External temperature
-        "co2_measured_ppm",       # 3.8% - Growth indicator
-        "air_temp_middle_c",      # 3.5% - Internal climate
-        "air_temp_c",             # Alternative temperature signal
-        "relative_humidity_percent", # Humidity control
-        "light_intensity_umol",   # Light intensity
+        "dli_sum",  # 100% - Primary light metric
+        "radiation_w_m2",  # 4.2% - Solar radiation
+        "outside_temp_c",  # 3.8% - External temperature
+        "co2_measured_ppm",  # 3.8% - Growth indicator
+        "air_temp_middle_c",  # 3.5% - Internal climate
+        "air_temp_c",  # Alternative temperature signal
+        "relative_humidity_percent",  # Humidity control
+        "light_intensity_umol",  # Light intensity
     ]
 
     SECONDARY_SIGNALS = [
-        "pipe_temp_1_c",          # 3.5% - Heating system
-        "curtain_1_percent",      # 3.7% - Light control
+        "pipe_temp_1_c",  # 3.5% - Heating system
+        "curtain_1_percent",  # 3.7% - Light control
         "humidity_deficit_g_m3",  # 3.5% - Humidity control
-        "heating_setpoint_c",     # Heating control
-        "vpd_hpa",                # Vapor pressure deficit
-        "total_lamps_on",         # Artificial lighting status
+        "heating_setpoint_c",  # Heating control
+        "vpd_hpa",  # Vapor pressure deficit
+        "total_lamps_on",  # Artificial lighting status
     ]
 
     @classmethod
@@ -536,6 +504,7 @@ class OptimalSignalSelector:
 # Main Entry Point
 # ============================================================================
 
+
 def main():
     """Main entry point for enhanced feature extraction."""
     # Load configuration
@@ -545,7 +514,7 @@ def main():
         feature_set=os.getenv("FEATURE_SET", "efficient"),
         n_jobs=int(os.getenv("N_JOBS", "-1")),
         era_level=os.getenv("ERA_LEVEL", "B"),
-        min_era_rows=int(os.getenv("MIN_ERA_ROWS", "100"))
+        min_era_rows=int(os.getenv("MIN_ERA_ROWS", "100")),
     )
 
     logger.info(f"Starting feature extraction with config: {extraction_config}")
@@ -556,19 +525,16 @@ def main():
         password=config.DB_PASSWORD,
         host=config.DB_HOST,
         port=config.DB_PORT,
-        db_name=config.DB_NAME
+        db_name=config.DB_NAME,
     )
     repository = TimescaleDBRepository(connector)
 
     try:
         # Get available columns from a sample query
-        sample_df = repository.fetch_sensor_data(
-            start_time=datetime(2013, 12, 1),
-            end_time=datetime(2013, 12, 2)
-        )
+        sample_df = repository.fetch_sensor_data(start_time=datetime(2013, 12, 1), end_time=datetime(2013, 12, 2))
 
         if sample_df.empty:
-            logger.error("No data available in preprocessed_features_hybrid")
+            logger.error("No data available in preprocessed_features")
             return 1
 
         available_columns = list(sample_df.columns)
@@ -580,17 +546,11 @@ def main():
 
         # Create components
         transformer = TsfreshLongFormatTransformer(value_columns)
-        extractor = TsfreshFeatureExtractor(
-            feature_set=extraction_config.feature_set,
-            n_jobs=extraction_config.n_jobs
-        )
+        extractor = TsfreshFeatureExtractor(feature_set=extraction_config.feature_set, n_jobs=extraction_config.n_jobs)
 
         # Create and run pipeline
         pipeline = FeatureExtractionPipeline(
-            repository=repository,
-            extractor=extractor,
-            transformer=transformer,
-            config=extraction_config
+            repository=repository, extractor=extractor, transformer=transformer, config=extraction_config
         )
 
         features_df = pipeline.run()
@@ -601,11 +561,7 @@ def main():
 
         # Save features to database
         features_table = config.FEATURES_TABLE
-        repository.save_features(
-            features_df,
-            features_table,
-            if_exists="replace"
-        )
+        repository.save_features(features_df, features_table, if_exists="replace")
 
         logger.info(f"Successfully saved {len(features_df)} feature rows to {features_table}")
         return 0

@@ -27,8 +27,8 @@
     # Ensure logs are not buffered
     ENV RUST_LOG_STYLE=always
     # The DB_DSN env var is set in docker-compose.yml and will be picked up automatically by clap
-    # Add a simple test to verify the binary exists and is executable
-    RUN era_detector --help || echo "Binary help failed"
+    # Verify the binary exists without running it
+    RUN test -x /usr/local/bin/era_detector || echo "Binary not executable"
     ENTRYPOINT ["era_detector"]
     # No CMD needed - the default table name "preprocessed_features" in the Rust code is correct
     

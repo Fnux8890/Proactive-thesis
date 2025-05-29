@@ -1,0 +1,192 @@
+# Production overrides for cloud deployment
+# This file is used with docker-compose.yml for production deployments
+# It optimizes settings for cloud resources and real data processing
+
+services:
+  # Override database to use external Cloud SQL
+  db:
+    # In production, we use Cloud SQL instead of local container
+    # Comment out or remove the db service
+    deploy:
+      replicas: 0
+
+  # Production settings for data ingestion
+  rust_pipeline:
+    environment:
+      PROCESS_ALL_FILES: "true"
+      SKIP_PROCESSED_CHECK: "false"
+      RUST_LOG: "info"
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/greenhouse"
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+
+  # Production preprocessing
+  preprocessing:
+    environment:
+      SKIP_ERA_FEATURE: "true"
+      PROCESS_ERA_IDENTIFIER: "MegaEra_All_Data"
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/greenhouse"
+      # Use all available cores
+      N_JOBS: "-1"
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+          memory: 32G
+
+  # Production era detection
+  era_detector:
+    environment:
+      RUST_LOG: "info"
+      RUST_BACKTRACE: "1"
+      DB_DSN: "postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/greenhouse"
+      # Use comprehensive signal set
+      SIGNAL_COLS: "dli_sum,co2_status,light_intensity_lux,co2_measured_ppm,co2_required_ppm,radiation_w_m2,sun_radiation_forecast_w_m2,air_temp_c,relative_humidity_percent,heating_setpoint_c"
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+
+  # Production feature extraction with GPU
+  feature_extraction:
+    environment:
+      # GPU-optimized settings
+      USE_GPU: "true"
+      FEATURE_SET: "comprehensive"
+      BATCH_SIZE: "500"
+      N_JOBS: "-1"
+      MIN_ERA_ROWS: "200"
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/greenhouse"
+      # Performance tuning
+      OMP_NUM_THREADS: "16"
+      MKL_NUM_THREADS: "16"
+      NUMEXPR_NUM_THREADS: "16"
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '32'
+          memory: 64G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 2  # Use 2 of the 4 A100s
+              capabilities: [gpu]
+
+  # Production model builder with GPU
+  model_builder:
+    environment:
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/greenhouse"
+      USE_GPU: "true"
+      CUDA_VISIBLE_DEVICES: "2,3"  # Use other 2 A100s
+      # Train all objectives
+      TRAIN_ALL_OBJECTIVES: "true"
+      # No synthetic data in production
+      USE_SYNTHETIC_TARGETS: "false"
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+          memory: 32G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 2
+              capabilities: [gpu]
+
+  # Production MOEA with GPU
+  moea_optimizer_gpu:
+    environment:
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/greenhouse"
+      USE_GPU: "true"
+      # Use comprehensive configuration
+      CONFIG_PATH: "/app/config/moea_config_gpu.toml"
+      # Larger population for production
+      POPULATION_SIZE: "200"
+      N_GENERATIONS: "500"
+      # Use all 4 objectives
+      OBJECTIVES: "energy_consumption,plant_growth,water_usage,crop_quality"
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+          memory: 32G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Monitoring stack for production
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - pipeline-net
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3001:3000"
+    networks:
+      - pipeline-net
+    restart: always
+    depends_on:
+      - prometheus
+
+  # GPU monitoring
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.0-3.2.0-ubuntu22.04
+    container_name: dcgm-exporter
+    ports:
+      - "9400:9400"
+    networks:
+      - pipeline-net
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+# Production network configuration
+networks:
+  pipeline-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

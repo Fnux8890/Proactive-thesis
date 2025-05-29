@@ -45,8 +45,25 @@
       "Bash(timeout 300 cargo check --quiet)",
       "Bash(timeout 30 cargo check --message-format=short 2 >& 1)",
       "Bash(ruff check:*)",
-      "Bash(uv pip list:*)"
+      "Bash(uv pip list:*)",
+      "Bash(docker build:*)",
+      "Bash(./run_feature_extraction_simple.sh:*)",
+      "Bash(./run_feature_extraction_only.sh:*)",
+      "Bash(/home/max/Github/Proactive-thesis/DataIngestion/feature_extraction/run_standalone.sh:*)",
+      "Bash(docker run:*)",
+      "Bash(/home/max/Github/Proactive-thesis/DataIngestion/feature_extraction/run_feature_direct.sh:*)",
+      "Bash(pipx:*)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(ruff format:*)",
+      "Bash(timeout 300 docker logs -f model_builder_all_objectives 2 >& 1)",
+      "Bash(./cleanup_duplicates.sh)",
+      "Bash(./organize_feature_docs.sh:*)",
+      "Bash(./final_cleanup.sh)",
+      "Bash(./cleanup_utility_scripts.sh:*)",
+      "Bash(awk:*)",
+      "Bash(./run_cloud_simulation.sh:*)"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": false
 }

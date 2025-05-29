@@ -1,0 +1,278 @@
+# Docker Compose for Testing Feature Extraction Components
+# Usage: docker compose -f docker-compose.test.yaml up [service-name]
+
+version: '3.8'
+
+services:
+  # Test database - isolated from production
+  test-db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: feature-extraction-test-db
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass
+      POSTGRES_DB: test_db
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - test-db-data:/var/lib/postgresql/data
+    networks:
+      - test-network
+
+  # Backend adapter tests (pandas/cuDF compatibility)
+  test-backend-adapter:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-backend-adapter
+    environment:
+      PYTHONPATH: /app
+      USE_GPU: "false"  # Test pandas backend
+    command: |
+      python3 -m pytest tests/test_dtypes.py tests/test_parquet_parity.py -v --tb=short
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # Connection pool thread safety tests
+  test-thread-safety:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-thread-safety
+    environment:
+      PYTHONPATH: /app
+      DB_HOST: test-db
+      DB_PORT: 5432
+      DB_NAME: test_db
+      DB_USER: test_user
+      DB_PASSWORD: test_pass
+    command: |
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 10 &&
+        python3 -m pytest tests/test_connection_thread_safety.py -v --tb=short
+      "
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # Observability and metrics tests
+  test-observability:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-observability
+    environment:
+      PYTHONPATH: /app
+      DB_HOST: test-db
+      DB_PORT: 5432
+      DB_NAME: test_db
+      DB_USER: test_user
+      DB_PASSWORD: test_pass
+    command: |
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 10 &&
+        python3 -m pytest tests/test_connection_metrics.py -v --tb=short &&
+        python3 examples/pool_monitoring_demo.py
+      "
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # Performance optimization tests
+  test-performance:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-performance
+    environment:
+      PYTHONPATH: /app
+    command: |
+      python3 -m pytest tests/test_sentinel_performance.py -v --tb=short
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # SQL safety tests
+  test-sql-safety:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-sql-safety
+    environment:
+      PYTHONPATH: /app
+      DB_HOST: test-db
+      DB_PORT: 5432
+      DB_NAME: test_db
+      DB_USER: test_user
+      DB_PASSWORD: test_pass
+    command: |
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 10 &&
+        python3 -m pytest tests/test_sql_date_filters.py -v --tb=short
+      "
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # Integration tests - full pipeline
+  test-integration:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-integration
+    environment:
+      PYTHONPATH: /app
+      DB_HOST: test-db
+      DB_PORT: 5432
+      DB_NAME: test_db
+      DB_USER: test_user
+      DB_PASSWORD: test_pass
+    command: |
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 15 &&
+        python3 run_comprehensive_tests.py
+      "
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # Soak test - long running stability test
+  test-soak:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-soak
+    environment:
+      PYTHONPATH: /app
+      DB_HOST: test-db
+      DB_PORT: 5432
+      DB_NAME: test_db
+      DB_USER: test_user
+      DB_PASSWORD: test_pass
+      SOAK_TEST_DURATION: "300"  # 5 minutes by default
+    command: |
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 10 &&
+        python3 -m pytest tests/test_connection_soak.py -v --tb=short
+      "
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # Component isolation tests (no dependencies)
+  test-components-isolated:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-components-isolated
+    environment:
+      PYTHONPATH: /app
+    command: python3 test_components_isolated.py
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+  # GPU backend tests (requires NVIDIA runtime)
+  test-gpu-backend:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-gpu-backend
+    runtime: nvidia  # Requires NVIDIA Docker runtime
+    environment:
+      PYTHONPATH: /app
+      USE_GPU: "true"
+      CUDA_VISIBLE_DEVICES: "0"
+    command: |
+      sh -c "
+        pip install cudf-cu11 cupy-cuda11x &&
+        python3 -m pytest tests/test_dtypes.py tests/test_adapters_type_safety.py -v --tb=short
+      "
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+    profiles:
+      - gpu  # Only run when explicitly requested
+
+  # All tests runner - runs all non-GPU tests in sequence
+  test-all:
+    build:
+      context: .
+      dockerfile: test.dockerfile
+    container_name: test-all
+    environment:
+      PYTHONPATH: /app
+      DB_HOST: test-db
+      DB_PORT: 5432
+      DB_NAME: test_db
+      DB_USER: test_user
+      DB_PASSWORD: test_pass
+    command: |
+      sh -c "
+        echo '=== Running All Tests ===' &&
+        echo 'Waiting for database...' &&
+        sleep 15 &&
+        echo '\n1. Component Tests (Isolated)' &&
+        python3 test_components_isolated.py &&
+        echo '\n2. Backend Adapter Tests' &&
+        python3 -m pytest tests/test_dtypes.py -v &&
+        echo '\n3. Thread Safety Tests' &&
+        python3 -m pytest tests/test_connection_thread_safety.py -v &&
+        echo '\n4. Observability Tests' &&
+        python3 -m pytest tests/test_connection_metrics.py -v &&
+        echo '\n5. Performance Tests' &&
+        python3 -m pytest tests/test_sentinel_performance.py -v &&
+        echo '\n6. SQL Safety Tests' &&
+        python3 -m pytest tests/test_sql_date_filters.py -v &&
+        echo '\n=== All Tests Complete ==='
+      "
+    depends_on:
+      test-db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro
+    networks:
+      - test-network
+
+volumes:
+  test-db-data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge

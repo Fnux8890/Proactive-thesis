@@ -1,0 +1,78 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+    "B905",  # zip() without an explicit strict= parameter
+    "SIM108", # Use ternary operator instead of if-else
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"tests/*" = ["ARG"]       # Allow unused arguments in tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "models", "training", "inference", "config"]
+combine-as-imports = true
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+follow_imports = "skip"
+no_implicit_reexport = true
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model_builder"
+version = "0.1.0"
+description = "GPU-accelerated plant growth model training pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.3.0",
+    "pytorch-lightning>=2.0.0",
+    "pandas>=2.0.0",
+    "pyarrow>=15.0.0",
+    "scikit-learn>=1.0.0",
+    "matplotlib>=3.0.0",
+    "seaborn>=0.13.0",
+    "mlflow-skinny",
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "lightgbm",
+    "joblib>=1.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+    "pytest>=7.0.0",
+]

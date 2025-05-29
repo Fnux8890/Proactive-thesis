@@ -24,7 +24,8 @@ RUN pip install --no-cache-dir \
     sqlalchemy==2.* \
     psycopg2-binary \
     plotly==5.* \
-    mlflow-skinny
+    mlflow-skinny \
+    tabulate
 
 # Create working directory
 WORKDIR /app
@@ -32,7 +33,9 @@ WORKDIR /app
 # Copy source code
 COPY src/ ./src/
 COPY config/ ./config/
-COPY models/ ./models/
+
+# Create models directory (will be mounted at runtime via docker-compose)
+RUN mkdir -p ./models
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

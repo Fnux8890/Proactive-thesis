@@ -1,0 +1,13 @@
+# Example Terraform Variables for Production Deployment
+# Copy this to terraform.tfvars and fill in your values
+
+# Required: Your Google Cloud Project ID
+project_id = "your-gcp-project-id"
+
+# Optional: Change these if needed
+region = "us-central1"  # Default region
+zone   = "us-central1-a"  # Default zone for A2 instances
+
+# Cost optimization: Set to true for 60-80% savings (instance can be preempted)
+# Note: Only use for non-critical workloads or development
+use_preemptible = false  # Default: false for production stability

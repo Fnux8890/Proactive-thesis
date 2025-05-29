@@ -20,6 +20,7 @@ import pandas as pd
 # Feature selection
 # ---------------------------------------------------------------------------
 
+
 def select_relevant_features(
     features_df: pd.DataFrame,
     correlation_threshold: float = 0.95,
@@ -58,9 +59,10 @@ def select_relevant_features(
 # Promote a plain SQL table to Timescale hypertable if needed
 # ---------------------------------------------------------------------------
 
+
 def make_hypertable_if_needed(conn, table_name: str, time_column: str) -> None:
     """Ensure a table is a TimescaleDB hypertable."""
-    sql = """
+    sql = f"""
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
@@ -70,11 +72,11 @@ def make_hypertable_if_needed(conn, table_name: str, time_column: str) -> None:
             SELECT 1
             FROM   timescaledb_information.hypertables
             WHERE  hypertable_schema = current_schema
-              AND  hypertable_name   = $1)
+              AND  hypertable_name   = '{table_name}')
         THEN
-            PERFORM create_hypertable($1, $2, if_not_exists => TRUE);
+            PERFORM create_hypertable('{table_name}', '{time_column}', if_not_exists => TRUE);
         END IF;
     END;
     $$;
     """
-    conn.execute(sqlalchemy.text(sql), (table_name, time_column))
+    conn.execute(sqlalchemy.text(sql))

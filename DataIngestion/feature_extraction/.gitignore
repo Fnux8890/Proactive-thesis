@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# Ignore temporary fix scripts
+fix_*.py
+*_format_fix.py
+check_*.py
+
+# Logs
+*.log
+logs/
+
+# Data
+*.csv
+*.parquet
+data/
+
+# Models
+*.pkl
+*.joblib
+models/
+
+# Environment
+.env
+.venv
+env/
+venv/

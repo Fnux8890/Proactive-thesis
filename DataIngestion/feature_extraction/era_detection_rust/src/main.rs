@@ -6,6 +6,7 @@ use serde_json;
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::io::Write;
 use polars::datatypes::TimeUnit;
 use polars::prelude::DynamicGroupOptions;
 use polars::lazy::frame::IntoLazy;
@@ -28,7 +29,6 @@ mod optimal_signals;
 
 // Use hybrid DB module that auto-detects table structure
 use crate::db_hybrid::EraDb;
-use crate::column_selection::select_columns;
 use crate::optimal_signals::OptimalSignals;
 use crate::io::coverage;
 
@@ -170,11 +170,19 @@ fn main() -> Result<()> {
     println!("RUST_PROGRAM_STARTED_DIRECT_PRINTLN_HOOK");
     // Initialize logger FIRST - before any other operations
     println!("RUST_PROGRAM_ENV_LOGGER_INIT_ABOUT_TO_START");
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .target(env_logger::Target::Stderr)
+        .write_style(env_logger::WriteStyle::Always)
+        .init();
     println!("RUST_PROGRAM_ENV_LOGGER_INIT_COMPLETED");
+    std::io::stdout().flush().unwrap();
+    std::io::stderr().flush().unwrap();
     
     log::info!("Era Detector starting up...");
     log::info!("RUST_LOG level: {}", std::env::var("RUST_LOG").unwrap_or_else(|_| "info (default)".to_string()));
+    std::io::stdout().flush().unwrap();
+    std::io::stderr().flush().unwrap();
     
     // Wrap the main logic to ensure errors are logged
     if let Err(e) = run_main() {

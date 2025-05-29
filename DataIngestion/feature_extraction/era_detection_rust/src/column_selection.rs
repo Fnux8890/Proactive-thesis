@@ -4,6 +4,7 @@ use crate::io::coverage;
 use crate::optimal_signals::OptimalSignals;
 
 /// Validates that user-specified columns exist and are numeric
+#[allow(dead_code)]
 pub fn validate_user_columns(columns: &[String], df: &DataFrame) -> Vec<String> {
     let all_df_cols: HashSet<String> = df.get_column_names().into_iter().map(|s| s.to_string()).collect();
     
@@ -30,6 +31,7 @@ pub fn validate_user_columns(columns: &[String], df: &DataFrame) -> Vec<String> 
 }
 
 /// Selects optimal signals that meet the coverage threshold
+#[allow(dead_code)]
 pub fn select_optimal_signals(df: &DataFrame, min_coverage: f64) -> Vec<String> {
     let optimal_signals = OptimalSignals::new();
     let preferred_signals = optimal_signals.get_all();
@@ -53,6 +55,7 @@ pub fn select_optimal_signals(df: &DataFrame, min_coverage: f64) -> Vec<String> 
 }
 
 /// Selects all numeric columns that meet the coverage threshold
+#[allow(dead_code)]
 pub fn select_numeric_columns_by_coverage(df: &DataFrame, min_coverage: f64, exclude_cols: &[&str]) -> Vec<String> {
     let mut selected = Vec::new();
     
@@ -84,6 +87,7 @@ pub fn select_numeric_columns_by_coverage(df: &DataFrame, min_coverage: f64, exc
 }
 
 /// Performs the complete column selection logic based on CLI arguments
+#[allow(dead_code)]
 pub fn select_columns(df: &DataFrame, signal_cols: &[String], min_coverage: f64, time_col: &str) -> Vec<String> {
     if !signal_cols.is_empty() {
         log::info!("Using user-provided signal_cols: {:?}", signal_cols);

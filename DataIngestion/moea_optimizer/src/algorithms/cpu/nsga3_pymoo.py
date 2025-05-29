@@ -19,7 +19,7 @@ from pymoo.optimize import minimize
 from pymoo.termination import get_termination
 from pymoo.util.ref_dirs import get_reference_directions
 
-from ...core.config_loader import ExperimentConfig
+from ...core.config_loader import MOEAConfig
 from ...utils.timer import MultiTimer
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class PymooNSGA3Wrapper:
     """Wrapper for pymoo's NSGA-III algorithm."""
 
-    def __init__(self, config: ExperimentConfig):
+    def __init__(self, config: MOEAConfig):
         """Initialize NSGA-III wrapper with configuration.
 
         Args:
@@ -61,12 +61,12 @@ class PymooNSGA3Wrapper:
         sampling = FloatRandomSampling()
 
         crossover = SBX(
-            prob=self.config.algorithm.crossover_prob,
+            prob=self.config.algorithm.crossover_probability,
             eta=self.config.algorithm.crossover_eta
         )
 
         mutation = PM(
-            prob=self.config.algorithm.mutation_prob,
+            prob=self.config.algorithm.mutation_probability,
             eta=self.config.algorithm.mutation_eta
         )
 
@@ -223,6 +223,59 @@ class PymooNSGA3Wrapper:
         return ProgressCallback(self.timer)
 
 
+class GreenhouseProblem(Problem):
+    """Greenhouse optimization problem wrapper for pymoo."""
+
+    def __init__(
+        self,
+        n_var: int,
+        n_obj: int,
+        objectives: list,
+        decision_variables: list,
+        constraints: dict,
+        **kwargs
+    ):
+        # Extract bounds from decision variables
+        xl = np.array([dv.bounds[0] for dv in decision_variables]) if decision_variables else np.zeros(n_var)
+        xu = np.array([dv.bounds[1] for dv in decision_variables]) if decision_variables else np.ones(n_var)
+        
+        super().__init__(
+            n_var=n_var,
+            n_obj=n_obj,
+            n_constr=0,  # TODO: Add constraint handling
+            xl=xl,
+            xu=xu,
+            **kwargs
+        )
+        
+        self.objectives = objectives
+        self.decision_variables = decision_variables
+        self.constraints = constraints
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        """Evaluate the greenhouse optimization objectives.
+        
+        For now, this is a placeholder that returns random values.
+        In production, this would call the actual greenhouse models.
+        """
+        # TODO: Replace with actual model evaluation
+        # This would typically:
+        # 1. Convert decision variables to control setpoints
+        # 2. Run greenhouse simulation or surrogate models
+        # 3. Calculate objective values (energy, growth, etc.)
+        
+        # Placeholder: return random objective values
+        n_pop = x.shape[0]
+        f = np.random.rand(n_pop, self.n_obj)
+        
+        # Make it somewhat realistic (minimize first objective, maximize others)
+        f[:, 0] = np.sum(x**2, axis=1)  # Energy (minimize)
+        for i in range(1, self.n_obj):
+            f[:, i] = -np.sum(x * (i+1), axis=1)  # Other objectives (maximize -> minimize negative)
+        
+        out["F"] = f
+
+
 class DTLZProblem(Problem):
     """Wrapper for DTLZ test problems."""
 
@@ -272,6 +325,16 @@ def create_problem(problem_config: dict[str, Any]) -> Problem:
             n_obj=problem_config["n_obj"],
             **{k: v for k, v in problem_config.items()
                if k not in ["name", "n_var", "n_obj"]}
+        )
+    elif name == "GreenhouseOptimization":
+        # For now, create a simple test problem with the correct dimensions
+        # In production, this would connect to the actual greenhouse models
+        return GreenhouseProblem(
+            n_var=problem_config["n_var"],
+            n_obj=problem_config["n_obj"],
+            objectives=problem_config.get("objectives", []),
+            decision_variables=problem_config.get("decision_variables", []),
+            constraints=problem_config.get("constraints", {})
         )
     else:
         raise ValueError(f"Unknown problem type: {name}")

@@ -1,0 +1,90 @@
+# Development/Local Testing Override
+# This file is automatically loaded when running 'docker compose up'
+# It overrides settings in docker-compose.yml for local development
+
+services:
+  # Database - use local volume for persistence
+  db:
+    ports:
+      - "5432:5432"  # Expose for local development tools
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data  # Named volume for dev
+    environment:
+      - POSTGRES_LOG_STATEMENT=all  # More verbose logging for debugging
+
+  # Preprocessing - use minimal feature set for faster local testing
+  preprocessing:
+    environment:
+      - LOG_LEVEL=DEBUG
+      - FEATURE_SET=minimal  # Use minimal features for speed
+      - BATCH_SIZE=1000  # Smaller batches for debugging
+    volumes:
+      - ./feature_extraction/pre_process:/app  # Mount code for hot reload
+
+  # Era Detection - smaller buffers for local testing
+  era_detector:
+    environment:
+      - RUST_LOG=debug
+      - CHANNEL_BUFFER_SIZE=100  # Smaller for debugging
+      - BATCH_SIZE=500
+    volumes:
+      - ./feature_extraction/era_detection_rust/era_detector_logs:/app/logs
+
+  # Feature Extraction - CPU only, minimal features
+  feature_extraction:
+    build:
+      context: ./feature_extraction
+      dockerfile: feature/feature.dockerfile  # Use CPU version locally
+    environment:
+      - N_JOBS=4  # Limit parallelism for local machine
+      - FEATURE_SET=minimal
+      - BATCH_SIZE=1000
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./feature_extraction/feature:/app  # Code hot reload
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    # Remove GPU runtime for local testing
+    # runtime: nvidia  # Commented out for CPU-only local testing
+
+  # Model Builder - CPU version for local
+  model_builder:
+    environment:
+      - DEVICE=cpu  # Force CPU for local testing
+      - EPOCHS=10  # Fewer epochs for quick testing
+      - BATCH_SIZE=32
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./model_builder/src:/app/src  # Code hot reload
+      - ./model_builder/models:/app/models
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+
+  # Add development tools
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@local.dev
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    profiles:
+      - dev-tools
+
+  # Redis for development monitoring
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data_dev:
+    name: proactive_postgres_dev

@@ -3,6 +3,7 @@ line-length = 120
 target-version = "py310"
 extend-include = ["*.ipynb"]
 
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings  
@@ -22,11 +23,11 @@ ignore = [
     "SIM108", # Use ternary operator instead of if-else
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "tests/*" = ["ARG"]       # Allow unused arguments in tests
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["feature_extraction", "db", "features", "pre_process"]
 combine-as-imports = true
 

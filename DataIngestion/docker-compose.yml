@@ -55,6 +55,8 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
       PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_SETUP_EMAIL: "admin@example.com"
+      PGADMIN_SETUP_PASSWORD: "admin"
     volumes:
       - pgadmin-data:/var/lib/pgadmin
       - ./rust_pipeline/servers.json:/pgadmin4/servers.json:ro
@@ -167,6 +169,8 @@ services:
       args:
         CACHEBUST: ${CACHEBUST:-2}
     container_name: era_detection
+    tty: true
+    stdin_open: true
     command: [
       "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
       "--output-dir", "/app/data/shared_processed/era_labels",
@@ -179,7 +183,8 @@ services:
       "--hmm-states", "5"
     ]
     environment:
-      RUST_LOG: info
+      RUST_LOG: debug
+      RUST_BACKTRACE: full
       DB_DSN: postgresql://postgres:postgres@db:5432/postgres
     volumes:
       - ./feature_extraction/data/processed:/app/data/shared_processed:rw
@@ -197,8 +202,8 @@ services:
   
   feature_extraction:
     build:
-      context: ./feature_extraction/feature
-      dockerfile: feature.dockerfile
+      context: ./feature_extraction
+      dockerfile: feature/feature.dockerfile
     container_name: feature_extraction
     environment:
       PYTHONUNBUFFERED: "1"
@@ -216,14 +221,12 @@ services:
       N_JOBS: ${N_JOBS:--1}
     volumes:
       - ./feature_extraction/data/features:/app/data/output_features:rw
-      - ./feature_extraction/feature:/app:rw
-      - ./feature_extraction/features:/app/features:rw
-    command: python extract_features_enhanced.py
+    command: python -m feature.extract_features_enhanced
     depends_on:
       db:
         condition: service_healthy
-      era_detector:
-        condition: service_completed_successfully
+      # era_detector:
+      #   condition: service_completed_successfully
     networks:
       - pipeline-net
     # GPU support for feature extraction
@@ -262,8 +265,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      feature_extraction:
-        condition: service_completed_successfully
+      # feature_extraction:
+      #   condition: service_completed_successfully
     networks:
       - pipeline-net
     # GPU support for model training
@@ -291,26 +294,39 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-postgres}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
-      CONFIG_PATH: /app/config/cpu_dtlz.yaml
+      CONFIG_PATH: /app/config/moea_config_cpu.toml
       DEVICE: cpu
     volumes:
       - ./moea_optimizer/config:/app/config:ro
       - ./model_builder/models:/app/models:ro
       - ./moea_optimizer/results:/app/results:rw
-    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/cpu_dtlz.yaml"]
+    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/moea_config_cpu.toml"]
     depends_on:
       db:
         condition: service_healthy
-      model_builder:
-        condition: service_completed_successfully
+      # model_builder:
+      #   condition: service_completed_successfully
     networks:
       - pipeline-net
 
   moea_optimizer_gpu:
     build:
       context: ./moea_optimizer
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.gpu
     container_name: moea_optimizer_gpu
+    # IPC mode for shared memory
+    ipc: host
+    # Ulimits for memory and stack
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    # Shared memory size (optional, but good to set explicitly)
+    # With 32GB system RAM, 8GB shared memory is reasonable
+    shm_size: '8gb'
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
@@ -320,19 +336,19 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-postgres}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
-      CONFIG_PATH: /app/config/gpu_dtlz.yaml
+      CONFIG_PATH: /app/config/moea_config_gpu.toml
       DEVICE: cuda
       CUDA_DEVICE_ID: 0
     volumes:
       - ./moea_optimizer/config:/app/config:ro
       - ./model_builder/models:/app/models:ro
       - ./moea_optimizer/results:/app/results:rw
-    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/gpu_dtlz.yaml"]
+    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/moea_config_gpu.toml"]
     depends_on:
       db:
         condition: service_healthy
-      model_builder:
-        condition: service_completed_successfully
+      # model_builder:
+      #   condition: service_completed_successfully
     networks:
       - pipeline-net
     # GPU support for MOEA optimization

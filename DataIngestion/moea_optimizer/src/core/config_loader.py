@@ -77,6 +77,9 @@ class AlgorithmConfig:
     use_gpu: bool
     # Termination criteria
     termination: dict[str, Any]
+    # NSGA-III specific
+    n_reference_points: int = 12  # Default for NSGA-III
+    verbose: bool = True  # Verbose output during optimization
 
 
 @dataclass
@@ -91,6 +94,9 @@ class OutputConfig:
     plot_decision_variables: bool
     plot_convergence: bool
     formats: dict[str, str | list[str]]
+    base_dir: str = "results"
+    experiment_dir: str = "experiment"
+    save_history: bool = True  # Save optimization history
 
 
 @dataclass
@@ -200,6 +206,8 @@ class ConfigLoader:
             mutation_eta=alg_data['mutation_eta'],
             constraint_handling=alg_data['constraint_handling'],
             penalty_factor=alg_data['penalty_factor'],
+            n_reference_points=alg_data.get('n_reference_points', 12),
+            verbose=alg_data.get('verbose', True),
             parallel_enable=alg_data['parallel']['enable'],
             parallel_workers=alg_data['parallel']['n_workers'],
             parallel_batch_size=alg_data['parallel']['batch_size'],
@@ -218,7 +226,10 @@ class ConfigLoader:
             plot_objectives=out_data['plot_objectives'],
             plot_decision_variables=out_data['plot_decision_variables'],
             plot_convergence=out_data['plot_convergence'],
-            formats=out_data['formats']
+            formats=out_data['formats'],
+            base_dir=out_data.get('base_dir', 'results'),
+            experiment_dir=out_data.get('experiment_dir', 'experiment'),
+            save_history=out_data.get('save_history', True)
         )
 
         # Parse scenario configuration

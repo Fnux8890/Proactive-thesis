@@ -1,36 +1,40 @@
-import torch
+import logging
+import os  # Import os to read environment variable
+from pathlib import Path
+
 import joblib
 import numpy as np
-from pathlib import Path
-import os # Import os to read environment variable
-from typing import Tuple, Optional
-import logging
+import torch
 
 # Use numpy typing if available (requires numpy >= 1.20)
 try:
     from numpy.typing import NDArray
 except ImportError:
-    NDArray = np.ndarray # Fallback for older numpy
+    NDArray = np.ndarray  # Fallback for older numpy
 
 # New imports for refactored structure
-from ..models.lstm_regressor import LSTMRegressor # LightningModule for loading checkpoint
+from ..models.lstm_regressor import (
+    LSTMRegressor,
+)  # LightningModule for loading checkpoint
+
 # We might not need config here if model/scaler implicitly contain necessary info
 # from ..config import GlobalConfig
 
 logger = logging.getLogger(__name__)
 
+
 class SurrogatePredictor:
     """Handles loading the surrogate model/scaler and running inference."""
-    
-    model: Optional[LSTMRegressor] = None
-    scaler: Optional[joblib.numpy_pickle.NumpyPickler] = None
-    base_model_dir: Path # Store the base directory provided
-    gpu_specific_model_dir: Path # Store the actual directory with artifacts
-    # Store feature/target info if needed for complex inverse scaling
-    # feature_columns: Optional[List[str]] = None 
-    # target_columns: Optional[List[str]] = None 
 
-    def __init__(self, model_dir: Path, gpu_tag: Optional[str] = None):
+    model: LSTMRegressor | None = None
+    scaler: joblib.numpy_pickle.NumpyPickler | None = None
+    base_model_dir: Path  # Store the base directory provided
+    gpu_specific_model_dir: Path  # Store the actual directory with artifacts
+    # Store feature/target info if needed for complex inverse scaling
+    # feature_columns: Optional[List[str]] = None
+    # target_columns: Optional[List[str]] = None
+
+    def __init__(self, model_dir: Path, gpu_tag: str | None = None):
         """Initializes the predictor by loading the model and scaler once.
 
         Args:
@@ -40,19 +44,19 @@ class SurrogatePredictor:
         """
         self.base_model_dir = model_dir
         if gpu_tag is None:
-            gpu_tag = os.getenv("GPU_TAG", "default_gpu") # Match default in training
+            gpu_tag = os.getenv("GPU_TAG", "default_gpu")  # Match default in training
             logger.info(f"No GPU tag provided, using tag from environment or default: '{gpu_tag}'")
         else:
             logger.info(f"Using provided GPU tag: '{gpu_tag}'")
-        
+
         self.gpu_specific_model_dir = self.base_model_dir / gpu_tag
-        
+
         if not self.gpu_specific_model_dir.is_dir():
-             raise FileNotFoundError(f"GPU-specific model directory not found: {self.gpu_specific_model_dir}")
-             
+            raise FileNotFoundError(f"GPU-specific model directory not found: {self.gpu_specific_model_dir}")
+
         self.model, self.scaler = self._load(self.gpu_specific_model_dir)
         # TODO: Load feature/target column names if they were saved during training
-        # Example: 
+        # Example:
         # try:
         #     with open(model_dir / "feature_info.json", 'r') as f:
         #         info = json.load(f)
@@ -63,38 +67,45 @@ class SurrogatePredictor:
         #      pass # Fallback handled in _postprocess
 
     @staticmethod
-    def _load(gpu_specific_model_dir: Path) -> Tuple[LSTMRegressor, joblib.numpy_pickle.NumpyPickler]:
+    def _load(
+        gpu_specific_model_dir: Path,
+    ) -> tuple[LSTMRegressor, joblib.numpy_pickle.NumpyPickler]:
         """Loads the best checkpoint and scaler from the GPU-specific directory."""
         logger.info(f"Loading model artifacts from: {gpu_specific_model_dir}")
         try:
-            checkpoints = list(gpu_specific_model_dir.glob('best-surrogate-*.ckpt'))
+            checkpoints = list(gpu_specific_model_dir.glob("best-surrogate-*.ckpt"))
             if not checkpoints:
                 raise FileNotFoundError(f"No checkpoint files (*.ckpt) found in {gpu_specific_model_dir}")
 
             def get_val_loss(ckpt_path):
                 try:
                     # Extract loss from filename like 'best-surrogate-epoch=XX-val_loss=Y.YY.ckpt'
-                    parts = ckpt_path.stem.split('-')
+                    parts = ckpt_path.stem.split("-")
                     for part in reversed(parts):
-                        if 'val_loss=' in part:
-                             return float(part.split('=')[1])
-                    return float('inf') # Fallback if format unexpected
+                        if "val_loss=" in part:
+                            return float(part.split("=")[1])
+                    return float("inf")  # Fallback if format unexpected
                 except (IndexError, ValueError):
-                    return float('inf')
+                    return float("inf")
 
             # Find checkpoint with the minimum validation loss
             best_ckpt_path = min(checkpoints, key=get_val_loss)
-            if get_val_loss(best_ckpt_path) == float('inf'):
-                logger.warning("Could not parse validation loss from checkpoint names. Loading the most recently modified checkpoint.")
+            if get_val_loss(best_ckpt_path) == float("inf"):
+                logger.warning(
+                    "Could not parse validation loss from checkpoint names. Loading the most recently modified checkpoint."
+                )
                 best_ckpt_path = max(checkpoints, key=lambda p: p.stat().st_mtime)
-            
+
             logger.info(f"Loading checkpoint: {best_ckpt_path}")
             # Ensure map_location handles CPU-only inference if needed
-            model = LSTMRegressor.load_from_checkpoint(str(best_ckpt_path), map_location=torch.device('cpu') if not torch.cuda.is_available() else None)
-            model.eval() # Set to evaluation mode
-            model.freeze() # Freeze weights
+            model = LSTMRegressor.load_from_checkpoint(
+                str(best_ckpt_path),
+                map_location=torch.device("cpu") if not torch.cuda.is_available() else None,
+            )
+            model.eval()  # Set to evaluation mode
+            model.freeze()  # Freeze weights
 
-            scaler_path = gpu_specific_model_dir / 'scaler.joblib'
+            scaler_path = gpu_specific_model_dir / "scaler.joblib"
             if not scaler_path.exists():
                 raise FileNotFoundError(f"Scaler file (scaler.joblib) not found at {scaler_path}")
             scaler = joblib.load(scaler_path)
@@ -112,7 +123,7 @@ class SurrogatePredictor:
             try:
                 features = np.array(features, dtype=np.float32)
             except Exception as e:
-                raise TypeError(f"Input features could not be converted to a numpy array: {e}")
+                raise TypeError(f"Input features could not be converted to a numpy array: {e}") from e
 
         if self.scaler is None:
             raise RuntimeError("Scaler is not loaded.")
@@ -122,22 +133,24 @@ class SurrogatePredictor:
             raise ValueError(f"Input feature dim ({features.shape[-1]}) != scaler expected ({expected_features})")
 
         original_shape = features.shape
-        if len(original_shape) == 2: # Single sequence [seq_len, n_features]
+        if len(original_shape) == 2:  # Single sequence [seq_len, n_features]
             scaled_features = self.scaler.transform(features)
             scaled_features_tensor = torch.tensor(scaled_features, dtype=torch.float32).unsqueeze(0)
-        elif len(original_shape) == 3: # Batch of sequences [batch_size, seq_len, n_features]
+        elif len(original_shape) == 3:  # Batch of sequences [batch_size, seq_len, n_features]
             batch_size, seq_len, n_features_in = original_shape
             features_2d = features.reshape(-1, n_features_in)
             scaled_features_2d = self.scaler.transform(features_2d)
             scaled_features = scaled_features_2d.reshape(batch_size, seq_len, n_features_in)
             scaled_features_tensor = torch.tensor(scaled_features, dtype=torch.float32)
         else:
-            raise ValueError(f"Unsupported input shape: {original_shape}. Expected [seq_len, n_features] or [batch_size, seq_len, n_features].")
+            raise ValueError(
+                f"Unsupported input shape: {original_shape}. Expected [seq_len, n_features] or [batch_size, seq_len, n_features]."
+            )
 
         # Move tensor to the same device as the model
         if self.model:
-             scaled_features_tensor = scaled_features_tensor.to(self.model.device)
-        
+            scaled_features_tensor = scaled_features_tensor.to(self.model.device)
+
         return scaled_features_tensor
 
     def _postprocess(self, predictions_scaled: NDArray) -> NDArray:
@@ -154,55 +167,63 @@ class SurrogatePredictor:
                 # Inverse transform directly
                 return self.scaler.inverse_transform(predictions_scaled)
             except ValueError as e:
-                 logger.error(f"Error during inverse_transform: {e}. Shape mismatch? Scaled prediction shape: {predictions_scaled.shape}, Scaler features: {n_scaler_features}", exc_info=True)
-                 raise
+                logger.error(
+                    f"Error during inverse_transform: {e}. Shape mismatch? Scaled prediction shape: {predictions_scaled.shape}, Scaler features: {n_scaler_features}",
+                    exc_info=True,
+                )
+                raise
 
         # Complex case: Target subset (TODO: requires feature/target name mapping)
         # Assuming for now that train_surrogate used all numeric cols for both,
         # so n_prediction_features should equal n_scaler_features.
         # If this warning appears, the assumption was wrong or something changed.
-        logger.warning(f"Prediction dim ({n_prediction_features}) != scaler features ({n_scaler_features}). Cannot accurately inverse scale without feature mapping. Returning SCALED predictions.")
+        logger.warning(
+            f"Prediction dim ({n_prediction_features}) != scaler features ({n_scaler_features}). Cannot accurately inverse scale without feature mapping. Returning SCALED predictions."
+        )
         return predictions_scaled
 
     def predict(self, features: NDArray) -> NDArray:
         """Runs preprocessing, inference, and postprocessing."""
         if self.model is None:
             raise RuntimeError("Model is not loaded. Call load() first or initialize the class.")
-            
+
         scaled_features_tensor = self._preprocess(features)
-        
+
         with torch.no_grad():
             # Model expects input shape like [batch, seq_len, features]
             prediction_tensor = self.model(scaled_features_tensor)
-        
+
         predictions_scaled = prediction_tensor.cpu().numpy()
         predictions_original_scale = self._postprocess(predictions_scaled)
-        
+
         return predictions_original_scale
 
     # Alias __call__ to predict for convenience
     def __call__(self, features: NDArray) -> NDArray:
         return self.predict(features)
 
+
 # --- Example Usage --- (Requires model artifacts from training)
-if __name__ == '__main__':
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger.info("Testing SurrogatePredictor...")
 
     # Point to the BASE directory where GPU-specific subdirs are expected
-    base_model_dir = Path("./test_model_output") # CHANGE THIS to your actual BASE model output dir
-    gpu_tag_to_test = os.getenv("GPU_TAG", "default_gpu") # Test loading based on env var or default
+    base_model_dir = Path("./test_model_output")  # CHANGE THIS to your actual BASE model output dir
+    gpu_tag_to_test = os.getenv("GPU_TAG", "default_gpu")  # Test loading based on env var or default
     model_output_dir_to_test = base_model_dir / gpu_tag_to_test
 
-    if not model_output_dir_to_test.exists() or not any(model_output_dir_to_test.glob('*.ckpt')):
-        logger.error(f"GPU-specific model directory {model_output_dir_to_test} does not exist or contains no checkpoints.")
+    if not model_output_dir_to_test.exists() or not any(model_output_dir_to_test.glob("*.ckpt")):
+        logger.error(
+            f"GPU-specific model directory {model_output_dir_to_test} does not exist or contains no checkpoints."
+        )
         logger.error("Please run the training script first (ensure GPU_TAG is set if needed) and update the path.")
     else:
         try:
             # Pass the BASE directory to the constructor
             predictor = SurrogatePredictor(base_model_dir)
             logger.info("Predictor initialized successfully.")
-            
+
             n_features = predictor.scaler.n_features_in_
             seq_len = 24
             logger.info(f"Creating dummy input: sequence length={seq_len}, features={n_features}")
@@ -223,4 +244,4 @@ if __name__ == '__main__':
         except Exception as e:
             logger.error(f"An error occurred during testing: {e}", exc_info=True)
 
-    logger.info("Predictor test finished.") 
+    logger.info("Predictor test finished.")

@@ -13,9 +13,22 @@ import click
 import numpy as np
 import pandas as pd
 
+
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles numpy types."""
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.float32, np.float64)):
+            return float(obj)
+        if isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+        return super().default(obj)
+
 from ..algorithms.cpu.nsga3_pymoo import PymooNSGA3Wrapper, create_problem
-from ..core.config_loader import ConfigLoader, set_random_seeds
+from ..core.config_loader import ConfigLoader
 from ..core.evaluation import ConvergenceTracker, PerformanceMetrics
+from ..utils.seed import set_all_seeds
 from ..utils.timer import MultiTimer
 
 logger = logging.getLogger(__name__)
@@ -56,16 +69,14 @@ class OptimizationRunner:
         logger.info(f"Running {problem_name} with seed {seed} (run {run_id})")
 
         # Set random seeds
-        set_random_seeds(self.config.seeds, worker_id=seed)
+        set_all_seeds(seed, worker_id=run_id)
 
         # Create problem
         problem = create_problem(problem_config)
 
         # Get reference point for metrics
-        ref_point = self.loader.get_reference_point(problem_name)
-        if ref_point is None:
-            from ..core.evaluation import get_reference_point_for_problem
-            ref_point = get_reference_point_for_problem(problem_name, problem.n_obj)
+        from ..core.evaluation import get_reference_point_for_problem
+        ref_point = get_reference_point_for_problem(problem_name, problem.n_obj)
         ref_point = np.array(ref_point)
 
         # Create metrics calculator
@@ -77,18 +88,20 @@ class OptimizationRunner:
         # Create callback for tracking
         def callback_fn(algorithm):
             gen = algorithm.n_gen
-            if gen % self.config.evaluation.log_interval == 0:
+            log_interval = getattr(self.config, 'evaluation', {}).get('log_interval', 10) if hasattr(self.config, 'evaluation') else 10
+            if gen % log_interval == 0:
                 # Get current Pareto front approximation
                 F = algorithm.pop.get("F")
                 n_eval = algorithm.evaluator.n_eval
                 tracker.update(gen, n_eval, F)
 
-        # Choose algorithm based on hardware config
-        if self.config.hardware.device == "cpu":
+        # Choose algorithm based on whether GPU is enabled
+        use_gpu = self.config.algorithm.use_gpu if hasattr(self.config.algorithm, 'use_gpu') else False
+        if not use_gpu:
             wrapper = PymooNSGA3Wrapper(self.config)
         else:
-            # GPU implementation would go here
-            raise NotImplementedError("GPU implementation not yet available")
+            from ..algorithms.gpu.nsga3_tensor import TensorNSGA3Wrapper
+            wrapper = TensorNSGA3Wrapper(self.config)
 
         # Run optimization
         with self.timer.time(f"{problem_name}_run_{run_id}"):
@@ -124,33 +137,45 @@ class OptimizationRunner:
         # Run experiments
         all_results = []
 
-        for problem_config in self.config.problem.problems:
-            problem_name = problem_config["name"]
-            problem_results = []
+        # Create a single problem configuration from the MOEA config
+        problem_config = {
+            "name": "GreenhouseOptimization",
+            "n_var": len(self.config.decision_variables),
+            "n_obj": len(self.config.get_active_objectives()),
+            "objectives": self.config.objectives,
+            "decision_variables": self.config.decision_variables,
+            "constraints": self.config.constraints
+        }
 
-            # Multiple runs with different seeds
-            for run_id in range(self.config.seeds.replications):
-                seed = self.config.seeds.numpy + run_id
+        problem_name = problem_config["name"]
+        problem_results = []
 
-                try:
-                    results = self.run_single_problem(problem_config, seed, run_id)
-                    problem_results.append(results)
+        # Multiple runs with different seeds (default to 1 run if not specified)
+        n_runs = getattr(self.config, 'n_runs', 1)
+        base_seed = getattr(self.config, 'base_seed', 42)
+        
+        for run_id in range(n_runs):
+            seed = base_seed + run_id
+            
+            try:
+                results = self.run_single_problem(problem_config, seed, run_id)
+                problem_results.append(results)
 
-                    # Save individual run results
-                    if self.config.output.save_interval > 0:
-                        run_dir = output_base / problem_name / f"run_{run_id}"
-                        run_dir.mkdir(parents=True, exist_ok=True)
-                        self._save_run_results(results, run_dir)
+                # Save individual run results
+                if self.config.output.save_interval > 0:
+                    run_dir = output_base / problem_name / f"run_{run_id}"
+                    run_dir.mkdir(parents=True, exist_ok=True)
+                    self._save_run_results(results, run_dir)
 
-                except Exception as e:
-                    logger.error(f"Failed to run {problem_name} (run {run_id}): {e}")
-                    continue
+            except Exception as e:
+                logger.error(f"Failed to run {problem_name} (run {run_id}): {e}")
+                continue
 
-            # Aggregate results for this problem
-            if problem_results:
-                aggregated = self._aggregate_results(problem_results)
-                aggregated["problem_name"] = problem_name
-                all_results.append(aggregated)
+        # Aggregate results for this problem
+        if problem_results:
+            aggregated = self._aggregate_results(problem_results)
+            aggregated["problem_name"] = problem_name
+            all_results.append(aggregated)
 
         # Save aggregated results
         self._save_aggregated_results(all_results, output_base)
@@ -170,7 +195,7 @@ class OptimizationRunner:
 
         # Save metrics
         with open(output_dir / "metrics.json", 'w') as f:
-            json.dump(results["final_metrics"], f, indent=2)
+            json.dump(results["final_metrics"], f, indent=2, cls=NumpyEncoder)
 
         # Save convergence history
         if results.get("convergence_history"):
@@ -236,7 +261,7 @@ class OptimizationRunner:
 
         # Save complete results as JSON
         with open(output_dir / "complete_results.json", 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+            json.dump(results, f, indent=2, cls=NumpyEncoder)
 
     def _generate_report(self, results: list[dict[str, Any]], output_dir: Path) -> None:
         """Generate experiment report."""
@@ -244,10 +269,10 @@ class OptimizationRunner:
             f"# Experiment Report: {self.config.meta.get('experiment_name', 'unnamed')}",
             f"\nDescription: {self.config.meta.get('description', 'N/A')}",
             "\n## Configuration",
-            f"- Algorithm: {self.config.hardware.device.upper()} implementation",
+            f"- Algorithm: {self.config.algorithm.type}",
             f"- Population size: {self.config.algorithm.population_size}",
             f"- Generations: {self.config.algorithm.n_generations}",
-            f"- Replications: {self.config.seeds.replications}",
+            f"- Runs: {getattr(self.config, 'n_runs', 1)}",
             "\n## Results Summary\n"
         ]
 

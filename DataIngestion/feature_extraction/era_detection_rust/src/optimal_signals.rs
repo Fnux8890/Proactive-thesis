@@ -36,10 +36,12 @@ impl OptimalSignals {
         all
     }
 
+    #[allow(dead_code)]
     pub fn get_primary(&self) -> &[&str] {
         &self.primary
     }
 
+    #[allow(dead_code)]
     pub fn get_secondary(&self) -> &[&str] {
         &self.secondary
     }

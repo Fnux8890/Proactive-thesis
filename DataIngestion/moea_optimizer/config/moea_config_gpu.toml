@@ -1,0 +1,283 @@
+# MOEA Optimization Configuration
+# This file defines objectives, constraints, and algorithm parameters
+# for Multi-Objective Evolutionary Algorithm optimization
+
+[meta]
+name = "Greenhouse Climate Optimization"
+version = "1.0.0"
+description = "Multi-objective optimization for energy-efficient greenhouse climate control"
+author = "Greenhouse AI Team"
+
+# ============================================================================
+# Optimization Objectives
+# ============================================================================
+
+[[objectives]]
+name = "energy_consumption"
+description = "Total energy consumption for climate control"
+type = "minimize"
+unit = "kWh"
+weight_range = [0.2, 0.8]
+model_path = "models/energy_consumption/model.txt"
+scaler_path = "models/energy_consumption/scaler.joblib"
+# Feature expression for calculating this objective
+feature_expression = "heating_energy + cooling_energy + lighting_energy"
+# Important sensor signals for this objective
+important_signals = [
+    "pipe_temp_1_c",
+    "pipe_temp_2_c", 
+    "heating_setpoint_c",
+    "total_lamps_on",
+    "vent_pos_1_percent",
+    "vent_pos_2_percent"
+]
+
+[[objectives]]
+name = "plant_growth"
+description = "Plant growth rate and development"
+type = "maximize"
+unit = "g/day"
+weight_range = [0.3, 0.9]
+model_path = "models/plant_growth/model.txt"
+scaler_path = "models/plant_growth/scaler.joblib"
+feature_expression = "biomass_accumulation_rate"
+important_signals = [
+    "dli_sum",
+    "co2_measured_ppm",
+    "air_temp_c",
+    "relative_humidity_percent",
+    "vpd_hpa"
+]
+# Phenotype features that influence this objective
+phenotype_features = [
+    "growth_rate",
+    "leaf_area",
+    "stem_diameter"
+]
+
+[[objectives]]
+name = "water_usage"
+description = "Total water consumption for irrigation"
+type = "minimize"
+unit = "L"
+weight_range = [0.1, 0.5]
+model_path = "models/water_usage/model.txt"
+scaler_path = "models/water_usage/scaler.joblib"
+feature_expression = "irrigation_volume + evapotranspiration"
+important_signals = [
+    "relative_humidity_percent",
+    "vpd_hpa",
+    "radiation_w_m2",
+    "air_temp_c"
+]
+phenotype_features = ["water_use_efficiency"]
+
+[[objectives]]
+name = "crop_quality"
+description = "Overall crop quality and market value"
+type = "maximize"
+unit = "quality_index"
+weight_range = [0.2, 0.7]
+model_path = "models/crop_quality/model.txt"
+scaler_path = "models/crop_quality/scaler.joblib"
+feature_expression = "compactness * uniformity * flower_quality"
+important_signals = [
+    "dli_sum",
+    "light_intensity_umol",
+    "air_temp_c",
+    "humidity_deficit_g_m3"
+]
+phenotype_features = [
+    "compactness",
+    "uniformity",
+    "flower_count",
+    "flower_size",
+    "market_value"
+]
+
+# ============================================================================
+# Composite Objectives (predefined combinations)
+# ============================================================================
+
+[composite_objectives.sustainable_production]
+description = "Balance energy efficiency with production goals"
+objectives = ["energy_consumption", "water_usage", "plant_growth"]
+weights = [0.3, 0.2, 0.5]
+
+[composite_objectives.quality_focused]
+description = "Prioritize crop quality while maintaining stability"
+objectives = ["crop_quality", "climate_stability", "production_time"]
+weights = [0.5, 0.3, 0.2]
+
+[composite_objectives.efficient_growth]
+description = "Optimize for fast, efficient growth"
+objectives = ["energy_consumption", "plant_growth", "production_time"]
+weights = [0.3, 0.5, 0.2]
+
+# ============================================================================
+# Decision Variables (Control Parameters)
+# ============================================================================
+
+[[decision_variables]]
+name = "temperature_setpoint"
+description = "Target air temperature"
+unit = "°C"
+bounds = [18.0, 28.0]
+resolution = 0.5
+
+[[decision_variables]]
+name = "humidity_setpoint"
+description = "Target relative humidity"
+unit = "%"
+bounds = [60.0, 85.0]
+resolution = 1.0
+
+[[decision_variables]]
+name = "co2_setpoint"
+description = "Target CO2 concentration"
+unit = "ppm"
+bounds = [400.0, 1000.0]
+resolution = 50.0
+
+[[decision_variables]]
+name = "light_intensity"
+description = "Artificial light intensity"
+unit = "μmol/m²/s"
+bounds = [0.0, 600.0]
+resolution = 50.0
+
+[[decision_variables]]
+name = "light_hours"
+description = "Daily photoperiod"
+unit = "hours"
+bounds = [0.0, 18.0]
+resolution = 1.0
+
+[[decision_variables]]
+name = "ventilation_rate"
+description = "Ventilation opening percentage"
+unit = "%"
+bounds = [0.0, 100.0]
+resolution = 5.0
+
+# ============================================================================
+# Constraints
+# ============================================================================
+
+[constraints.environmental]
+# Hard constraints that must be satisfied
+min_temperature = 15.0  # °C
+max_temperature = 35.0  # °C
+min_humidity = 40.0     # %
+max_humidity = 95.0     # %
+min_co2 = 350.0        # ppm
+max_co2 = 1500.0       # ppm
+max_vpd = 3.0          # kPa
+
+[constraints.operational]
+# Operational constraints
+max_temperature_change_rate = 2.0    # °C/hour
+max_humidity_change_rate = 5.0       # %/hour
+min_ventilation_temperature = 5.0    # °C outdoor temp for ventilation
+max_daily_light_integral = 30.0      # mol/m²/day
+
+[constraints.economic]
+# Economic constraints (optional)
+max_daily_energy_cost = 100.0        # $/day
+max_daily_water_cost = 50.0          # $/day
+
+# ============================================================================
+# Algorithm Configuration
+# ============================================================================
+
+[algorithm]
+type = "NSGA-II"  # Options: NSGA-II, NSGA-III, MOEA/D, SPEA2
+population_size = 100
+n_generations = 200
+# Selection
+selection_method = "tournament"
+tournament_size = 3
+# Crossover
+crossover_method = "simulated_binary"  # SBX
+crossover_probability = 0.9
+crossover_eta = 15  # Distribution index
+# Mutation
+mutation_method = "polynomial"
+mutation_probability = 0.1
+mutation_eta = 20  # Distribution index
+# Other parameters
+constraint_handling = "penalty"  # Options: penalty, repair, reject
+penalty_factor = 1000.0
+
+[algorithm.parallel]
+enable = true
+n_workers = 4
+batch_size = 20
+use_gpu = true
+
+[algorithm.termination]
+# Multiple termination criteria (first one met stops the algorithm)
+max_generations = 10
+max_evaluations = 20000
+max_time_minutes = 120
+convergence_tolerance = 0.001
+convergence_window = 20  # generations
+
+# ============================================================================
+# Output Configuration
+# ============================================================================
+
+[output]
+save_interval = 10  # Save results every N generations
+save_population = true
+save_pareto_front = true
+save_convergence_history = true
+plot_interval = 20  # Generate plots every N generations
+plot_objectives = true
+plot_decision_variables = true
+plot_convergence = true
+
+[output.formats]
+results = "json"  # Options: json, csv, parquet
+plots = ["png", "pdf"]
+summary_report = "html"
+
+# ============================================================================
+# Scenario Configuration
+# ============================================================================
+
+[scenario]
+name = "Winter Production"
+description = "Optimize for winter conditions with high energy costs"
+start_date = "2024-01-01"
+duration_days = 30
+location = "Denmark"
+weather_scenario = "typical_winter"
+
+# Scenario-specific weights (override default objective weights)
+[scenario.objective_weights]
+energy_consumption = 0.4
+plant_growth = 0.4
+water_usage = 0.1
+crop_quality = 0.1
+
+# Scenario-specific constraints
+[scenario.constraints]
+min_temperature = 18.0  # Higher minimum for winter
+max_daily_energy_cost = 150.0  # Higher budget for winter
+
+# ============================================================================
+# Validation Configuration
+# ============================================================================
+
+[validation]
+# Cross-validation of surrogate models
+enable_cross_validation = true
+cv_folds = 5
+# Model uncertainty estimation
+estimate_uncertainty = true
+uncertainty_method = "bootstrap"
+n_bootstrap_samples = 100
+# Solution robustness testing
+test_robustness = true
+perturbation_size = 0.05  # 5% perturbation in decision variables

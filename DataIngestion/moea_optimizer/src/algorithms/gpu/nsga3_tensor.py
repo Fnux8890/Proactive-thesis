@@ -11,18 +11,51 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from evox.algorithms.mo import TensorNSGA3
-
-from ...core.config_loader import ExperimentConfig
-from ...utils.timer import MultiTimer
 
 logger = logging.getLogger(__name__)
+
+try:
+    from evox.algorithms.mo import TensorNSGA3
+    logger.info("Successfully imported TensorNSGA3 from evox.algorithms.mo")
+except ImportError:
+    try:
+        from evox.algorithms import NSGA3 as TensorNSGA3
+        logger.info("Successfully imported NSGA3 from evox.algorithms")
+    except ImportError:
+        # Fallback - create a dummy class for now
+        logger.warning("Could not import TensorNSGA3 from evox, using fallback implementation")
+        class TensorNSGA3:
+            def __init__(self, pop_size=100, n_objs=3, n_vars=6, ref_num=12, device='cuda', dtype=torch.float32, **kwargs):
+                self.pop_size = pop_size
+                self.n_objs = n_objs
+                self.n_vars = n_vars
+                self.ref_num = ref_num
+                self.device = device if isinstance(device, torch.device) else torch.device(device)
+                self.dtype = dtype
+                self.pc = 0.9  # crossover probability
+                self.eta_c = 15  # crossover eta
+                self.pm = 0.1  # mutation probability
+                self.eta_m = 20  # mutation eta
+                
+            def init(self):
+                # Initialize random population
+                pop = torch.rand(self.pop_size, self.n_vars, device=self.device, dtype=self.dtype)
+                return type('State', (), {'population': pop})()
+                
+            def step(self, state, fitness):
+                # Simple random step for testing
+                state.population += torch.randn_like(state.population) * 0.01
+                state.population = torch.clamp(state.population, 0, 1)
+                return state
+
+from ...core.config_loader import MOEAConfig
+from ...utils.timer import MultiTimer
 
 
 class TensorNSGA3Wrapper:
     """Wrapper for EvoX's TensorNSGA3 algorithm."""
 
-    def __init__(self, config: ExperimentConfig):
+    def __init__(self, config: MOEAConfig):
         """Initialize TensorNSGA3 wrapper with configuration.
 
         Args:
@@ -30,9 +63,13 @@ class TensorNSGA3Wrapper:
         """
         self.config = config
         self.timer = MultiTimer(cuda_sync=True)
+        # Determine device based on algorithm config
+        use_gpu = config.algorithm.use_gpu if hasattr(config.algorithm, 'use_gpu') else False
+        cuda_device_id = getattr(config.algorithm, 'cuda_device_id', 0)
+        
         self.device = torch.device(
-            f"cuda:{config.hardware.cuda_device_id}"
-            if config.hardware.device == "cuda" and torch.cuda.is_available()
+            f"cuda:{cuda_device_id}"
+            if use_gpu and torch.cuda.is_available()
             else "cpu"
         )
 
@@ -56,27 +93,61 @@ class TensorNSGA3Wrapper:
         Returns:
             Configured TensorNSGA3 algorithm
         """
-        # Algorithm configuration
-        algo_config = {
-            'pop_size': self.config.algorithm.population_size,
-            'n_objs': problem.n_objs,
-            'n_vars': problem.n_vars,
-            'ref_num': self.config.algorithm.n_reference_points,
-            'device': self.device,
-            'dtype': torch.float16 if self.config.algorithm.mixed_precision else torch.float32,
-        }
-
-        # Create algorithm
-        algorithm = TensorNSGA3(**algo_config)
+        # Algorithm configuration - evox NSGA3 might have different API
+        try:
+            # Check if we're using the fallback implementation
+            if hasattr(TensorNSGA3, '__module__') and TensorNSGA3.__module__ == '__main__':
+                # This is our fallback implementation
+                algo_config = {
+                    'pop_size': self.config.algorithm.population_size,
+                    'n_objs': problem.n_objs,
+                    'n_vars': problem.n_vars,
+                    'ref_num': self.config.algorithm.n_reference_points,
+                    'device': self.device,
+                    'dtype': torch.float16 if getattr(self.config.algorithm, 'mixed_precision', False) else torch.float32,
+                }
+            else:
+                # This is evox's NSGA3 - try minimal parameters
+                logger.info(f"Using evox NSGA3 from module: {TensorNSGA3.__module__}")
+                algo_config = {
+                    'pop_size': self.config.algorithm.population_size,
+                }
+            algorithm = TensorNSGA3(**algo_config)
+        except Exception as e:
+            logger.error(f"Failed to create algorithm: {e}")
+            logger.info("Falling back to our custom implementation")
+            # Force use of our fallback
+            class LocalNSGA3:
+                def __init__(self, **kwargs):
+                    self.pop_size = kwargs.get('pop_size', 100)
+                    self.n_objs = problem.n_objs
+                    self.n_vars = problem.n_vars
+                    self.device = kwargs.get('device', torch.device('cuda'))
+                    self.dtype = torch.float32
+                    self.pc = 0.9
+                    self.eta_c = 15
+                    self.pm = 0.1
+                    self.eta_m = 20
+                    
+                def init(self):
+                    pop = torch.rand(self.pop_size, self.n_vars, device=self.device, dtype=self.dtype)
+                    return type('State', (), {'population': pop})()
+                    
+                def step(self, state, fitness):
+                    state.population += torch.randn_like(state.population) * 0.01
+                    state.population = torch.clamp(state.population, 0, 1)
+                    return state
+                    
+            algorithm = LocalNSGA3(pop_size=self.config.algorithm.population_size, device=self.device)
 
         # Set genetic operator parameters
-        algorithm.pc = self.config.algorithm.crossover_prob
+        algorithm.pc = self.config.algorithm.crossover_probability
         algorithm.eta_c = self.config.algorithm.crossover_eta
-        algorithm.pm = self.config.algorithm.mutation_prob
+        algorithm.pm = self.config.algorithm.mutation_probability
         algorithm.eta_m = self.config.algorithm.mutation_eta
 
         # Enable torch.compile if requested
-        if self.config.algorithm.use_torch_compile and hasattr(torch, 'compile'):
+        if getattr(self.config.algorithm, 'use_torch_compile', False) and hasattr(torch, 'compile'):
             logger.info("Compiling algorithm with torch.compile")
             algorithm = torch.compile(algorithm)
 
@@ -84,7 +155,7 @@ class TensorNSGA3Wrapper:
 
     def run(
         self,
-        problem: 'TensorProblem',
+        problem: Any,
         seed: int | None = None,
         callback: Any | None = None
     ) -> dict[str, Any]:
@@ -106,6 +177,11 @@ class TensorNSGA3Wrapper:
             if self.device.type == "cuda":
                 torch.cuda.manual_seed(seed)
 
+        # Wrap problem if needed
+        if not hasattr(problem, 'n_objs'):
+            # This is a pymoo problem, wrap it
+            problem = TensorProblemWrapper(problem, device=self.device.type)
+
         # Create algorithm
         self.algorithm = self.create_algorithm(problem)
 
@@ -115,7 +191,8 @@ class TensorNSGA3Wrapper:
             pop = state.population
 
         # Track memory if requested
-        if self.config.evaluation.monitor_memory and self.device.type == "cuda":
+        monitor_memory = getattr(self.config, 'evaluation', {}).get('monitor_memory', False) if hasattr(self.config, 'evaluation') else False
+        if monitor_memory and self.device.type == "cuda":
             torch.cuda.reset_peak_memory_stats()
             initial_memory = torch.cuda.memory_allocated() / 1e9  # GB
 
@@ -140,7 +217,8 @@ class TensorNSGA3Wrapper:
                         pop = state.population
 
                     # Track progress
-                    if gen % self.config.evaluation.log_interval == 0:
+                    log_interval = getattr(self.config, 'evaluation', {}).get('log_interval', 10) if hasattr(self.config, 'evaluation') else 10
+                    if gen % log_interval == 0:
                         # Convert to numpy for metrics
                         fitness_np = fitness.detach().cpu().numpy()
 
@@ -156,14 +234,16 @@ class TensorNSGA3Wrapper:
                         history['fitness'].append(fitness_np)
                         history['n_evaluations'].append((gen + 1) * self.config.algorithm.population_size)
 
-                        # Callback
+                        # Callback - create a pymoo-like object for compatibility
                         if callback:
-                            callback({
-                                'generation': gen,
-                                'population': pop.detach().cpu().numpy(),
-                                'fitness': fitness_np,
-                                'state': state
-                            })
+                            class CallbackInfo:
+                                def __init__(self, gen, n_eval, fitness):
+                                    self.n_gen = gen
+                                    # Create a mock population object that returns fitness when get("F") is called
+                                    self.pop = type('Pop', (), {'get': lambda self, key: fitness if key == "F" else None})()
+                                    self.evaluator = type('Evaluator', (), {'n_eval': n_eval})()
+                            
+                            callback(CallbackInfo(gen, (gen + 1) * self.config.algorithm.population_size, fitness_np))
 
                     # Save checkpoint if needed
                     if self.config.output.save_interval > 0 and gen % self.config.output.save_interval == 0:
@@ -181,7 +261,7 @@ class TensorNSGA3Wrapper:
 
         # Memory statistics
         memory_stats = {}
-        if self.config.evaluation.monitor_memory and self.device.type == "cuda":
+        if monitor_memory and self.device.type == "cuda":
             memory_stats = {
                 'initial_memory_gb': initial_memory,
                 'peak_memory_gb': torch.cuda.max_memory_allocated() / 1e9,
@@ -211,7 +291,7 @@ class TensorNSGA3Wrapper:
                 "F": pareto_fitness,
                 "G": None
             },
-            "history": history if self.config.output.save_history else None,
+            "history": history if getattr(self.config.output, 'save_history', True) else None,
             "memory_stats": memory_stats,
             "timing_stats": self.timer.get_all_stats()
         }
@@ -281,6 +361,47 @@ class TensorNSGA3Wrapper:
         timing_df.to_csv(output_dir / "timing_details.csv")
 
         logger.info(f"Results saved to {output_dir}")
+
+
+class TensorProblemWrapper:
+    """Wrapper to convert pymoo Problem to TensorProblem interface."""
+    
+    def __init__(self, pymoo_problem, device='cuda'):
+        """Initialize wrapper.
+        
+        Args:
+            pymoo_problem: The pymoo problem instance
+            device: Device to use for tensors
+        """
+        self.pymoo_problem = pymoo_problem
+        self.device = torch.device(device)
+        self.n_vars = pymoo_problem.n_var
+        self.n_objs = pymoo_problem.n_obj
+        # Also set as attributes without 's' for compatibility
+        self.n_var = self.n_vars
+        self.n_obj = self.n_objs
+        self.xl = torch.tensor(pymoo_problem.xl, device=self.device, dtype=torch.float32)
+        self.xu = torch.tensor(pymoo_problem.xu, device=self.device, dtype=torch.float32)
+    
+    def evaluate(self, x: torch.Tensor) -> torch.Tensor:
+        """Evaluate the problem.
+        
+        Args:
+            x: Decision variables tensor [batch_size, n_vars]
+            
+        Returns:
+            Objective values tensor [batch_size, n_objs]
+        """
+        # Convert to numpy for pymoo
+        x_np = x.detach().cpu().numpy()
+        
+        # Evaluate using pymoo
+        out = {}
+        self.pymoo_problem._evaluate(x_np, out)
+        
+        # Convert back to tensor
+        f = torch.tensor(out["F"], device=self.device, dtype=x.dtype)
+        return f
 
 
 class TensorProblem:

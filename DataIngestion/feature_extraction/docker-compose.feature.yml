@@ -1,0 +1,80 @@
+# Docker Compose for running feature extraction independently
+# This allows testing feature extraction without running the full pipeline
+#
+# Usage:
+#   docker compose -f docker-compose.feature.yml up --build
+#
+# Prerequisites:
+#   - Database must be running with era labels already populated
+#   - Set SKIP_ERA_DETECTION=true to use existing era labels
+
+services:
+  # Database service (if not already running)
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - feature-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Feature extraction service
+  feature_extraction:
+    build:
+      context: .
+      dockerfile: feature/feature.dockerfile
+    container_name: feature_extraction_standalone
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # Database configuration
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      # Feature extraction configuration
+      FEATURES_TABLE: ${FEATURES_TABLE:-tsfresh_features}
+      USE_GPU: ${USE_GPU:-false}
+      FEATURE_SET: ${FEATURE_SET:-efficient}
+      # Parallel processing configuration - optimized for cloud
+      BATCH_SIZE: ${BATCH_SIZE:-300}  # Increased for cloud deployment
+      ERA_LEVEL: ${ERA_LEVEL:-B}
+      MIN_ERA_ROWS: ${MIN_ERA_ROWS:-100}
+      N_JOBS: ${N_JOBS:--1}  # -1 uses all available CPU cores
+      # Skip era detection flag
+      SKIP_ERA_DETECTION: ${SKIP_ERA_DETECTION:-true}
+      ERA_TABLE_SUFFIX: ${ERA_TABLE_SUFFIX:-}
+    volumes:
+      - ./data/features:/app/data/output_features:rw
+      - ./feature:/app/feature:ro
+    command: python extract_features_direct.py
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - feature-net
+    # GPU support (optional)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  feature-net:
+    driver: bridge
+
+volumes:
+  postgres-data:

@@ -1,0 +1,79 @@
+# Docker Compose override for cloud deployment with high-performance settings
+# This configuration is optimized for cloud instances with many cores and GPU
+#
+# Usage:
+#   docker compose -f docker-compose.feature.yml -f docker-compose.cloud.yml up --build
+#
+# Recommended cloud instances:
+#   - AWS: p3.2xlarge (8 vCPUs, 61 GB RAM, 1 x NVIDIA V100)
+#   - GCP: n1-highmem-8 with 1 x NVIDIA T4
+#   - Azure: NC6s_v3 (6 vCPUs, 112 GB RAM, 1 x NVIDIA V100)
+
+services:
+  feature_extraction:
+    environment:
+      # Optimized for cloud deployment
+      USE_GPU: "true"
+      FEATURE_SET: "comprehensive"  # Use full feature set in cloud
+      BATCH_SIZE: "500"  # Larger batches for cloud resources
+      N_JOBS: "-1"  # Use all available cores
+      MIN_ERA_ROWS: "200"  # Skip smaller eras for efficiency
+      
+      # Additional performance settings
+      PYTHONUNBUFFERED: "1"
+      OMP_NUM_THREADS: "8"  # OpenMP threads for numerical libraries
+      MKL_NUM_THREADS: "8"  # Intel MKL threads if available
+      NUMEXPR_NUM_THREADS: "8"  # NumExpr parallelization
+      
+    # Resource limits and reservations for cloud
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          cpus: '6'
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    # Health check for cloud monitoring
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Restart policy for cloud resilience
+    restart: unless-stopped
+    
+    # Logging configuration for cloud
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+        labels: "service=feature_extraction,environment=cloud"
+
+  # Optional: Add monitoring sidecar for cloud deployments
+  feature_extraction_monitor:
+    image: prom/node-exporter:latest
+    container_name: feature_extraction_monitor
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - feature-net
+    profiles:
+      - monitoring
