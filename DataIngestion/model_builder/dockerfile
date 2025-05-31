@@ -11,6 +11,7 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 # Install build tools for LightGBM GPU support using conda/mamba
 RUN mamba install -y -c conda-forge \
     cmake \
+    make \
     boost \
     boost-cpp \
     compilers \
@@ -27,15 +28,10 @@ RUN pip install --no-cache-dir uv \
     mlflow-skinny \
     sqlalchemy==2.* psycopg2-binary
 
-# Build and install LightGBM with CUDA support from source
-RUN git clone --recursive --branch stable --depth 1 https://github.com/Microsoft/LightGBM.git /tmp/LightGBM \
-    && cd /tmp/LightGBM \
-    && mkdir build && cd build \
-    && cmake -DUSE_GPU=1 -DUSE_CUDA=1 -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda .. \
-    && make -j$(nproc) \
-    && cd /tmp/LightGBM/python-package \
-    && python setup.py install --precompile \
-    && rm -rf /tmp/LightGBM
+# Install LightGBM
+# Note: RAPIDS base image includes cuML which has GPU-accelerated algorithms
+# For now, use standard LightGBM and rely on RAPIDS for GPU acceleration
+RUN pip install --no-cache-dir lightgbm==4.*
 
 # Create a writable /tmp/mlflow directory for potential client-side staging
 RUN mkdir -p /tmp/mlflow && chmod 777 /tmp/mlflow
@@ -49,9 +45,5 @@ WORKDIR /app
 COPY src/ ./src/
 COPY pyproject.toml ./
 
-# Add a startup script to check GPU availability
-RUN echo '#!/bin/bash\necho "Checking GPU availability..."\nnvidia-smi\necho ""\necho "CUDA devices visible to PyTorch:"\npython -c "import torch; print(f\"CUDA available: {torch.cuda.is_available()}\"); print(f\"CUDA device count: {torch.cuda.device_count()}\"); print(f\"Current device: {torch.cuda.current_device() if torch.cuda.is_available() else \"N/A\"}\")"\necho ""\nexec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
-# Default to training all objectives with GPU
+# Default to training all objectives
 CMD ["python", "-m", "src.training.train_all_objectives"]

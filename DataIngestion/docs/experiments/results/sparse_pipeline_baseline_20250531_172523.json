@@ -1,0 +1,36 @@
+{
+  "experiment": "sparse_pipeline_baseline",
+  "date": "2025-05-31T17:25:23+02:00",
+  "config": {
+    "date_range": "2014-01-01 to 2014-07-01",
+    "num_runs": 1,
+    "disable_gpu": "false"
+  },
+  "runs": [
+    {
+      "run": 1,
+      "timings": {
+        "ingestion_seconds": 13.59,
+        "sparse_pipeline_seconds": 12.356205352,
+        "total_seconds": 25.946205352
+      },
+      "metrics": {
+        "records_ingested": 535072,
+        "hourly_data_points": 3609,
+        "window_features": 359,
+        "monthly_eras": 6,
+        "features_per_second": 30.8,
+        "checkpoint_size": "1.3M"
+      }
+    }
+  ],
+  "summary": {
+    "ingestion_mean": 13.59,
+    "ingestion_std": 0,
+    "sparse_mean": 12.356205352,
+    "sparse_std": 0,
+    "total_mean": 25.946205352,
+    "total_std": 0,
+    "features_per_sec_mean": 30.8
+  }
+}

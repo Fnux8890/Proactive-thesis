@@ -10,9 +10,15 @@ from pathlib import Path
 from typing import Any
 
 import ijson  # For streaming JSON parsing
-from db_utils import (
+import sys
+from pathlib import Path
+
+# Add parent directory to path to access utils
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from utils.db_utils import (
     SQLAlchemyPostgresConnector,
-)  # Assuming db_utils.py is in the same directory or PYTHONPATH
+)  # Import from utils directory
 from sqlalchemy import exc as sqlalchemy_exc
 from sqlalchemy import text
 
@@ -23,7 +29,7 @@ try:
 except NameError:  # Fallback for interactive environments
     SCRIPT_DIR = Path.cwd()
 
-PHENOTYPE_JSON_PATH = SCRIPT_DIR / "phenotype.json"
+PHENOTYPE_JSON_PATH = SCRIPT_DIR.parent / "phenotype.json"
 PHENOTYPE_TABLE_NAME = "literature_kalanchoe_phenotypes"
 INSERT_BATCH_SIZE = 1000  # Number of records to insert in one DB transaction
 

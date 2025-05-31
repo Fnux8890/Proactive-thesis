@@ -74,7 +74,17 @@ def make_hypertable_if_needed(conn, table_name: str, time_column: str) -> None:
             WHERE  hypertable_schema = current_schema
               AND  hypertable_name   = '{table_name}')
         THEN
-            PERFORM create_hypertable('{table_name}', '{time_column}', if_not_exists => TRUE);
+            -- Check if table has data
+            IF EXISTS (SELECT 1 FROM {table_name} LIMIT 1) THEN
+                -- Table has data, use migrate_data option
+                PERFORM create_hypertable('{table_name}', '{time_column}',
+                    if_not_exists => TRUE,
+                    migrate_data => TRUE);
+            ELSE
+                -- Table is empty, create hypertable normally
+                PERFORM create_hypertable('{table_name}', '{time_column}',
+                    if_not_exists => TRUE);
+            END IF;
         END IF;
     END;
     $$;

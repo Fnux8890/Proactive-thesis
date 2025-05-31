@@ -1,0 +1,14 @@
+{
+  "test": "quick_performance",
+  "date": "2025-05-31T17:32:47+02:00",
+  "month": "2014-05",
+  "cpu": {
+    "time_seconds": 10.87,
+    "features_per_second": 6.5
+  },
+  "gpu": {
+    "time_seconds": 11.71,
+    "features_per_second": 6.1
+  },
+  "speedup": .92
+}

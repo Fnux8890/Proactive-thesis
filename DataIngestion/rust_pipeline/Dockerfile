@@ -42,5 +42,5 @@ RUN ls -l target/release/data_pipeline
 # Add a volume mount point for logs
 VOLUME /app/logs
 
-# Set the final command to run the newly built binary
-CMD echo "Attempting to execute data_pipeline from final stage build..." && ./target/release/data_pipeline 
+# Set the entrypoint to the binary
+ENTRYPOINT ["/usr/src/app/target/release/data_pipeline"] 

@@ -1,0 +1,68 @@
+{
+  "experiment": "sparse_pipeline_baseline",
+  "date": "2025-05-31T17:36:12+02:00",
+  "config": {
+    "date_range": "2014-01-01 to 2014-07-01",
+    "num_runs": 3,
+    "disable_gpu": "false"
+  },
+  "runs": [
+    {
+      "run": 1,
+      "timings": {
+        "ingestion_seconds": 13.14,
+        "sparse_pipeline_seconds": 12.672307826,
+        "total_seconds": 25.812307826
+      },
+      "metrics": {
+        "records_ingested": 535072,
+        "hourly_data_points": 3576,
+        "window_features": 351,
+        "monthly_eras": 6,
+        "features_per_second": 29.3,
+        "checkpoint_size": "1.3M"
+      }
+    },
+    {
+      "run": 2,
+      "timings": {
+        "ingestion_seconds": 14.47140559,
+        "sparse_pipeline_seconds": 12.679581673,
+        "total_seconds": 27.150987263
+      },
+      "metrics": {
+        "records_ingested": 535072,
+        "hourly_data_points": 3636,
+        "window_features": 353,
+        "monthly_eras": 6,
+        "features_per_second": 29.4,
+        "checkpoint_size": "1.9M"
+      }
+    },
+    {
+      "run": 3,
+      "timings": {
+        "ingestion_seconds": 14.25,
+        "sparse_pipeline_seconds": 12.586559105,
+        "total_seconds": 26.836559105
+      },
+      "metrics": {
+        "records_ingested": 535072,
+        "hourly_data_points": 3593,
+        "window_features": 352,
+        "monthly_eras": 6,
+        "features_per_second": 29.6,
+        "checkpoint_size": "2.6M"
+      }
+    }
+  ],
+  "summary": {
+    "ingestion_mean": 13.953801863333334,
+    "ingestion_std": 0.7134144751786408,
+    "sparse_mean": 12.646149534666666,
+    "sparse_std": 0.05173482089887202,
+    "total_mean": 26.599951398,
+    "total_std": 0.7000021885826551,
+    "features_per_sec_mean": 29.433333333333334
+  }
+}

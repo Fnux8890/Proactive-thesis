@@ -56,7 +56,7 @@ def check_gpu_availability():
     logger.info("=" * 60)
     logger.info("GPU AVAILABILITY CHECK")
     logger.info("=" * 60)
-    
+
     # Check PyTorch CUDA
     try:
         import torch
@@ -66,15 +66,15 @@ def check_gpu_availability():
             logger.info(f"PyTorch CUDA device name: {torch.cuda.get_device_name(0)}")
     except Exception as e:
         logger.warning(f"PyTorch CUDA check failed: {e}")
-    
+
     # Check NVIDIA environment variables
     logger.info(f"NVIDIA_VISIBLE_DEVICES: {os.getenv('NVIDIA_VISIBLE_DEVICES', 'Not set')}")
     logger.info(f"CUDA_VISIBLE_DEVICES: {os.getenv('CUDA_VISIBLE_DEVICES', 'Not set')}")
-    
+
     # Check if nvidia-smi is available
     try:
         import subprocess
-        result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv,noheader'], 
+        result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv,noheader'],
                                capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             logger.info(f"nvidia-smi output: {result.stdout.strip()}")
@@ -82,7 +82,7 @@ def check_gpu_availability():
             logger.warning("nvidia-smi command failed")
     except Exception as e:
         logger.warning(f"nvidia-smi not available: {e}")
-    
+
     logger.info("=" * 60)
 
 
@@ -254,14 +254,49 @@ class PostgreSQLDataLoader(DataLoader):
         if self._features_df is not None:
             return self._features_df
 
-        query = f"""
-        SELECT * FROM {self.config.features_table}
-        ORDER BY era_id
-        """
-
         logger.info(f"Loading features from {self.config.features_table}")
-        self._features_df = pd.read_sql(text(query), self.engine)
-        logger.info(f"Loaded {len(self._features_df)} rows with {len(self._features_df.columns)} columns")
+
+        try:
+            # First check which columns exist in the table
+            col_check_query = f"""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = '{self.config.features_table}'
+            AND column_name IN ('era_id', 'index')
+            """
+            existing_cols = pd.read_sql(text(col_check_query), self.engine)
+            has_era_id = 'era_id' in existing_cols['column_name'].values
+            has_index = 'index' in existing_cols['column_name'].values
+
+            if has_era_id:
+                # Table has era_id column, use it directly
+                query = f"""
+                SELECT * FROM {self.config.features_table}
+                ORDER BY era_id
+                """
+            elif has_index:
+                # Table has index column but not era_id, rename index to era_id
+                logger.info(f"Table {self.config.features_table} has 'index' column instead of 'era_id', renaming it")
+                query = f"""
+                SELECT
+                    "index" AS era_id,
+                    *
+                FROM {self.config.features_table}
+                ORDER BY "index"
+                """
+            else:
+                raise ValueError(f"Table {self.config.features_table} has neither 'era_id' nor 'index' column")
+
+            self._features_df = pd.read_sql(text(query), self.engine)
+
+            # Remove duplicate columns if we renamed index to era_id
+            if has_index and not has_era_id and 'index' in self._features_df.columns:
+                self._features_df = self._features_df.drop(columns=['index'])
+
+            logger.info(f"Loaded {len(self._features_df)} rows with {len(self._features_df.columns)} columns")
+
+        except Exception as e:
+            raise ValueError(f"Could not load features from {self.config.features_table}: {e}") from e
 
         return self._features_df
 
@@ -740,7 +775,7 @@ def main():
     """Main entry point for LightGBM surrogate model training."""
     # Check GPU availability at startup
     check_gpu_availability()
-    
+
     parser = argparse.ArgumentParser(description="Train LightGBM surrogate models")
     parser.add_argument(
         "--target",

@@ -1,0 +1,47 @@
+FROM rapidsai/base:25.04-cuda12.8-py3.12
+
+# Add conda paths to PATH explicitly
+ENV PATH=/opt/conda/bin:/opt/conda/condabin:${PATH}
+
+# Set CUDA environment variables
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Install Python packages including RAPIDS ML libraries
+RUN pip install --no-cache-dir uv \
+    && uv pip install --system --no-cache-dir \
+    torch==2.3.* pytorch-lightning==2.* \
+    pandas==2.* pyarrow==15.* \
+    scikit-learn==1.* matplotlib==3.* seaborn==0.13.* \
+    typing-extensions joblib==1.4.* \
+    mlflow-skinny \
+    sqlalchemy==2.* psycopg2-binary \
+    lightgbm==4.* \
+    xgboost
+
+# RAPIDS includes cuML which provides GPU-accelerated versions of many algorithms
+# Including Random Forest, SVM, KMeans, etc.
+# For gradient boosting, we can use either:
+# 1. Standard LightGBM (CPU) - what we're using now
+# 2. XGBoost with GPU support (included above)
+# 3. cuML's Forest Inference Library (FIL) for inference
+
+# Create a writable /tmp/mlflow directory for potential client-side staging
+RUN mkdir -p /tmp/mlflow && chmod 777 /tmp/mlflow
+
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_LAUNCH_BLOCKING=1
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+WORKDIR /app
+COPY src/ ./src/
+COPY pyproject.toml ./
+
+# Set default to use standard LightGBM but allow switching to XGBoost GPU
+ENV USE_XGBOOST_GPU=false
+ENV OMP_NUM_THREADS=8
+
+ENTRYPOINT ["python", "-m"]
+CMD ["src.training.train_all_objectives"]

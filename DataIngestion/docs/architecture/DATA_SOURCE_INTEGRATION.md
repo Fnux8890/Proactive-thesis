@@ -23,17 +23,19 @@ This document describes how various data sources from the greenhouse monitoring 
 - **Note:** The original `sensor_data` table might exist for even rawer, less processed data stages.
 
 ### 2. Era Labels (A, B, C)
-**Tables:** `era_label_level_a`, `era_label_level_b`, `era_label_level_c` (and potentially a unified `era_labels` table)
+**Tables:** `era_labels_level_a`, `era_labels_level_b`, `era_labels_level_c` (and potentially a unified `era_labels` table)
 - **Purpose:** Segmentation of time-series into operational periods (eras) based on different algorithms, allowing for context-aware feature extraction and analysis.
 - **Algorithms:**
   - Level A: PELT (Pruned Exact Linear Time) - Major operational changes
   - Level B: BOCPD (Bayesian Online Changepoint Detection) - Medium-term patterns
   - Level C: HMM (Hidden Markov Model) - Short-term state transitions
+- **Current Status:** Era detection has created excessive segments (1.88M total) due to stable greenhouse data. See ERA_DETECTION_IMPROVEMENT_PLAN.md for proposed fixes.
 - **Usage:** Defines boundaries for feature extraction windows for subsequent feature engineering steps.
 
 ### 3. Preprocessed Features
 **Table:** `preprocessed_features`
 - **Purpose:** Data that has undergone initial cleaning, transformation, and is segmented by era, ready for feature engineering or direct model input.
+- **Current Status:** Contains 291,457 records (2013-12-01 to 2016-09-08) with only 1 era_identifier, suggesting era segmentation may not be properly applied yet.
 - **Key Columns (selected examples from table schema):**
   - `time`: Timestamp (timestamp with time zone)
   - `era_identifier`: Identifier for the era segment (text)
@@ -60,9 +62,10 @@ This document describes how various data sources from the greenhouse monitoring 
   - Rolling statistics: mean, std, min, max over windows
 
 ### 4. Extracted Features (tsfresh)
-**Table:** `tsfresh_features` (Conceptual or Potentially Embedded)
-- **Note:** A dedicated, persistent SQL table named `tsfresh_features` was not found during database schema inspection. Tsfresh-generated features may be stored within the `extended_features` (JSONB) column of the `preprocessed_features` table, or this section might describe a conceptual data stage or a table that is generated and used transiently within the pipeline.
+**Tables:** `tsfresh_features_level_a`, `tsfresh_features_level_b`, `tsfresh_features_level_c`, `gpu_features_level_a`, `gpu_features_level_b`, `gpu_features_level_c`
+- **Note:** Multiple feature tables exist for different era levels and extraction methods (CPU vs GPU). The generic `tsfresh_features` table also exists.
 - **Purpose:** Time-series feature engineering for each era, designed to capture various characteristics of the signals.
+- **GPU Features:** Enhanced feature extraction using CUDA, computing extended statistics (percentiles, entropy, energy) with ~1.3KB shared memory usage.
 - **Conceptual Features per Signal (examples if using tsfresh defaults like `EfficientFCParameters` or `MinimalFCParameters`):
   - Statistical: mean, median, variance, standard_deviation, skewness, kurtosis, minimum, maximum
   - Temporal: autocorrelation, partial_autocorrelation, measures of trend or seasonality

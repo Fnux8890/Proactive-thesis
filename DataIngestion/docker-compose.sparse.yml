@@ -1,0 +1,264 @@
+# Sparse Data Pipeline for Greenhouse Optimization
+# Designed for data with >90% missing values and many islands
+# Pipeline: Rust Ingestion → Sparse GPU Pipeline → Model Building → MOEA
+
+services:
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+  
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pipeline-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    networks:
+      - pipeline-net
+
+  # ============================================
+  # STAGE 1: DATA INGESTION
+  # ============================================
+  
+  rust_pipeline:
+    build:
+      context: ./rust_pipeline
+      dockerfile: Dockerfile
+    container_name: rust_data_ingestion
+    volumes:
+      - ../Data:/app/data:ro
+      - ./rust_pipeline/pipeline_logs:/app/logs:rw
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_PATH: /app/data
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: info
+    networks:
+      - pipeline-net
+
+  # ============================================
+  # STAGES 2-4: SPARSE PIPELINE
+  # Integrated: Aggregation → Gap Filling → Feature Extraction → Era Creation
+  # ============================================
+  
+  sparse_pipeline:
+    build:
+      context: ./gpu_feature_extraction
+      dockerfile: Dockerfile
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
+    container_name: sparse_gpu_pipeline
+    environment:
+      # GPU settings
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      DISABLE_GPU: ${DISABLE_GPU:-false}
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # Logging
+      RUST_LOG: ${RUST_LOG:-gpu_feature_extraction=info}
+      # Sparse pipeline settings
+      SPARSE_MODE: ${SPARSE_MODE:-true}
+      SPARSE_START_DATE: ${SPARSE_START_DATE:-2014-01-01}
+      SPARSE_END_DATE: ${SPARSE_END_DATE:-2014-12-31}
+      SPARSE_BATCH_SIZE: ${SPARSE_BATCH_SIZE:-24}
+      SPARSE_MIN_ERA_ROWS: ${SPARSE_MIN_ERA_ROWS:-10}
+      SPARSE_FEATURES_TABLE: ${SPARSE_FEATURES_TABLE:-sparse_features}
+    # Use environment variables instead of command args
+    command: [
+      "--sparse-mode",
+      "--start-date", "${SPARSE_START_DATE:-2014-01-01}",
+      "--end-date", "${SPARSE_END_DATE:-2014-12-31}",
+      "--batch-size", "${SPARSE_BATCH_SIZE:-24}",
+      "--min-era-rows", "${SPARSE_MIN_ERA_ROWS:-10}",
+      "--features-table", "${SPARSE_FEATURES_TABLE:-sparse_features}"
+    ]
+    volumes:
+      - ./gpu_feature_extraction/checkpoints:/tmp/gpu_sparse_pipeline:rw
+    depends_on:
+      db:
+        condition: service_healthy
+      rust_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 5: MODEL BUILDING
+  # ============================================
+  
+  model_builder:
+    build:
+      context: ./model_builder
+      dockerfile: dockerfile
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
+    container_name: model_builder
+    environment:
+      # GPU settings
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      # Database
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # Model training
+      USE_SPARSE_FEATURES: ${USE_SPARSE_FEATURES:-true}
+      FEATURE_TABLES: ${FEATURE_TABLES:-sparse_features}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+      GPU_TAG: ${GPU_TAG:-default_gpu}
+      EPOCHS: ${EPOCHS:-50}
+      BATCH_SIZE: ${BATCH_SIZE:-32}
+      LEARNING_RATE: ${LEARNING_RATE:-0.001}
+      # Python
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+    volumes:
+      - ./model_builder/models:/models
+      - ./model_builder/model_builder_mlflow_staging:/mlflow
+    command: ["python", "-m", "src.training.train_all_objectives"]
+    depends_on:
+      db:
+        condition: service_healthy
+      sparse_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 6: MOEA OPTIMIZATION
+  # ============================================
+  
+  moea_optimizer_gpu:
+    build:
+      context: ./moea_optimizer
+      dockerfile: Dockerfile.gpu
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
+    container_name: moea_optimizer_gpu
+    ipc: host
+    shm_size: '4gb'
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    environment:
+      # GPU settings
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      # Database
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # MOEA configuration
+      CONFIG_PATH: ${MOEA_CONFIG_PATH:-/app/config/moea_config_gpu.toml}
+      DEVICE: ${MOEA_DEVICE:-cuda}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+      # Python
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+    volumes:
+      - ./moea_optimizer/config:/app/config:ro
+      - ./model_builder/models:/app/models:ro
+      - ./moea_optimizer/results:/app/results:rw
+    command: ["python", "-m", "src.cli", "run", "--config", "${MOEA_CONFIG_PATH:-/app/config/moea_config_gpu.toml}"]
+    depends_on:
+      db:
+        condition: service_healthy
+      model_builder:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # CPU version of MOEA optimizer
+  moea_optimizer_cpu:
+    build:
+      context: ./moea_optimizer
+      dockerfile: Dockerfile
+      args:
+        CACHEBUST: ${CACHEBUST:-1}
+    container_name: moea_optimizer_cpu
+    environment:
+      # Database
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # MOEA configuration
+      CONFIG_PATH: /app/config/moea_config_cpu.toml
+      DEVICE: cpu
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+      # Python
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+    volumes:
+      - ./moea_optimizer/config:/app/config:ro
+      - ./model_builder/models:/app/models:ro
+      - ./moea_optimizer/results:/app/results:rw
+    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/moea_config_cpu.toml"]
+    depends_on:
+      db:
+        condition: service_healthy
+      model_builder:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  pipeline-net:
+    driver: bridge

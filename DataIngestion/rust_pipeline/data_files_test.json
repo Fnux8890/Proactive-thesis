@@ -1,0 +1,21 @@
+[
+    {
+        "workspace_path": "/test_data/aarslev",
+        "container_path": "/app/test_data/aarslev/weather_jan_feb_2014.csv",
+        "status": "active",
+        "format_type": "csv",
+        "source_system": "Aarslev_Test_Weather",
+        "delimiter": ";",
+        "quoting": false,
+        "header_rows": 1,
+        "timestamp_info": {
+            "unix_ms_col_name": "timestamp"
+        },
+        "column_map": [
+            {"source_column": "timestamp", "target_field": "ignore", "data_type": "ignore"},
+            {"source_column": "temperature", "target_field": "air_temp_c", "data_type": "float"},
+            {"source_column": "sun_radiation", "target_field": "radiation_w_m2", "data_type": "float"}
+        ],
+        "null_markers": ["", "NaN", "NULL", "N/A", "0.000"]
+    }
+]

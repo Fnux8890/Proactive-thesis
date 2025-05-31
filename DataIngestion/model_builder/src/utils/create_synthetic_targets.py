@@ -26,8 +26,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def create_synthetic_targets():
-    """Add synthetic target columns to the features table."""
+def create_synthetic_targets(table_name="tsfresh_features"):
+    """Add synthetic target columns to the features table.
+    
+    Args:
+        table_name: Name of the table to add targets to
+    """
     # Database connection
     db_url = (
         f"postgresql://{os.getenv('DB_USER', 'postgres')}:"
@@ -40,8 +44,8 @@ def create_synthetic_targets():
     engine = create_engine(db_url)
     
     # Load existing features
-    query = "SELECT * FROM tsfresh_features"
-    logger.info("Loading existing features...")
+    query = f"SELECT * FROM {table_name}"
+    logger.info(f"Loading existing features from {table_name}...")
     features_df = pd.read_sql(text(query), engine)
     logger.info(f"Loaded {len(features_df)} rows with {len(features_df.columns)} columns")
     
@@ -107,15 +111,42 @@ def create_synthetic_targets():
         logger.info(f"  - Added {objective_name}: mean={np.mean(target_values):.2f}, std={np.std(target_values):.2f}")
     
     # Save updated features back to database
-    logger.info("Saving updated features with synthetic targets...")
-    features_df.to_sql('tsfresh_features', engine, if_exists='replace', index=False)
-    logger.info("Successfully added synthetic targets to features table")
+    logger.info(f"Saving updated features with synthetic targets to {table_name}...")
+    features_df.to_sql(table_name, engine, if_exists='replace', index=False)
+    logger.info(f"Successfully added synthetic targets to {table_name}")
     
     # Verify
-    verify_query = "SELECT column_name FROM information_schema.columns WHERE table_name = 'tsfresh_features'"
+    verify_query = f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}'"
     columns_df = pd.read_sql(text(verify_query), engine)
-    logger.info(f"Updated table now has columns: {list(columns_df['column_name'])}")
+    logger.info(f"Updated {table_name} now has columns: {list(columns_df['column_name'])}")
+
+
+def create_synthetic_targets_for_all_levels():
+    """Create synthetic targets for all feature level tables."""
+    tables = [
+        'tsfresh_features_level_a',
+        'tsfresh_features_level_b', 
+        'tsfresh_features_level_c'
+    ]
+    
+    for table in tables:
+        try:
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Processing {table}")
+            logger.info(f"{'='*60}")
+            create_synthetic_targets(table)
+        except Exception as e:
+            logger.error(f"Failed to process {table}: {e}")
+            continue
 
 
 if __name__ == "__main__":
-    create_synthetic_targets()
+    import sys
+    
+    if len(sys.argv) > 1:
+        # If table name provided as argument
+        table_name = sys.argv[1]
+        create_synthetic_targets(table_name)
+    else:
+        # Default: create for all level tables
+        create_synthetic_targets_for_all_levels()

@@ -3,6 +3,9 @@
 -- Exit on error
 \set ON_ERROR_STOP true
 
+-- Create TimescaleDB extension
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
 -- Create the main table for sensor data
 CREATE TABLE IF NOT EXISTS sensor_data (
     -- Core Identification & Timing

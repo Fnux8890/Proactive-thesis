@@ -33,6 +33,7 @@ from src.training.train_lightgbm_surrogate import (
     SurrogateModelPipeline,
     check_gpu_availability,
 )
+from src.utils import MultiLevelDataLoader
 
 # Configure logging
 logging.basicConfig(
@@ -82,6 +83,16 @@ class ObjectiveModelOrchestrator:
         # Create configurations
         data_config = DataConfig(use_phenotypes=self.use_phenotypes and bool(objective.related_phenotypes))
 
+        # Check if multi-level features should be used
+        use_multi_level = os.getenv("USE_MULTI_LEVEL_FEATURES", "false").lower() == "true"
+        feature_tables = os.getenv("FEATURE_TABLES", "").split(",") if os.getenv("FEATURE_TABLES") else None
+        
+        if use_multi_level:
+            logger.info("Using multi-level feature extraction")
+            if feature_tables:
+                data_config.feature_tables = feature_tables
+                logger.info(f"Feature tables: {feature_tables}")
+
         # Adjust model parameters based on objective
         model_config = ModelConfig(
             device="gpu" if self.use_gpu else "cpu",
@@ -100,7 +111,10 @@ class ObjectiveModelOrchestrator:
         )
 
         # Create components
-        data_loader = PostgreSQLDataLoader(self.db_url, data_config)
+        if use_multi_level:
+            data_loader = MultiLevelDataLoader(self.db_url, data_config)
+        else:
+            data_loader = PostgreSQLDataLoader(self.db_url, data_config)
         model_trainer = LightGBMTrainer(model_config)
 
         # Create and run pipeline

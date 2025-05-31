@@ -183,3 +183,20 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres cargo run
 3. `DataIngestion/feature_extraction/data_processing_config.json` - Feature configuration
 4. `.cursor/rules/*.mdc` - Language-specific development guidelines
 5. `DataIngestion/simulation_data_prep/prefect.yaml` - Flow deployment config
+
+## Guide to file creation and modification
+
+1. Edit files as much as possible to make those work.
+2. Dont create new files unless critically needed.
+3. Organize files in a way that is easy to navigate and understand.
+4. Use sub folder that has to do with the work you are doing.
+5. If not of the same work structure in such a way that files of similar extention or usecase is grouped together.
+
+
+## Documentation
+
+1. When writing documentation, look for docs or documentation folders and organize for folders.
+2. When writing documentation, use markdown and try to make it easy to read and understand.
+3. When writing documentation, try to make it easy to navigate and understand.
+4. When writing about code or components, make software architecture and component descriptions easy to understand.
+5. When writing about code or components, write diagrams to facilitate understanding.

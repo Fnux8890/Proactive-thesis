@@ -119,29 +119,34 @@ services:
       - pipeline-net
 
   # ============================================
-  # STAGE 2: DATA PREPROCESSING
+  # STAGE 2-4: SPARSE PIPELINE (Integrated Processing)
+  # Handles preprocessing, era detection, and feature extraction
+  # in one GPU-accelerated container for sparse data (>90% missing)
   # ============================================
   
-  preprocessing:
+  sparse_pipeline:
     build:
-      context: ./feature_extraction/pre_process
-      dockerfile: preprocess.dockerfile
-    container_name: data_preprocessing
-    volumes:
-      - ./feature_extraction/data/input:/app/data/input:ro
-      - ./feature_extraction/data/processed:/app/data/output:rw
-      - ./feature_extraction/data_processing_config.json:/app/config/data_processing_config.json:ro
-    command: uv run python preprocess.py
+      context: ./gpu_feature_extraction
+      dockerfile: Dockerfile
+    container_name: sparse_gpu_pipeline
     environment:
-      SKIP_ERA_FEATURE: "true"
-      PROCESS_ERA_IDENTIFIER: MegaEra_All_Data
-      APP_CONFIG_PATH: /app/config/data_processing_config.json
-      APP_OUTPUT_DIR: /app/data/output
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_HOST: db
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-postgres}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: ${RUST_LOG:-info}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      # Sparse pipeline specific settings
+      SPARSE_MODE: "true"
+      DISABLE_GPU: ${DISABLE_GPU:-false}
+    command: [
+      "--sparse-mode",
+      "--start-date", "${START_DATE:-2014-01-01}",
+      "--end-date", "${END_DATE:-2014-12-31}",
+      "--batch-size", "${BATCH_SIZE:-24}",  # Window size in hours
+      "--min-era-rows", "10"  # Minimal for sparse data
+    ]
+    volumes:
+      - ./gpu_feature_extraction/checkpoints:/tmp/gpu_sparse_pipeline:rw
     depends_on:
       db:
         condition: service_healthy
@@ -149,7 +154,7 @@ services:
         condition: service_completed_successfully
     networks:
       - pipeline-net
-    # GPU support for preprocessing (if using GPU-accelerated pandas/numpy)
+    # GPU support
     deploy:
       resources:
         reservations:
@@ -159,52 +164,15 @@ services:
               capabilities: [gpu]
 
   # ============================================
-  # STAGE 3: ERA DETECTION (Rust-based)
+  # LEGACY SERVICES - Kept for reference but not used with sparse data
   # ============================================
   
-  era_detector:
-    build:
-      context: ./feature_extraction/era_detection_rust
-      dockerfile: dockerfile
-      args:
-        CACHEBUST: ${CACHEBUST:-2}
-    container_name: era_detection
-    tty: true
-    stdin_open: true
-    command: [
-      "--input-parquet", "/app/data/shared_processed/MegaEra_All_Data_processed_segment_1.parquet",
-      "--output-dir", "/app/data/shared_processed/era_labels",
-      "--output-suffix", "_eras",
-      "--db-dsn", "postgresql://postgres:postgres@db:5432/postgres",
-      "--signal-cols", "dli_sum,co2_status,light_intensity_lux,co2_measured_ppm,co2_required_ppm,radiation_w_m2,sun_radiation_forecast_w_m2,curtain_2_percent,vent_pos_1_percent,curtain_1_percent,vent_pos_2_percent",
-      "--resample-every", "5m",
-      "--pelt-min-size", "48",
-      "--bocpd-lambda", "200.0",
-      "--hmm-states", "5"
-    ]
-    environment:
-      RUST_LOG: debug
-      RUST_BACKTRACE: full
-      DB_DSN: postgresql://postgres:postgres@db:5432/postgres
-    volumes:
-      - ./feature_extraction/data/processed:/app/data/shared_processed:rw
-    depends_on:
-      db:
-        condition: service_healthy
-      preprocessing:
-        condition: service_completed_successfully
-    networks:
-      - pipeline-net
-
-  # ============================================
-  # STAGE 4: FEATURE EXTRACTION (GPU-accelerated)
-  # ============================================
-  
-  feature_extraction:
+  # Feature extraction for Level A (PELT) - Large eras
+  feature_extraction_level_a:
     build:
       context: ./feature_extraction
       dockerfile: feature/feature.dockerfile
-    container_name: feature_extraction
+    container_name: feature_extraction_level_a
     environment:
       PYTHONUNBUFFERED: "1"
       DB_USER: ${DB_USER:-postgres}
@@ -212,12 +180,12 @@ services:
       DB_HOST: db
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-postgres}
-      FEATURES_TABLE: ${FEATURES_TABLE:-tsfresh_features}
+      FEATURES_TABLE: tsfresh_features_level_a
       USE_GPU: ${USE_GPU:-true}
-      FEATURE_SET: ${FEATURE_SET:-efficient}
-      BATCH_SIZE: ${FEATURE_BATCH_SIZE:-100}
-      ERA_LEVEL: ${ERA_LEVEL:-B}
-      MIN_ERA_ROWS: ${MIN_ERA_ROWS:-100}
+      FEATURE_SET: ${FEATURE_SET_LEVEL_A:-minimal}
+      BATCH_SIZE: ${FEATURE_BATCH_SIZE_A:-10}
+      ERA_LEVEL: A
+      MIN_ERA_ROWS: ${MIN_ERA_ROWS_A:-1000}
       N_JOBS: ${N_JOBS:--1}
     volumes:
       - ./feature_extraction/data/features:/app/data/output_features:rw
@@ -225,8 +193,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # era_detector:
-      #   condition: service_completed_successfully
+      era_detector:
+        condition: service_completed_successfully
     networks:
       - pipeline-net
     # GPU support for feature extraction
@@ -237,6 +205,209 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # Feature extraction for Level B (BOCPD) - Medium eras
+  feature_extraction_level_b:
+    build:
+      context: ./feature_extraction
+      dockerfile: feature/feature.dockerfile
+    container_name: feature_extraction_level_b
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      FEATURES_TABLE: tsfresh_features_level_b
+      USE_GPU: ${USE_GPU:-true}
+      FEATURE_SET: ${FEATURE_SET_LEVEL_B:-minimal}
+      BATCH_SIZE: ${FEATURE_BATCH_SIZE_B:-20}
+      ERA_LEVEL: B
+      MIN_ERA_ROWS: ${MIN_ERA_ROWS_B:-500}
+      N_JOBS: ${N_JOBS:--1}
+    volumes:
+      - ./feature_extraction/data/features:/app/data/output_features:rw
+    command: python -m feature.extract_features_enhanced
+    depends_on:
+      db:
+        condition: service_healthy
+      era_detector:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    # GPU support for feature extraction
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Feature extraction for Level C (HMM) - Small eras
+  feature_extraction_level_c:
+    build:
+      context: ./feature_extraction
+      dockerfile: feature/feature.dockerfile
+    container_name: feature_extraction_level_c
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      FEATURES_TABLE: tsfresh_features_level_c
+      USE_GPU: ${USE_GPU:-true}
+      FEATURE_SET: ${FEATURE_SET_LEVEL_C:-minimal}
+      BATCH_SIZE: ${FEATURE_BATCH_SIZE_C:-100}
+      ERA_LEVEL: C
+      MIN_ERA_ROWS: ${MIN_ERA_ROWS_C:-50}
+      N_JOBS: ${N_JOBS:--1}
+    volumes:
+      - ./feature_extraction/data/features:/app/data/output_features:rw
+    command: python -m feature.extract_features_enhanced
+    depends_on:
+      db:
+        condition: service_healthy
+      era_detector:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    # GPU support for feature extraction
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Keep the original as an alias for backward compatibility
+  feature_extraction:
+    extends:
+      service: feature_extraction_level_b
+
+  # ============================================
+  # STAGE 4.5: GPU-ACCELERATED FEATURE EXTRACTION (Alternative to CPU)
+  # ============================================
+  
+  # GPU Feature extraction for Level A - Large structural eras
+  gpu_feature_extraction_level_a:
+    build:
+      context: ./gpu_feature_extraction
+      dockerfile: Dockerfile
+    container_name: gpu_feature_extraction_level_a
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: ${RUST_LOG:-info}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      GPU_BATCH_SIZE: ${GPU_BATCH_SIZE_A:-500}
+    command: [
+      "--era-level", "A",
+      "--min-era-rows", "${MIN_ERA_ROWS_A:-1000}",
+      "--batch-size", "${BATCH_SIZE_A:-500}",
+      "--features-table", "gpu_features_level_a"
+    ]
+    depends_on:
+      db:
+        condition: service_healthy
+      era_detector:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # GPU Feature extraction for Level B - Medium operational eras  
+  gpu_feature_extraction_level_b:
+    build:
+      context: ./gpu_feature_extraction
+      dockerfile: Dockerfile
+    container_name: gpu_feature_extraction_level_b
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: ${RUST_LOG:-info}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      GPU_BATCH_SIZE: ${GPU_BATCH_SIZE_B:-1000}
+    command: [
+      "--era-level", "B",
+      "--min-era-rows", "${MIN_ERA_ROWS_B:-500}",
+      "--batch-size", "${BATCH_SIZE_B:-1000}",
+      "--features-table", "gpu_features_level_b"
+    ]
+    depends_on:
+      db:
+        condition: service_healthy
+      era_detector:
+        condition: service_completed_successfully
+      # Sequential execution: wait for Level A to complete
+      gpu_feature_extraction_level_a:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # GPU Feature extraction for Level C - Small detailed eras
+  gpu_feature_extraction_level_c:
+    build:
+      context: ./gpu_feature_extraction
+      dockerfile: Dockerfile
+    container_name: gpu_feature_extraction_level_c
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: ${RUST_LOG:-info}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      GPU_BATCH_SIZE: ${GPU_BATCH_SIZE_C:-100}
+    command: [
+      "--era-level", "C",
+      "--min-era-rows", "${MIN_ERA_ROWS_C:-5000}",
+      "--batch-size", "${BATCH_SIZE_C:-100}",
+      "--features-table", "gpu_features_level_c"
+    ]
+    depends_on:
+      db:
+        condition: service_healthy
+      era_detector:
+        condition: service_completed_successfully
+      # Sequential execution: wait for Level B to complete
+      gpu_feature_extraction_level_b:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Keep the original as an alias for backward compatibility
+  gpu_feature_extraction:
+    extends:
+      service: gpu_feature_extraction_level_b
 
   # ============================================
   # STAGE 5: MODEL BUILDING (Multiple objectives)
@@ -258,6 +429,9 @@ services:
       DB_NAME: ${DB_NAME:-postgres}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
       GPU_TAG: ${GPU_TAG:-default_gpu}
+      # Use sparse pipeline features
+      USE_SPARSE_FEATURES: ${USE_SPARSE_FEATURES:-true}
+      FEATURE_TABLES: "sparse_features"  # Table created by sparse pipeline
     volumes:
       - ./model_builder/models:/models
       - ./model_builder/model_builder_mlflow_staging:/mlflow
@@ -265,8 +439,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # feature_extraction:
-      #   condition: service_completed_successfully
+      # Wait for sparse pipeline to complete
+      sparse_pipeline:
+        condition: service_completed_successfully
     networks:
       - pipeline-net
     # GPU support for model training
@@ -304,8 +479,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # model_builder:
-      #   condition: service_completed_successfully
+      model_builder:
+        condition: service_completed_successfully
     networks:
       - pipeline-net
 
@@ -347,8 +522,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # model_builder:
-      #   condition: service_completed_successfully
+      model_builder:
+        condition: service_completed_successfully
     networks:
       - pipeline-net
     # GPU support for MOEA optimization

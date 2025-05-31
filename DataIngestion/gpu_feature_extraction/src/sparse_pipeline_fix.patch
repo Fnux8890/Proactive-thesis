@@ -1,0 +1,31 @@
+--- sparse_pipeline.rs.old
++++ sparse_pipeline.rs
+@@ -406,7 +406,7 @@
+         let temp_counts = df.column("temp_count")?
+             .cast(&DataType::Float32)?
+             .f32()?
+             .clone();
+-        let temp_coverage = &temp_counts / 10.0;
++        let temp_coverage = temp_counts.apply(|x| x.map(|v| v / 10.0));
+         
+         let co2_counts = df.column("co2_count")?
+             .cast(&DataType::Float32)?
+             .f32()?
+             .clone();
+-        let co2_coverage = &co2_counts / 10.0;
++        let co2_coverage = co2_counts.apply(|x| x.map(|v| v / 10.0));
+         
+         let humidity_counts = df.column("humidity_count")?
+             .cast(&DataType::Float32)?
+             .f32()?
+             .clone();
+-        let humidity_coverage = &humidity_counts / 10.0;
++        let humidity_coverage = humidity_counts.apply(|x| x.map(|v| v / 10.0));
+         
+-        let overall_coverage = (&temp_coverage + &co2_coverage + &humidity_coverage) / 3.0;
++        let temp_series = temp_coverage.into_series();
++        let co2_series = co2_coverage.into_series();
++        let humidity_series = humidity_coverage.into_series();
++        
++        // Calculate overall coverage as average
++        let overall_coverage = (&temp_series + &co2_series + &humidity_series)? / 3.0;

@@ -34,17 +34,17 @@ from datetime import datetime
 from typing import Any, Protocol
 
 import pandas as pd
+import sqlalchemy
 from sqlalchemy import text
 from tsfresh import extract_features
 from tsfresh.feature_extraction import EfficientFCParameters, MinimalFCParameters
 
 from . import config
 from .db_utils import SQLAlchemyPostgresConnector
-from .feature_utils import make_hypertable_if_needed
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if os.getenv("DEBUG", "").lower() == "true" else logging.INFO,
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -257,12 +257,25 @@ class TimescaleDBRepository:
     def save_features(self, features_df: pd.DataFrame, table_name: str, if_exists: str = "append") -> None:
         """Save features to database."""
         logger.info(f"Saving {len(features_df)} rows to {table_name}")
+
+        # Feature tables don't need to be hypertables - they're not time-series data
+        # They're derived features for each era, stored as regular tables
         self.connector.write_dataframe(features_df, table_name, if_exists=if_exists, index=False)
 
-        # Make it a hypertable if new table
+        # Create indices for better query performance
         if if_exists == "replace":
             with self.engine.begin() as conn:
-                make_hypertable_if_needed(conn, table_name, "era_id")
+                # Create index on era_id if it exists
+                if 'era_id' in features_df.columns:
+                    conn.execute(sqlalchemy.text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_era_id ON {table_name}(era_id)"))
+                # Create index on signal_name if it exists
+                if 'signal_name' in features_df.columns:
+                    conn.execute(sqlalchemy.text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_signal ON {table_name}(signal_name)"))
+                # Create index on level if it exists
+                if 'level' in features_df.columns:
+                    conn.execute(sqlalchemy.text(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_level ON {table_name}(level)"))
+
+                logger.info(f"Created indices for {table_name}")
 
 
 class TsfreshLongFormatTransformer(DataTransformer):
@@ -349,9 +362,22 @@ class TsfreshFeatureExtractor(FeatureExtractor):
                 logger.warning(f"No features extracted for era {era_id}")
                 return pd.DataFrame({"era_id": [era_id]})
 
+            # Debug: log the structure
+            logger.debug(f"Features index name: {features.index.name}")
+            logger.debug(f"Features columns: {list(features.columns)[:5]}...")
+
             # Reset index to get era_id as column
             features = features.reset_index()
-            features.rename(columns={"id": "era_id"}, inplace=True)
+
+            # The index might be named 'era_id' or 'id' depending on tsfresh version
+            if 'index' in features.columns:
+                features.rename(columns={"index": "era_id"}, inplace=True)
+            elif 'id' in features.columns:
+                features.rename(columns={"id": "era_id"}, inplace=True)
+            elif 'era_id' not in features.columns:
+                # If era_id is still not in columns, something's wrong
+                logger.error(f"Could not find id column in features. Columns: {list(features.columns)}")
+                features["era_id"] = era_id
 
             logger.info(f"Extracted {len(features.columns) - 1} features for era {era_id}")
             return features
@@ -399,16 +425,28 @@ class FeatureExtractionPipeline:
         all_features = []
         for i in range(0, len(eras), self.config.batch_size):
             batch_eras = eras[i : i + self.config.batch_size]
+            logger.info(f"Processing batch {i // self.config.batch_size + 1} with {len(batch_eras)} eras")
+
             batch_features = self._process_era_batch(batch_eras)
+
             if not batch_features.empty:
+                logger.info(f"Batch features shape: {batch_features.shape}")
+                if 'era_id' not in batch_features.columns:
+                    logger.error(f"ERROR: Batch missing era_id! Columns: {list(batch_features.columns)[:10]}...")
                 all_features.append(batch_features)
+            else:
+                logger.warning(f"Batch {i // self.config.batch_size + 1} returned empty features")
 
         if not all_features:
             logger.warning("No features extracted")
             return pd.DataFrame()
 
         # Combine all features
+        logger.info(f"Combining {len(all_features)} batches")
         final_features = pd.concat(all_features, ignore_index=True)
+
+        if 'era_id' not in final_features.columns:
+            logger.error(f"FINAL ERROR: Combined features missing era_id! Columns: {list(final_features.columns)[:10]}...")
 
         elapsed = time.time() - start_time
         logger.info(f"Pipeline completed in {elapsed:.2f} seconds")
@@ -455,7 +493,14 @@ class FeatureExtractionPipeline:
         if not batch_features:
             return pd.DataFrame()
 
-        return pd.concat(batch_features, ignore_index=True)
+        # Concatenate all features
+        result = pd.concat(batch_features, ignore_index=True)
+
+        # Debug log
+        logger.debug(f"Concatenated features shape: {result.shape}")
+        logger.debug(f"Concatenated features columns: {list(result.columns)[:10]}...")
+
+        return result
 
 
 class OptimalSignalSelector:
@@ -561,6 +606,11 @@ def main():
 
         # Save features to database
         features_table = config.FEATURES_TABLE
+        logger.info(f"Features DataFrame columns: {list(features_df.columns)[:10]}...")
+        logger.info(f"Features DataFrame shape: {features_df.shape}")
+        if 'era_id' not in features_df.columns:
+            logger.error("ERROR: 'era_id' column missing from features DataFrame!")
+            logger.info(f"Available columns: {list(features_df.columns)}")
         repository.save_features(features_df, features_table, if_exists="replace")
 
         logger.info(f"Successfully saved {len(features_df)} feature rows to {features_table}")

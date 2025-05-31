@@ -1,0 +1,61 @@
+[package]
+name = "gpu_feature_extraction"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "gpu_feature_extraction"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gpu_feature_extraction"
+path = "src/main.rs"
+
+[[bin]]
+name = "test_sparse"
+path = "src/bin/test_sparse.rs"
+
+[dependencies]
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+tokio = { version = "1.45.1", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenv = "0.15"
+
+# CUDA via cudarc
+cudarc = { version = "0.16.4", features = ["std", "cuda-12040", "cudnn", "cublas", "f16"] }
+half = "2.3"  # For f16 support
+
+# Data processing
+arrow = "55.1.0"
+parquet = "55.1.0"
+ndarray = "0.16.1"
+ndarray-stats = "0.6.0"
+num-complex = "0.4.6"
+rayon = "1.10"  # For CPU parallelism
+polars = { version = "0.42", features = ["lazy", "parquet", "temporal", "strings", "chunked_ids", "streaming"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"  # For compatibility with some crates
+
+# CLI
+clap = { version = "4.0", features = ["derive", "env"] }
+
+[dev-dependencies]
+approx = "0.5"
+criterion = "0.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
