@@ -31,9 +31,9 @@
       }
     },
     "runtime": {
-      "mean": 0.1233166460879147,
+      "mean": 0.15385162900201976,
       "std": 0.0,
-      "total": 0.1233166460879147
+      "total": 0.15385162900201976
     },
     "problem_name": "GreenhouseOptimization"
   }

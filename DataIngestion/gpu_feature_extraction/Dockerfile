@@ -1,37 +1,25 @@
-# Build stage
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
+# Build stage - CPU only
+FROM rust:1.87-slim AS builder
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
-    build-essential \
     pkg-config \
     libssl-dev \
     git \
-    cmake \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Set CUDA paths for cudarc
-ENV CUDA_ROOT=/usr/local/cuda
-ENV CUDA_PATH=/usr/local/cuda
-ENV CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda
-ENV LD_LIBRARY_PATH="${CUDA_ROOT}/lib64:${LD_LIBRARY_PATH}"
 
 WORKDIR /app
 
 # Copy source code
 COPY Cargo.toml ./
 COPY src ./src
+COPY build.rs ./
 
-# Build the application
+# Build the application (CPU-only)
 RUN cargo build --release
 
 # Runtime stage
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -44,10 +32,6 @@ WORKDIR /app
 
 # Copy the built binary from builder stage
 COPY --from=builder /app/target/release/gpu_feature_extraction /app/
-
-# Set CUDA runtime paths
-ENV CUDA_ROOT=/usr/local/cuda
-ENV LD_LIBRARY_PATH="${CUDA_ROOT}/lib64:${LD_LIBRARY_PATH}"
 
 # Set up environment
 ENV RUST_LOG=info

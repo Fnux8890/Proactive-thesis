@@ -12,8 +12,8 @@ Description: Multi-objective optimization for energy-efficient greenhouse climat
 
 | Problem                |   Runs |   HV Mean |   HV Std | Runtime   |
 |:-----------------------|-------:|----------:|---------:|:----------|
-| GreenhouseOptimization |      1 |   182.659 |        0 | 0.12s     |
+| GreenhouseOptimization |      1 |   182.659 |        0 | 0.15s     |
 
 ## Timing Details
 
-Total experiment runtime: {'GreenhouseOptimization_run_0': {'count': 1, 'total': 0.14493977604433894, 'mean': 0.14493977604433894, 'min': 0.14493977604433894, 'max': 0.14493977604433894, 'std': 0.0}}
+Total experiment runtime: {'GreenhouseOptimization_run_0': {'count': 1, 'total': 0.17464659293182194, 'mean': 0.17464659293182194, 'min': 0.17464659293182194, 'max': 0.17464659293182194, 'std': 0.0}}

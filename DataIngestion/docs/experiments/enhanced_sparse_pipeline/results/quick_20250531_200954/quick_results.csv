@@ -1,0 +1,8 @@
+test_name,mode,device,batch_size,duration,total_time_s,feature_count,features_per_sec,gpu_util_avg,memory_mb
+basic_gpu_1mo,basic,gpu,24,2014-01-01-2014-01-31,0,,,1,936
+basic_cpu_1mo,basic,cpu,24,2014-01-01-2014-01-31,1,,,0,0
+enhanced_gpu_1mo,enhanced,gpu,24,2014-01-01-2014-01-31,0,,,2,936
+enhanced_cpu_1mo,enhanced,cpu,24,2014-01-01-2014-01-31,0,,,0,0
+enhanced_gpu_b12,enhanced,gpu,12,2014-01-01-2014-01-31,0,,,4,938
+enhanced_gpu_b48,enhanced,gpu,48,2014-01-01-2014-01-31,0,,,4,938
+enhanced_gpu_3mo,enhanced,gpu,24,2014-01-01-2014-03-31,0,,,3,938

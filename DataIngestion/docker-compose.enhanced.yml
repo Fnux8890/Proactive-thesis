@@ -1,0 +1,185 @@
+# Enhanced Sparse Pipeline for Greenhouse Optimization
+# Handles 91.3% sparse data with hybrid Rust+Python GPU acceleration
+# Pipeline: Rust Ingestion → Enhanced Sparse Pipeline → Model Building → MOEA
+
+services:
+  # ============================================
+  # INFRASTRUCTURE (Required)
+  # ============================================
+  
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro
+      - ./feature_extraction/pre_process/create_external_data_tables.sql:/docker-entrypoint-initdb.d/01_create_external_tables.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pipeline-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # STAGE 1: DATA INGESTION
+  # ============================================
+  
+  rust_pipeline:
+    build:
+      context: ./rust_pipeline
+      dockerfile: Dockerfile
+    container_name: rust_data_ingestion
+    volumes:
+      - ../Data:/app/data:ro
+      - ./rust_pipeline/pipeline_logs:/app/logs:rw
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_PATH: /app/data
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: info
+    networks:
+      - pipeline-net
+
+  # ============================================
+  # STAGES 2-4: ENHANCED SPARSE PIPELINE
+  # Hybrid Rust+Python with GPU acceleration
+  # ============================================
+  
+  enhanced_sparse_pipeline:
+    # Use the properly built enhanced image
+    image: enhanced-sparse-pipeline-v3
+    container_name: enhanced_sparse_pipeline
+    environment:
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # Logging
+      RUST_LOG: ${RUST_LOG:-gpu_feature_extraction=info}
+      # Enhanced pipeline settings
+      ENHANCED_MODE: "true"
+      SPARSE_MODE: "true"
+      START_DATE: ${START_DATE:-2013-12-01}
+      END_DATE: ${END_DATE:-2016-09-08}
+      BATCH_SIZE: ${BATCH_SIZE:-1000}
+      MIN_ERA_ROWS: ${MIN_ERA_ROWS:-100}
+      FEATURES_TABLE: ${FEATURES_TABLE:-enhanced_sparse_features}
+      # Feature flags
+      ENABLE_WEATHER_FEATURES: ${ENABLE_WEATHER_FEATURES:-true}
+      ENABLE_ENERGY_FEATURES: ${ENABLE_ENERGY_FEATURES:-true}
+      ENABLE_GROWTH_FEATURES: ${ENABLE_GROWTH_FEATURES:-true}
+      # Python GPU settings
+      USE_GPU: ${USE_GPU:-true}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+    command: [
+      "--database-url", "postgresql://postgres:postgres@db:5432/postgres",
+      "--enhanced-mode",
+      "--start-date", "2013-12-01",
+      "--end-date", "2016-09-08",
+      "--features-table", "enhanced_sparse_features",
+      "--batch-size", "24"
+    ]
+    volumes:
+      - ./gpu_feature_extraction/checkpoints:/app/checkpoints:rw
+      - ./gpu_feature_extraction/logs:/app/logs:rw
+    depends_on:
+      db:
+        condition: service_healthy
+      rust_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 5: MODEL BUILDING
+  # ============================================
+  
+  model_builder:
+    # Use existing GPU image
+    image: model_builder_gpu
+    container_name: model_builder
+    environment:
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # Model training
+      USE_SPARSE_FEATURES: "true"
+      FEATURE_TABLES: ${FEATURE_TABLES:-enhanced_sparse_features}
+      GPU_TAG: ${GPU_TAG:-rtx4070}
+      EPOCHS: ${EPOCHS:-100}
+      BATCH_SIZE: ${BATCH_SIZE:-64}
+      LEARNING_RATE: ${LEARNING_RATE:-0.001}
+      # Python
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./model_builder:/app
+      - ./model_builder/models:/models
+      - ./model_builder/model_builder_mlflow_staging:/mlflow
+    command: ["python", "/app/src/training/train_enhanced_sparse.py"]
+    depends_on:
+      enhanced_sparse_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 6: MOEA OPTIMIZATION
+  # ============================================
+  
+  moea_optimizer:
+    build:
+      context: ./moea_optimizer
+      dockerfile: Dockerfile.gpu
+    container_name: moea_optimizer
+    environment:
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/postgres}
+      # MOEA configuration
+      CONFIG_PATH: /app/config/moea_config_gpu.toml
+      DEVICE: cuda
+      # Python
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./moea_optimizer/config:/app/config:ro
+      - ./model_builder/models:/app/models:ro
+      - ./moea_optimizer/results:/app/results:rw
+    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/moea_config_gpu.toml"]
+    depends_on:
+      model_builder:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  postgres-data:
+
+networks:
+  pipeline-net:
+    driver: bridge

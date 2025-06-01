@@ -1,0 +1,9 @@
+test,device,start_date,end_date,duration_s,hourly_points,window_features,features_per_sec
+1month_cpu,cpu,2014-01-01,2014-01-31,.164697424,,,
+1month_gpu,gpu,2014-01-01,2014-01-31,.155211527,,,
+3months_cpu,cpu,2014-01-01,2014-03-31,.158277235,,,
+3months_gpu,gpu,2014-01-01,2014-03-31,.156785302,,,
+6months_cpu,cpu,2014-01-01,2014-06-30,.155629525,,,
+6months_gpu,gpu,2014-01-01,2014-06-30,.157214479,,,
+1month_gpu_b12,gpu,2014-01-01,2014-01-31,.154759327,,,
+1month_gpu_b48,gpu,2014-01-01,2014-01-31,.160392452,,,

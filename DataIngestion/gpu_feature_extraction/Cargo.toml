@@ -11,9 +11,17 @@ path = "src/lib.rs"
 name = "gpu_feature_extraction"
 path = "src/main.rs"
 
-[[bin]]
-name = "test_sparse"
-path = "src/bin/test_sparse.rs"
+# [[bin]]
+# name = "test_sparse"
+# path = "src/bin/test_sparse.rs"
+
+# [[bin]]
+# name = "test_enhanced_sparse"
+# path = "src/bin/test_enhanced_sparse.rs"
+
+# [[example]]
+# name = "moea_integration"
+# path = "examples/moea_integration.rs"
 
 [dependencies]
 # Database
@@ -22,9 +30,8 @@ tokio = { version = "1.45.1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 dotenv = "0.15"
 
-# CUDA via cudarc
-cudarc = { version = "0.16.4", features = ["std", "cuda-12040", "cudnn", "cublas", "f16"] }
-half = "2.3"  # For f16 support
+# GPU operations moved to Python
+# half = "2.3"  # For f16 support (kept for potential future use)
 
 # Data processing
 arrow = "55.1.0"
@@ -38,6 +45,9 @@ polars = { version = "0.42", features = ["lazy", "parquet", "temporal", "strings
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# HTTP client for external APIs
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
 
 # Error handling
 thiserror = "1.0"

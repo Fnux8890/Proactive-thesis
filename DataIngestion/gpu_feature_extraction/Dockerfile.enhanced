@@ -1,0 +1,77 @@
+# Enhanced Pipeline Dockerfile - Hybrid Rust + Python with GPU support
+# This is the MAIN Dockerfile to use for the enhanced sparse pipeline
+
+# Build stage for Rust
+FROM rust:1.87-slim AS rust-builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Rust source files
+COPY Cargo.toml ./
+COPY build.rs ./
+COPY src ./src
+
+# Build Rust binary (CPU-only, no CUDA)
+# Force rebuild by touching main.rs
+RUN touch src/main.rs && cargo build --release
+
+# Show what we built
+RUN /app/target/release/gpu_feature_extraction --help || echo "Help failed"
+
+# Runtime stage with Python GPU support
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    postgresql-client \
+    python3.11 \
+    python3-pip \
+    python3.11-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+WORKDIR /app
+
+# Copy Rust binary from builder
+COPY --from=rust-builder /app/target/release/gpu_feature_extraction /app/
+
+# Install Python dependencies
+COPY requirements-gpu.txt ./
+RUN pip install --no-cache-dir -r requirements-gpu.txt || \
+    pip install --no-cache-dir \
+        pandas==2.2.0 \
+        numpy==1.24.3 \
+        psycopg2-binary \
+        torch==2.4.0 \
+        cupy-cuda12x==13.0.0 \
+        cudf-cu12==24.04.0
+
+# Copy Python scripts
+COPY sparse_gpu_features.py ./
+COPY gpu_features_pytorch.py ./
+COPY minimal_gpu_features.py ./
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV RUST_LOG=info
+ENV RUST_BACKTRACE=1
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Default command runs the Rust binary which orchestrates everything
+ENTRYPOINT ["/app/gpu_feature_extraction"]

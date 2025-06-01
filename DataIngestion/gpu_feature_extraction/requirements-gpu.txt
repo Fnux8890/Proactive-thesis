@@ -1,0 +1,19 @@
+# GPU acceleration
+torch==2.4.0
+cupy-cuda12x==13.0.0
+# cudf-cu12==24.04.0  # Optional, comment if build issues
+
+# Data processing
+pandas==2.2.0
+numpy==1.24.3
+scipy==1.11.4
+scikit-learn==1.4.0
+pyarrow==15.0.0
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.25
+
+# Additional utilities
+python-dateutil==2.8.2
+psutil==5.9.8

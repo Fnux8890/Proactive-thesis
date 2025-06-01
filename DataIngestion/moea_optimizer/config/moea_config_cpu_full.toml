@@ -1,0 +1,110 @@
+# MOEA Configuration for CPU-based Full Dataset Optimization
+# Complete 2013-2016 greenhouse data with comprehensive evaluation
+
+[meta]
+experiment_name = "full_dataset_cpu_moea"
+description = "Full dataset MOEA optimization using CPU (2013-2016)"
+version = "1.0"
+timestamp = "2024-06-01"
+
+[algorithm]
+type = "NSGA-III"
+population_size = 100
+n_generations = 300
+crossover_probability = 0.9
+crossover_eta = 15
+mutation_probability = 0.1
+mutation_eta = 20
+n_reference_points = 12
+use_gpu = false
+n_processes = 8  # CPU parallelization
+termination_criteria = ["n_gen", "stagnation"]
+stagnation_tolerance = 50
+
+[objectives]
+# Multi-objective optimization for energy efficiency and plant growth
+energy_consumption = { type = "minimize", weight = 0.5, name = "Energy Efficiency" }
+plant_growth = { type = "maximize", weight = 0.5, name = "Plant Growth Rate" }
+
+# Additional objectives for comprehensive evaluation
+energy_cost = { type = "minimize", weight = 0.3, name = "Energy Cost" }
+growth_quality = { type = "maximize", weight = 0.2, name = "Growth Quality" }
+
+[decision_variables]
+# Climate control parameters optimized across full greenhouse operation
+temperature_setpoint = { min = 15.0, max = 30.0, type = "continuous", unit = "°C" }
+humidity_target = { min = 40.0, max = 90.0, type = "continuous", unit = "%" }
+co2_target = { min = 400.0, max = 1200.0, type = "continuous", unit = "ppm" }
+photoperiod_hours = { min = 8.0, max = 18.0, type = "continuous", unit = "hours" }
+light_intensity = { min = 100.0, max = 1000.0, type = "continuous", unit = "μmol/m²/s" }
+ventilation_rate = { min = 0.1, max = 5.0, type = "continuous", unit = "air_changes/hour" }
+
+[constraints]
+# Realistic operational constraints for commercial greenhouse
+temperature_bounds = [15.0, 30.0]
+humidity_bounds = [40.0, 90.0]
+co2_bounds = [400.0, 1200.0]
+light_bounds = [100.0, 1000.0]
+energy_budget = 1000.0  # kWh/day maximum
+operational_hours = [6, 22]  # Active control window
+
+[dataset]
+# Full dataset configuration
+start_date = "2013-12-01"
+end_date = "2016-09-08"
+feature_table = "enhanced_sparse_features_full"
+validation_split = 0.2
+test_split = 0.1
+era_based_splits = true
+
+[evaluation]
+# Comprehensive evaluation metrics
+metrics = ["hypervolume", "igd", "gd", "spacing"]
+reference_point = [2000.0, 0.0, 500.0, 0.0]  # For hypervolume calculation
+log_interval = 10
+monitor_memory = true
+monitor_convergence = true
+save_population_history = true
+
+# LightGBM model validation
+use_surrogate_validation = true
+surrogate_model_path = "/app/models"
+validation_frequency = 25  # Every 25 generations
+
+[output]
+base_dir = "/app/results"
+experiment_dir = "full_dataset_cpu"
+save_interval = 50  # Save every 50 generations
+save_population = true
+save_pareto_front = true
+save_history = true
+save_metrics = true
+export_formats = ["json", "csv", "numpy"]
+
+[resources]
+# CPU-specific resource configuration
+max_memory_gb = 8
+cpu_cores = 8
+batch_evaluation = true
+batch_size = 50
+
+[evaluation_schedule]
+# Multiple independent runs for statistical significance
+n_runs = 3
+base_seed = 42
+run_seeds = [42, 123, 456]
+
+[real_world_validation]
+# Parameters for real-world performance assessment
+historical_validation = true
+energy_price_integration = true
+seasonal_adaptation = true
+economic_impact_analysis = true
+sustainability_metrics = true
+
+[reporting]
+generate_plots = true
+plot_types = ["pareto_front", "convergence", "objective_space", "decision_space"]
+statistical_analysis = true
+confidence_intervals = true
+performance_benchmarks = true

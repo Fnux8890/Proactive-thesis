@@ -1,0 +1,228 @@
+use anyhow::Result;
+use chrono::{DateTime, Utc};
+use clap::Parser;
+use gpu_feature_extraction::sparse_pipeline::{SparsePipeline, SparsePipelineConfig};
+use gpu_feature_extraction::features::GpuFeatureExtractor;
+use sqlx::postgres::PgPool;
+use std::env;
+use tracing::{info, error};
+use cudarc::driver::safe::{CudaContext, CudaStream};
+use std::sync::Arc;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Start date for processing (YYYY-MM-DD)
+    #[clap(short, long, default_value = "2014-01-01")]
+    start_date: String,
+    
+    /// End date for processing (YYYY-MM-DD)
+    #[clap(short, long, default_value = "2014-01-31")]
+    end_date: String,
+    
+    /// Database URL
+    #[clap(long, env = "DATABASE_URL")]
+    database_url: String,
+    
+    /// Enable GPU acceleration
+    #[clap(long, default_value = "true")]
+    enable_gpu: bool,
+    
+    /// Enable external data fetching
+    #[clap(long, default_value = "true")]
+    enable_external_data: bool,
+    
+    /// Greenhouse latitude
+    #[clap(long, default_value = "56.16")]
+    lat: f64,
+    
+    /// Greenhouse longitude
+    #[clap(long, default_value = "10.20")]
+    lon: f64,
+    
+    /// Energy price area
+    #[clap(long, default_value = "DK1")]
+    price_area: String,
+    
+    /// Plant species
+    #[clap(long, default_value = "Kalanchoe blossfeldiana")]
+    species: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize logging
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .init();
+    
+    // Parse command line arguments
+    let args = Args::parse();
+    
+    info!("Enhanced Sparse Pipeline Test");
+    info!("==============================");
+    info!("Processing period: {} to {}", args.start_date, args.end_date);
+    info!("GPU enabled: {}", args.enable_gpu);
+    info!("External data enabled: {}", args.enable_external_data);
+    info!("Location: lat={}, lon={}", args.lat, args.lon);
+    info!("Price area: {}", args.price_area);
+    info!("Species: {}", args.species);
+    
+    // Parse dates
+    let start_time = DateTime::parse_from_str(
+        &format!("{} 00:00:00 +0000", args.start_date),
+        "%Y-%m-%d %H:%M:%S %z"
+    )?.with_timezone(&Utc);
+    
+    let end_time = DateTime::parse_from_str(
+        &format!("{} 23:59:59 +0000", args.end_date),
+        "%Y-%m-%d %H:%M:%S %z"
+    )?.with_timezone(&Utc);
+    
+    // Create database pool
+    info!("Connecting to database...");
+    let pool = PgPool::connect(&args.database_url).await?;
+    
+    // Create pipeline configuration
+    let config = SparsePipelineConfig {
+        min_hourly_coverage: 0.1,
+        max_interpolation_gap: 2,
+        enable_parquet_checkpoints: true,
+        checkpoint_dir: std::path::PathBuf::from("/tmp/gpu_sparse_pipeline_enhanced"),
+        window_hours: 24,
+        slide_hours: 6,
+        enable_external_data: args.enable_external_data,
+        greenhouse_lat: args.lat,
+        greenhouse_lon: args.lon,
+        price_area: args.price_area,
+        phenotype_species: args.species,
+    };
+    
+    // Create pipeline
+    let mut pipeline = SparsePipeline::new(pool.clone(), config);
+    
+    // Initialize GPU if enabled
+    if args.enable_gpu {
+        match initialize_gpu() {
+            Ok(gpu_extractor) => {
+                info!("GPU initialized successfully");
+                pipeline = pipeline.with_gpu_extractor(gpu_extractor);
+            }
+            Err(e) => {
+                error!("Failed to initialize GPU: {}", e);
+                info!("Continuing with CPU-only processing");
+            }
+        }
+    }
+    
+    // Run the pipeline
+    info!("\nStarting enhanced sparse pipeline...");
+    match pipeline.run_pipeline(start_time, end_time).await {
+        Ok(results) => {
+            info!("\nPipeline completed successfully!");
+            info!("Hourly data rows: {}", results.filled_hourly_data.height());
+            info!("Feature sets extracted: {}", results.daily_features.len());
+            info!("Monthly eras created: {}", results.monthly_eras.len());
+            
+            // Print sample features
+            if let Some(first_features) = results.daily_features.first() {
+                info!("\nSample features from first window:");
+                let mut feature_names: Vec<_> = first_features.features.keys().collect();
+                feature_names.sort();
+                
+                // Group features by type
+                let growth_features: Vec<_> = feature_names.iter()
+                    .filter(|name| name.contains("gdd") || name.contains("dli"))
+                    .collect();
+                let weather_features: Vec<_> = feature_names.iter()
+                    .filter(|name| name.contains("temp_differential") || name.contains("solar"))
+                    .collect();
+                let energy_features: Vec<_> = feature_names.iter()
+                    .filter(|name| name.contains("energy") || name.contains("cost") || name.contains("peak"))
+                    .collect();
+                let multi_res_features: Vec<_> = feature_names.iter()
+                    .filter(|name| name.contains("5min") || name.contains("15min") || name.contains("1h") || name.contains("4h") || name.contains("1d"))
+                    .collect();
+                
+                info!("\nGrowth features ({}):", growth_features.len());
+                for name in &growth_features[..growth_features.len().min(5)] {
+                    if let Some(value) = first_features.features.get(**name) {
+                        info!("  {}: {:.3}", name, value);
+                    }
+                }
+                
+                info!("\nWeather coupling features ({}):", weather_features.len());
+                for name in &weather_features[..weather_features.len().min(5)] {
+                    if let Some(value) = first_features.features.get(**name) {
+                        info!("  {}: {:.3}", name, value);
+                    }
+                }
+                
+                info!("\nEnergy features ({}):", energy_features.len());
+                for name in &energy_features[..energy_features.len().min(5)] {
+                    if let Some(value) = first_features.features.get(**name) {
+                        info!("  {}: {:.3}", name, value);
+                    }
+                }
+                
+                info!("\nMulti-resolution features ({}):", multi_res_features.len());
+                for name in &multi_res_features[..multi_res_features.len().min(10)] {
+                    if let Some(value) = first_features.features.get(**name) {
+                        info!("  {}: {:.3}", name, value);
+                    }
+                }
+                
+                info!("\nTotal features extracted: {}", first_features.features.len());
+            }
+            
+            // Save results summary
+            let summary_path = std::path::PathBuf::from("/tmp/gpu_sparse_pipeline_enhanced/summary.json");
+            if let Ok(summary_json) = serde_json::to_string_pretty(&serde_json::json!({
+                "start_time": start_time.to_rfc3339(),
+                "end_time": end_time.to_rfc3339(),
+                "hourly_rows": results.filled_hourly_data.height(),
+                "feature_sets": results.daily_features.len(),
+                "monthly_eras": results.monthly_eras.len(),
+                "total_features": results.daily_features.first().map(|f| f.features.len()).unwrap_or(0),
+                "gpu_enabled": args.enable_gpu,
+                "external_data_enabled": args.enable_external_data,
+            })) {
+                std::fs::write(&summary_path, summary_json)?;
+                info!("\nSummary saved to: {:?}", summary_path);
+            }
+        }
+        Err(e) => {
+            error!("Pipeline failed: {}", e);
+            return Err(e);
+        }
+    }
+    
+    info!("\nEnhanced sparse pipeline test completed!");
+    Ok(())
+}
+
+fn initialize_gpu() -> Result<GpuFeatureExtractor> {
+    info!("Initializing CUDA context...");
+    
+    // Initialize CUDA
+    let ctx = CudaContext::new(0)?;
+    let ctx = Arc::new(ctx);
+    let stream = Arc::new(CudaStream::new(&ctx)?);
+    
+    // Get GPU info
+    let device = ctx.device();
+    let device_name = device.name()?;
+    let compute_capability = device.compute_capability();
+    let memory_info = device.memory_info()?;
+    
+    info!("GPU Device: {}", device_name);
+    info!("Compute Capability: {}.{}", compute_capability.0, compute_capability.1);
+    info!("Total Memory: {:.2} GB", memory_info.1 as f64 / 1e9);
+    info!("Free Memory: {:.2} GB", memory_info.0 as f64 / 1e9);
+    
+    // Create feature extractor
+    let extractor = GpuFeatureExtractor::new(ctx, stream)?;
+    
+    Ok(extractor)
+}

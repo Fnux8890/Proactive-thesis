@@ -1,0 +1,248 @@
+# Full End-to-End Pipeline with CPU/GPU MOEA Comparison
+# Complete 2013-2016 dataset with parallel MOEA optimization
+# Pipeline: Rust Ingestion → Enhanced Features → Model Training → CPU/GPU MOEA → Evaluation
+
+services:
+  # ============================================
+  # INFRASTRUCTURE
+  # ============================================
+  
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Increase memory for large dataset
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro
+      - ./feature_extraction/pre_process/create_external_data_tables.sql:/docker-entrypoint-initdb.d/01_create_external_tables.sql:ro
+      - postgres-data-full:/var/lib/postgresql/data
+    networks:
+      - pipeline-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # STAGE 1: DATA INGESTION (FULL DATASET)
+  # ============================================
+  
+  rust_pipeline:
+    build:
+      context: ./rust_pipeline
+      dockerfile: Dockerfile
+    container_name: rust_data_ingestion_full
+    volumes:
+      - ../Data:/app/data:ro
+      - ./rust_pipeline/pipeline_logs:/app/logs:rw
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_PATH: /app/data
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: info
+      # Process all available data files
+      PROCESS_ALL_FILES: "true"
+    networks:
+      - pipeline-net
+
+  # ============================================
+  # STAGE 2: ENHANCED SPARSE PIPELINE
+  # ============================================
+  
+  enhanced_sparse_pipeline:
+    build:
+      context: ./gpu_feature_extraction
+      dockerfile: Dockerfile.enhanced
+    container_name: enhanced_sparse_pipeline_full
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      RUST_LOG: gpu_feature_extraction=info
+      START_DATE: "2013-12-01"
+      END_DATE: "2016-09-08"
+      BATCH_SIZE: "48"
+      MIN_ERA_ROWS: "200"
+      FEATURES_TABLE: "enhanced_sparse_features_full"
+      ENHANCED_MODE: "true"
+      SPARSE_MODE: "true"
+      USE_GPU: "true"
+      CUDA_VISIBLE_DEVICES: "0"
+    command: [
+      "--database-url", "postgresql://postgres:postgres@db:5432/postgres",
+      "--enhanced-mode",
+      "--start-date", "2013-12-01",
+      "--end-date", "2016-09-08",
+      "--features-table", "enhanced_sparse_features_full",
+      "--batch-size", "48"
+    ]
+    volumes:
+      - ./gpu_feature_extraction/checkpoints:/app/checkpoints:rw
+      - ./gpu_feature_extraction/logs:/app/logs:rw
+    depends_on:
+      db:
+        condition: service_healthy
+      rust_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 3: MODEL BUILDING
+  # ============================================
+  
+  model_builder:
+    build:
+      context: ./model_builder
+      dockerfile: dockerfile.gpu-optimized
+    container_name: model_builder_full
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      USE_SPARSE_FEATURES: "true"
+      FEATURE_TABLES: "enhanced_sparse_features_full"
+      # Enhanced training for full dataset
+      EPOCHS: "200"
+      BATCH_SIZE: "128"
+      LEARNING_RATE: "0.001"
+      EARLY_STOPPING: "true"
+      CROSS_VALIDATION: "5"
+      # Model validation settings
+      VALIDATION_SPLIT: "0.2"
+      MODEL_SELECTION: "lightgbm"
+      HYPERPARAMETER_OPTIMIZATION: "true"
+      # Python
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./model_builder:/app
+      - ./model_builder/models:/models
+      - ./model_builder/model_builder_mlflow_staging:/mlflow
+      - ./experiments/full_experiment/models:/app/output:rw
+    command: ["python", "/app/src/training/train_comprehensive_sparse.py"]
+    depends_on:
+      enhanced_sparse_pipeline:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 4A: CPU MOEA OPTIMIZATION
+  # ============================================
+  
+  moea_optimizer_cpu:
+    build:
+      context: ./moea_optimizer
+      dockerfile: Dockerfile
+    container_name: moea_optimizer_cpu
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      CONFIG_PATH: /app/config/moea_config_cpu_full.toml
+      DEVICE: cpu
+      MODEL_PATH: /app/models
+      # CPU optimization settings
+      POPULATION_SIZE: "100"
+      GENERATIONS: "300"
+      N_RUNS: "3"  # Multiple runs for statistics
+      USE_GPU: "false"
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./moea_optimizer/config:/app/config:ro
+      - ./model_builder/models:/app/models:ro
+      - ./experiments/full_experiment/moea_cpu:/app/results:rw
+    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/moea_config_cpu_full.toml"]
+    depends_on:
+      model_builder:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+
+  # ============================================
+  # STAGE 4B: GPU MOEA OPTIMIZATION  
+  # ============================================
+  
+  moea_optimizer_gpu:
+    build:
+      context: ./moea_optimizer
+      dockerfile: Dockerfile.gpu
+    container_name: moea_optimizer_gpu
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      CONFIG_PATH: /app/config/moea_config_gpu_full.toml
+      DEVICE: cuda
+      MODEL_PATH: /app/models
+      # GPU optimization settings
+      POPULATION_SIZE: "100"
+      GENERATIONS: "300"
+      N_RUNS: "3"  # Multiple runs for statistics
+      USE_GPU: "true"
+      CUDA_VISIBLE_DEVICES: "0"
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./moea_optimizer/config:/app/config:ro
+      - ./model_builder/models:/app/models:ro
+      - ./experiments/full_experiment/moea_gpu:/app/results:rw
+    command: ["python", "-m", "src.cli", "run", "--config", "/app/config/moea_config_gpu_full.toml"]
+    depends_on:
+      model_builder:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================
+  # STAGE 5: RESULTS EVALUATION & ANALYSIS
+  # ============================================
+  
+  results_evaluator:
+    build:
+      context: .
+      dockerfile: Dockerfile.evaluator
+    container_name: results_evaluator
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./model_builder/models:/app/models:ro
+      - ./experiments/full_experiment:/app/experiment_data:rw
+      - ./evaluation:/app/evaluation:ro
+    command: ["python", "/app/evaluation/evaluate_full_experiment.py"]
+    depends_on:
+      moea_optimizer_cpu:
+        condition: service_completed_successfully
+      moea_optimizer_gpu:
+        condition: service_completed_successfully
+    networks:
+      - pipeline-net
+
+volumes:
+  postgres-data-full:
+
+networks:
+  pipeline-net:
+    driver: bridge

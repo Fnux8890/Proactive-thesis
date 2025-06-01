@@ -1,541 +1,234 @@
-#!/bin/bash
-# Comprehensive CPU vs GPU Performance Comparison
-# Runs multiple tests with both CPU and GPU modes to validate performance improvements
+#\!/bin/bash
+# CPU vs GPU Performance Comparison for MOEA Optimization
+# Runs identical experiments with CPU and GPU configurations
 
 set -e
 
-echo "============================================"
-echo "CPU vs GPU Performance Comparison Test"
-echo "Date: $(date)"
-echo "============================================"
-
 # Configuration
-NUM_RUNS=5  # Number of test runs for each mode
-TEST_START_DATE="2014-01-01"
-TEST_END_DATE="2014-07-01"  # 6 months of data
-RESULTS_DIR="./docs/experiments/results/cpu_gpu_comparison"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+START_DATE="${START_DATE:-2013-12-01}"
+END_DATE="${END_DATE:-2014-02-28}"  # Smaller dataset for faster comparison
+COMPARISON_NAME="cpu_vs_gpu_$(date +%Y%m%d_%H%M%S)"
+POPULATION_SIZE="${POPULATION_SIZE:-50}"  # Smaller for faster testing
+GENERATIONS="${GENERATIONS:-50}"
 
-# Create results directory
-mkdir -p "$RESULTS_DIR"
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# Function to measure execution time with high precision
-measure_time() {
-    local start_time=$(date +%s.%N)
-    "$@"
-    local exit_code=$?
-    local end_time=$(date +%s.%N)
-    if [ $exit_code -eq 0 ]; then
-        echo "$(echo "$end_time - $start_time" | bc)"
+echo -e "${BLUE}=== CPU vs GPU MOEA Performance Comparison ===${NC}"
+echo -e "${BLUE}Comparison: ${COMPARISON_NAME}${NC}"
+echo -e "${BLUE}Population: ${POPULATION_SIZE}, Generations: ${GENERATIONS}${NC}"
+echo ""
+
+# Create comparison directory
+COMPARISON_DIR="experiments/comparisons/${COMPARISON_NAME}"
+mkdir -p $COMPARISON_DIR
+
+# Prepare configurations
+create_moea_config() {
+    local device=$1
+    local config_file=$2
+    
+    cat > $config_file << EOM
+[meta]
+experiment_name = "moea_${device}_test"
+description = "MOEA optimization test using ${device}"
+
+[algorithm]
+type = "NSGA-III"
+population_size = ${POPULATION_SIZE}
+n_generations = ${GENERATIONS}
+crossover_probability = 0.9
+crossover_eta = 15
+mutation_probability = 0.1
+mutation_eta = 20
+n_reference_points = 12
+use_gpu = $([ "$device" = "gpu" ] && echo "true" || echo "false")
+cuda_device_id = 0
+
+[objectives]
+energy_consumption = { type = "minimize", weight = 0.5 }
+plant_growth = { type = "maximize", weight = 0.5 }
+
+[decision_variables]
+temperature_setpoint = { min = 15.0, max = 30.0, type = "continuous" }
+humidity_target = { min = 40.0, max = 90.0, type = "continuous" }
+co2_target = { min = 400.0, max = 1200.0, type = "continuous" }
+photoperiod_hours = { min = 8.0, max = 18.0, type = "continuous" }
+
+[constraints]
+temperature_bounds = [15.0, 30.0]
+humidity_bounds = [40.0, 90.0]
+co2_bounds = [400.0, 1200.0]
+light_bounds = [0.0, 1000.0]
+
+[output]
+base_dir = "/app/results"
+experiment_dir = "${device}_test"
+save_interval = 0
+save_population = true
+save_pareto_front = true
+save_history = true
+
+[evaluation]
+log_interval = 10
+monitor_memory = true
+
+n_runs = 1
+base_seed = 42
+EOM
+}
+
+echo -e "${YELLOW}Running common pipeline stages...${NC}"
+
+export START_DATE
+export END_DATE
+export FEATURES_TABLE="comparison_features_${COMPARISON_NAME}"
+
+# Run the pipeline up to model training
+echo -e "${YELLOW}Starting pipeline (database → models)...${NC}"
+docker compose -f docker-compose.enhanced.yml up -d db
+sleep 15
+
+# Check if we need data ingestion
+echo -e "${YELLOW}Checking if data ingestion needed...${NC}"
+docker compose -f docker-compose.enhanced.yml up rust_pipeline enhanced_sparse_pipeline model_builder
+
+# Prepare MOEA configurations
+echo -e "${YELLOW}Preparing MOEA configurations...${NC}"
+mkdir -p ./moea_optimizer/config/comparison
+create_moea_config "cpu" "./moea_optimizer/config/comparison/moea_config_cpu_test.toml"
+create_moea_config "gpu" "./moea_optimizer/config/comparison/moea_config_gpu_test.toml"
+
+# Function to run MOEA experiment
+run_moea_experiment() {
+    local device=$1
+    local start_time=$(date +%s)
+    
+    echo -e "${YELLOW}Running MOEA experiment with ${device}...${NC}"
+    
+    # Set environment for this run
+    export CONFIG_PATH="/app/config/comparison/moea_config_${device}_test.toml"
+    export DEVICE=$([ "$device" = "gpu" ] && echo "cuda" || echo "cpu")
+    
+    # Create results directory
+    mkdir -p "${COMPARISON_DIR}/${device}_results"
+    
+    # Run the experiment
+    if [ "$device" = "gpu" ]; then
+        # GPU version - use the GPU service
+        docker compose -f docker-compose.enhanced.yml run --rm \
+            -e CONFIG_PATH="$CONFIG_PATH" \
+            -e DEVICE="cuda" \
+            -v "${COMPARISON_DIR}/${device}_results:/app/results:rw" \
+            -v "./moea_optimizer/config/comparison:/app/config/comparison:ro" \
+            moea_optimizer python -m src.cli run --config "$CONFIG_PATH"
     else
-        echo "-1"
+        # CPU version - override the deploy section to disable GPU
+        docker compose -f docker-compose.enhanced.yml run --rm \
+            -e CONFIG_PATH="$CONFIG_PATH" \
+            -e DEVICE="cpu" \
+            -v "${COMPARISON_DIR}/${device}_results:/app/results:rw" \
+            -v "./moea_optimizer/config/comparison:/app/config/comparison:ro" \
+            --gpus= \
+            moea_optimizer python -m src.cli run --config "$CONFIG_PATH"
     fi
-    return $exit_code
+    
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    
+    echo -e "${GREEN}✓ ${device} experiment completed in ${duration} seconds${NC}"
+    echo $duration > "${COMPARISON_DIR}/${device}_runtime.txt"
 }
 
-# Function to extract metrics from logs
-extract_metrics() {
-    local log_file=$1
-    local metrics_file=$2
-    
-    # Extract all relevant metrics
-    echo "{" > "$metrics_file"
-    echo "  \"hourly_data_points\": $(grep -oP "Hourly data points: \K\d+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"window_features\": $(grep -oP "Window features: \K\d+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"monthly_eras\": $(grep -oP "Monthly eras: \K\d+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"features_per_second\": $(grep -oP "Performance: \K[0-9.]+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"gpu_initialized\": $(grep -c "CUDA context initialized" "$log_file" || echo 0)," >> "$metrics_file"
-    echo "  \"gpu_disabled\": $(grep -c "GPU disabled by environment variable" "$log_file" || echo 0)," >> "$metrics_file"
-    echo "  \"gap_fills_co2\": $(grep -oP "CO2 gaps filled: \K\d+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"gap_fills_humidity\": $(grep -oP "Humidity gaps filled: \K\d+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"quality_coverage\": $(grep -oP "Coverage: \K[0-9.]+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"quality_continuity\": $(grep -oP "Continuity: \K[0-9.]+" "$log_file" | tail -1 || echo 0)," >> "$metrics_file"
-    echo "  \"quality_consistency\": $(grep -oP "Consistency: \K[0-9.]+" "$log_file" | tail -1 || echo 0)" >> "$metrics_file"
-    echo "}" >> "$metrics_file"
-}
+# Run CPU experiment
+echo -e "${BLUE}=== Running CPU Experiment ===${NC}"
+run_moea_experiment "cpu"
 
-# Initialize results JSON
-RESULTS_FILE="$RESULTS_DIR/comparison_${TIMESTAMP}.json"
-cat > "$RESULTS_FILE" <<EOF
-{
-  "test": "cpu_vs_gpu_comparison",
-  "date": "$(date -Iseconds)",
-  "config": {
-    "date_range": "$TEST_START_DATE to $TEST_END_DATE",
-    "num_runs": $NUM_RUNS,
-    "batch_size": 24,
-    "window_hours": 12,
-    "slide_hours": 6
-  },
-  "cpu_runs": [
-EOF
+# Run GPU experiment
+echo -e "${BLUE}=== Running GPU Experiment ===${NC}"
+run_moea_experiment "gpu"
 
-# Clean up any previous runs
-echo ""
-echo "Cleaning up previous runs..."
-docker compose -f docker-compose.sparse.yml down -v || true
-rm -rf ./gpu_feature_extraction/checkpoints/*
+# Generate comparison report
+echo -e "${YELLOW}Generating comparison report...${NC}"
 
-# Copy sparse environment
-cp .env.sparse .env
+cat > "${COMPARISON_DIR}/comparison_report.md" << EOM
+# CPU vs GPU MOEA Performance Comparison
 
-# Build containers
-echo ""
-echo "Building containers..."
-docker compose -f docker-compose.sparse.yml build sparse_pipeline
+## Experiment Configuration
+- Date Range: $START_DATE to $END_DATE
+- Population Size: $POPULATION_SIZE
+- Generations: $GENERATIONS
+- Timestamp: $(date)
 
-# ====================
-# CPU Performance Tests
-# ====================
-echo ""
-echo "============================================"
-echo "Running CPU Performance Tests"
-echo "============================================"
+## Performance Results
 
-CPU_TIMES=()
-CPU_FEATURES_PER_SEC=()
+### Runtime Comparison
+EOM
 
-for i in $(seq 1 $NUM_RUNS); do
-    echo ""
-    echo "CPU Run $i/$NUM_RUNS"
-    echo "--------------------"
+if [ -f "${COMPARISON_DIR}/cpu_runtime.txt" ] && [ -f "${COMPARISON_DIR}/gpu_runtime.txt" ]; then
+    CPU_TIME=$(cat "${COMPARISON_DIR}/cpu_runtime.txt")
+    GPU_TIME=$(cat "${COMPARISON_DIR}/gpu_runtime.txt")
     
-    # Clean checkpoints
-    rm -rf ./gpu_feature_extraction/checkpoints/*
-    
-    # Start database
-    docker compose -f docker-compose.sparse.yml up -d db
-    sleep 10
-    
-    # Run data ingestion
-    echo "Running data ingestion..."
-    INGESTION_TIME=$(measure_time docker compose -f docker-compose.sparse.yml up rust_pipeline 2>&1 | tee "/tmp/cpu_ingestion_$i.log")
-    
-    if [ "$INGESTION_TIME" = "-1" ]; then
-        echo "ERROR: Ingestion failed"
-        continue
-    fi
-    
-    # Get ingestion record count
-    RECORDS=$(grep -oP "Processed \K\d+" "/tmp/cpu_ingestion_$i.log" | tail -1 || echo "0")
-    
-    # Run sparse pipeline with CPU (DISABLE_GPU=true)
-    echo "Running sparse pipeline (CPU mode)..."
-    SPARSE_TIME=$(measure_time docker compose -f docker-compose.sparse.yml run --rm \
-        -e DISABLE_GPU=true \
-        sparse_pipeline \
-        --sparse-mode \
-        --start-date "$TEST_START_DATE" \
-        --end-date "$TEST_END_DATE" \
-        --batch-size 24 2>&1 | tee "/tmp/cpu_sparse_$i.log")
-    
-    if [ "$SPARSE_TIME" = "-1" ]; then
-        echo "ERROR: Sparse pipeline failed"
-        docker compose -f docker-compose.sparse.yml down
-        continue
-    fi
-    
-    # Extract metrics
-    extract_metrics "/tmp/cpu_sparse_$i.log" "/tmp/cpu_metrics_$i.json"
-    
-    # Read metrics
-    FEATURES_PER_SEC=$(jq -r '.features_per_second' "/tmp/cpu_metrics_$i.json")
-    CPU_TIMES+=("$SPARSE_TIME")
-    CPU_FEATURES_PER_SEC+=("$FEATURES_PER_SEC")
-    
-    # Calculate total time
-    TOTAL_TIME=$(echo "$INGESTION_TIME + $SPARSE_TIME" | bc)
-    
-    # Add to JSON
-    if [ $i -gt 1 ]; then
-        echo "," >> "$RESULTS_FILE"
-    fi
-    
-    cat >> "$RESULTS_FILE" <<EOF
-    {
-      "run": $i,
-      "mode": "cpu",
-      "timings": {
-        "ingestion_seconds": $INGESTION_TIME,
-        "sparse_pipeline_seconds": $SPARSE_TIME,
-        "total_seconds": $TOTAL_TIME
-      },
-      "metrics": $(cat "/tmp/cpu_metrics_$i.json")
-    }
-EOF
-    
-    # Clean up
-    docker compose -f docker-compose.sparse.yml down
-    sleep 5
-done
-
-# Close CPU runs array and start GPU runs
-cat >> "$RESULTS_FILE" <<EOF
-  ],
-  "gpu_runs": [
-EOF
-
-# ====================
-# GPU Performance Tests
-# ====================
-echo ""
-echo "============================================"
-echo "Running GPU Performance Tests"
-echo "============================================"
-
-GPU_TIMES=()
-GPU_FEATURES_PER_SEC=()
-
-for i in $(seq 1 $NUM_RUNS); do
-    echo ""
-    echo "GPU Run $i/$NUM_RUNS"
-    echo "--------------------"
-    
-    # Clean checkpoints
-    rm -rf ./gpu_feature_extraction/checkpoints/*
-    
-    # Start database
-    docker compose -f docker-compose.sparse.yml up -d db
-    sleep 10
-    
-    # Run data ingestion
-    echo "Running data ingestion..."
-    INGESTION_TIME=$(measure_time docker compose -f docker-compose.sparse.yml up rust_pipeline 2>&1 | tee "/tmp/gpu_ingestion_$i.log")
-    
-    if [ "$INGESTION_TIME" = "-1" ]; then
-        echo "ERROR: Ingestion failed"
-        continue
-    fi
-    
-    # Get ingestion record count
-    RECORDS=$(grep -oP "Processed \K\d+" "/tmp/gpu_ingestion_$i.log" | tail -1 || echo "0")
-    
-    # Run sparse pipeline with GPU (DISABLE_GPU=false)
-    echo "Running sparse pipeline (GPU mode)..."
-    SPARSE_TIME=$(measure_time docker compose -f docker-compose.sparse.yml run --rm \
-        -e DISABLE_GPU=false \
-        -e CUDA_VISIBLE_DEVICES=0 \
-        sparse_pipeline \
-        --sparse-mode \
-        --start-date "$TEST_START_DATE" \
-        --end-date "$TEST_END_DATE" \
-        --batch-size 24 2>&1 | tee "/tmp/gpu_sparse_$i.log")
-    
-    if [ "$SPARSE_TIME" = "-1" ]; then
-        echo "ERROR: Sparse pipeline failed"
-        docker compose -f docker-compose.sparse.yml down
-        continue
-    fi
-    
-    # Extract metrics
-    extract_metrics "/tmp/gpu_sparse_$i.log" "/tmp/gpu_metrics_$i.json"
-    
-    # Read metrics
-    FEATURES_PER_SEC=$(jq -r '.features_per_second' "/tmp/gpu_metrics_$i.json")
-    GPU_TIMES+=("$SPARSE_TIME")
-    GPU_FEATURES_PER_SEC+=("$FEATURES_PER_SEC")
-    
-    # Calculate total time
-    TOTAL_TIME=$(echo "$INGESTION_TIME + $SPARSE_TIME" | bc)
-    
-    # Add to JSON
-    if [ $i -gt 1 ]; then
-        echo "," >> "$RESULTS_FILE"
-    fi
-    
-    cat >> "$RESULTS_FILE" <<EOF
-    {
-      "run": $i,
-      "mode": "gpu",
-      "timings": {
-        "ingestion_seconds": $INGESTION_TIME,
-        "sparse_pipeline_seconds": $SPARSE_TIME,
-        "total_seconds": $TOTAL_TIME
-      },
-      "metrics": $(cat "/tmp/gpu_metrics_$i.json")
-    }
-EOF
-    
-    # Clean up
-    docker compose -f docker-compose.sparse.yml down
-    sleep 5
-done
-
-# Close GPU runs array
-echo "  ]" >> "$RESULTS_FILE"
-
-# ====================
-# Statistical Analysis
-# ====================
-echo ""
-echo "============================================"
-echo "Calculating Statistics"
-echo "============================================"
-
-# Function to calculate mean
-calc_mean() {
-    local arr=("$@")
-    local sum=0
-    local count=0
-    for val in "${arr[@]}"; do
-        if [ "$val" != "-1" ]; then
-            sum=$(echo "$sum + $val" | bc)
-            count=$((count + 1))
-        fi
-    done
-    if [ $count -gt 0 ]; then
-        echo "scale=3; $sum / $count" | bc
+    # Calculate speedup (use bc if available, otherwise use awk)
+    if command -v bc >/dev/null 2>&1; then
+        SPEEDUP=$(echo "scale=2; $CPU_TIME / $GPU_TIME"  < /dev/null |  bc)
     else
-        echo "0"
+        SPEEDUP=$(awk "BEGIN {printf \"%.2f\", $CPU_TIME / $GPU_TIME}")
     fi
-}
-
-# Function to calculate std dev
-calc_std() {
-    local arr=("$@")
-    local mean=$1
-    shift
-    local arr=("$@")
-    local sum=0
-    local count=0
-    for val in "${arr[@]}"; do
-        if [ "$val" != "-1" ]; then
-            diff=$(echo "$val - $mean" | bc)
-            sum=$(echo "$sum + ($diff * $diff)" | bc)
-            count=$((count + 1))
-        fi
-    done
-    if [ $count -gt 1 ]; then
-        echo "scale=3; sqrt($sum / ($count - 1))" | bc
-    else
-        echo "0"
-    fi
-}
-
-# Calculate statistics
-CPU_MEAN=$(calc_mean "${CPU_TIMES[@]}")
-CPU_STD=$(calc_std "$CPU_MEAN" "${CPU_TIMES[@]}")
-CPU_FEAT_MEAN=$(calc_mean "${CPU_FEATURES_PER_SEC[@]}")
-
-GPU_MEAN=$(calc_mean "${GPU_TIMES[@]}")
-GPU_STD=$(calc_std "$GPU_MEAN" "${GPU_TIMES[@]}")
-GPU_FEAT_MEAN=$(calc_mean "${GPU_FEATURES_PER_SEC[@]}")
-
-# Calculate speedup
-if [ $(echo "$GPU_MEAN > 0" | bc) -eq 1 ]; then
-    SPEEDUP=$(echo "scale=2; $CPU_MEAN / $GPU_MEAN" | bc)
-    FEAT_SPEEDUP=$(echo "scale=2; $GPU_FEAT_MEAN / $CPU_FEAT_MEAN" | bc)
-else
-    SPEEDUP="N/A"
-    FEAT_SPEEDUP="N/A"
+    
+    echo "- CPU Runtime: ${CPU_TIME} seconds" >> "${COMPARISON_DIR}/comparison_report.md"
+    echo "- GPU Runtime: ${GPU_TIME} seconds" >> "${COMPARISON_DIR}/comparison_report.md"  
+    echo "- Speedup: ${SPEEDUP}x" >> "${COMPARISON_DIR}/comparison_report.md"
+    
+    echo -e "${GREEN}Performance Summary:${NC}"
+    echo -e "${GREEN}  CPU: ${CPU_TIME}s${NC}"
+    echo -e "${GREEN}  GPU: ${GPU_TIME}s${NC}"
+    echo -e "${GREEN}  Speedup: ${SPEEDUP}x${NC}"
 fi
 
-# Add summary to JSON
-cat >> "$RESULTS_FILE" <<EOF
-,
-  "summary": {
-    "cpu": {
-      "mean_time": $CPU_MEAN,
-      "std_time": $CPU_STD,
-      "mean_features_per_sec": $CPU_FEAT_MEAN,
-      "valid_runs": ${#CPU_TIMES[@]}
-    },
-    "gpu": {
-      "mean_time": $GPU_MEAN,
-      "std_time": $GPU_STD,
-      "mean_features_per_sec": $GPU_FEAT_MEAN,
-      "valid_runs": ${#GPU_TIMES[@]}
-    },
-    "speedup": {
-      "time_speedup": "$SPEEDUP",
-      "feature_rate_speedup": "$FEAT_SPEEDUP"
-    }
-  }
-}
-EOF
+cat >> "${COMPARISON_DIR}/comparison_report.md" << 'EOM'
 
-# ====================
-# Generate Report
-# ====================
+### Solution Quality
+Check the respective results directories for:
+- Pareto front solutions
+- Convergence history  
+- Hypervolume metrics
+
+### Files Generated
+- `cpu_results/` - CPU experiment outputs
+- `gpu_results/` - GPU experiment outputs
+- `moea_config_cpu_test.toml` - CPU configuration
+- `moea_config_gpu_test.toml` - GPU configuration
+- `comparison_report.md` - This report
+
+### Analysis Commands
+```bash
+# View Pareto fronts
+ls cpu_results/*/pareto_*.npy
+ls gpu_results/*/pareto_*.npy
+
+# Compare metrics  
+cat cpu_results/*/metrics.json
+cat gpu_results/*/metrics.json
+
+# View convergence
+head cpu_results/*/convergence.csv
+head gpu_results/*/convergence.csv
+```
+EOM
+
+# Cleanup
+echo -e "${YELLOW}Cleaning up containers...${NC}"
+docker compose -f docker-compose.enhanced.yml down
+
+echo -e "${GREEN}=== Comparison Complete ===${NC}"
+echo -e "${GREEN}Results saved to: $COMPARISON_DIR${NC}"
 echo ""
-echo "Generating analysis report..."
-
-python3 << 'PYTHON_SCRIPT'
-import json
-import sys
-from datetime import datetime
-
-# Load results
-with open('$RESULTS_FILE', 'r') as f:
-    data = json.load(f)
-
-# Generate markdown report
-report = f"""# CPU vs GPU Performance Comparison Report
-
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-## Test Configuration
-
-- **Date Range**: {data['config']['date_range']}
-- **Number of Runs**: {data['config']['num_runs']} per mode
-- **Batch Size**: {data['config']['batch_size']}
-- **Window Hours**: {data['config']['window_hours']}
-- **Slide Hours**: {data['config']['slide_hours']}
-
-## Executive Summary
-
-"""
-
-# Check if GPU was actually used
-gpu_initialized = sum(run['metrics']['gpu_initialized'] for run in data['gpu_runs'])
-cpu_disabled = sum(run['metrics']['gpu_disabled'] for run in data['cpu_runs'])
-
-if gpu_initialized > 0:
-    report += f"""✅ **GPU Successfully Enabled**: GPU acceleration was active in {gpu_initialized}/{len(data['gpu_runs'])} GPU runs.
-
-### Performance Improvements:
-- **Time Speedup**: {data['summary']['speedup']['time_speedup']}x faster
-- **Feature Rate Improvement**: {data['summary']['speedup']['feature_rate_speedup']}x higher
-- **CPU Mean Time**: {data['summary']['cpu']['mean_time']:.2f}s ± {data['summary']['cpu']['std_time']:.2f}s
-- **GPU Mean Time**: {data['summary']['gpu']['mean_time']:.2f}s ± {data['summary']['gpu']['std_time']:.2f}s
-"""
-else:
-    report += f"""❌ **GPU Not Activated**: GPU acceleration was not successfully enabled in any runs.
-
-All runs executed in CPU mode. Please check:
-1. NVIDIA drivers installation
-2. Docker GPU runtime configuration
-3. CUDA toolkit compatibility
-"""
-
-# Detailed results table
-report += """
-## Detailed Results
-
-### CPU Performance
-
-| Run | Pipeline Time (s) | Features/sec | Data Quality | Status |
-|-----|------------------|--------------|--------------|---------|
-"""
-
-for run in data['cpu_runs']:
-    quality = f"{run['metrics']['quality_coverage']:.1f}%"
-    status = "✓" if run['metrics']['gpu_disabled'] > 0 else "?"
-    report += f"| {run['run']} | {run['timings']['sparse_pipeline_seconds']:.2f} | "
-    report += f"{run['metrics']['features_per_second']:.1f} | {quality} | {status} |\n"
-
-report += """
-### GPU Performance
-
-| Run | Pipeline Time (s) | Features/sec | Data Quality | GPU Active |
-|-----|------------------|--------------|--------------|------------|
-"""
-
-for run in data['gpu_runs']:
-    quality = f"{run['metrics']['quality_coverage']:.1f}%"
-    gpu_active = "✓" if run['metrics']['gpu_initialized'] > 0 else "✗"
-    report += f"| {run['run']} | {run['timings']['sparse_pipeline_seconds']:.2f} | "
-    report += f"{run['metrics']['features_per_second']:.1f} | {quality} | {gpu_active} |\n"
-
-# Statistical analysis
-report += f"""
-## Statistical Analysis
-
-### Timing Statistics
-
-| Metric | CPU | GPU | Difference |
-|--------|-----|-----|------------|
-| Mean Time | {data['summary']['cpu']['mean_time']:.2f}s | {data['summary']['gpu']['mean_time']:.2f}s | {data['summary']['cpu']['mean_time'] - data['summary']['gpu']['mean_time']:.2f}s |
-| Std Dev | {data['summary']['cpu']['std_time']:.2f}s | {data['summary']['gpu']['std_time']:.2f}s | - |
-| Min Time | {min(r['timings']['sparse_pipeline_seconds'] for r in data['cpu_runs']):.2f}s | {min(r['timings']['sparse_pipeline_seconds'] for r in data['gpu_runs']):.2f}s | - |
-| Max Time | {max(r['timings']['sparse_pipeline_seconds'] for r in data['cpu_runs']):.2f}s | {max(r['timings']['sparse_pipeline_seconds'] for r in data['gpu_runs']):.2f}s | - |
-
-### Feature Extraction Performance
-
-| Metric | CPU | GPU | Improvement |
-|--------|-----|-----|-------------|
-| Mean Rate | {data['summary']['cpu']['mean_features_per_sec']:.1f} feat/s | {data['summary']['gpu']['mean_features_per_sec']:.1f} feat/s | {data['summary']['speedup']['feature_rate_speedup']}x |
-"""
-
-# Data processing metrics
-cpu_features = sum(r['metrics']['window_features'] for r in data['cpu_runs']) / len(data['cpu_runs'])
-gpu_features = sum(r['metrics']['window_features'] for r in data['gpu_runs']) / len(data['gpu_runs'])
-
-report += f"""
-## Data Processing Metrics
-
-### Average Per Run
-
-| Metric | CPU | GPU |
-|--------|-----|-----|
-| Window Features | {cpu_features:.0f} | {gpu_features:.0f} |
-| Hourly Data Points | {sum(r['metrics']['hourly_data_points'] for r in data['cpu_runs']) / len(data['cpu_runs']):.0f} | {sum(r['metrics']['hourly_data_points'] for r in data['gpu_runs']) / len(data['gpu_runs']):.0f} |
-| CO2 Gap Fills | {sum(r['metrics']['gap_fills_co2'] for r in data['cpu_runs']) / len(data['cpu_runs']):.0f} | {sum(r['metrics']['gap_fills_co2'] for r in data['gpu_runs']) / len(data['gpu_runs']):.0f} |
-| Humidity Gap Fills | {sum(r['metrics']['gap_fills_humidity'] for r in data['cpu_runs']) / len(data['cpu_runs']):.0f} | {sum(r['metrics']['gap_fills_humidity'] for r in data['gpu_runs']) / len(data['gpu_runs']):.0f} |
-
-## Conclusions
-
-"""
-
-if gpu_initialized > 0:
-    speedup = float(data['summary']['speedup']['time_speedup'])
-    if speedup > 1.5:
-        report += f"""1. **GPU Acceleration Successful**: Achieved {speedup:.1f}x speedup over CPU
-2. **Consistent Performance**: Low standard deviation indicates stable performance
-3. **Feature Extraction Bottleneck Addressed**: GPU significantly improves the main bottleneck
-4. **Production Ready**: GPU mode is stable and ready for production use
-"""
-    else:
-        report += f"""1. **Modest GPU Improvement**: Only {speedup:.1f}x speedup achieved
-2. **Further Optimization Needed**: Current GPU implementation not fully optimized
-3. **Investigate Bottlenecks**: Profile to identify non-GPU bottlenecks
-"""
-else:
-    report += """1. **GPU Not Working**: Configuration issues prevent GPU usage
-2. **Action Required**: Fix GPU setup before performance testing
-3. **Rerun Tests**: After fixing GPU configuration
-"""
-
-report += """
-## Recommendations
-
-"""
-
-if gpu_initialized > 0:
-    report += """1. **Use GPU Mode in Production**: Clear performance benefits justify GPU deployment
-2. **Monitor GPU Utilization**: Use nvidia-smi to ensure optimal GPU usage
-3. **Scale Testing**: Test with larger datasets (full year)
-4. **Optimize Further**: Port more algorithms to GPU for additional gains
-"""
-else:
-    report += """1. **Fix GPU Configuration**: 
-   - Check NVIDIA drivers: `nvidia-smi`
-   - Verify Docker GPU runtime: `docker run --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`
-   - Review environment variables
-2. **Rebuild Containers**: `docker compose -f docker-compose.sparse.yml build --no-cache sparse_pipeline`
-3. **Rerun Tests**: After fixing configuration issues
-"""
-
-# Save report
-report_path = '$RESULTS_DIR/comparison_report_$TIMESTAMP.md'
-with open(report_path, 'w') as f:
-    f.write(report)
-
-print(f"Report saved to: {report_path}")
-PYTHON_SCRIPT
-
-# Clean up
-echo ""
-echo "============================================"
-echo "Test Complete"
-echo "============================================"
-echo "Results saved to: $RESULTS_FILE"
-echo "Report saved to: $RESULTS_DIR/comparison_report_${TIMESTAMP}.md"
-echo ""
-echo "Quick Summary:"
-echo "  CPU Mean: ${CPU_MEAN}s ± ${CPU_STD}s"
-echo "  GPU Mean: ${GPU_MEAN}s ± ${GPU_STD}s"
-echo "  Speedup: ${SPEEDUP}x"
-
-# Final cleanup
-docker compose -f docker-compose.sparse.yml down -v
+echo -e "${BLUE}To view results:${NC}"
+echo -e "${BLUE}  cat $COMPARISON_DIR/comparison_report.md${NC}"
+echo -e "${BLUE}  ls -la $COMPARISON_DIR/cpu_results/    # CPU results${NC}"
+echo -e "${BLUE}  ls -la $COMPARISON_DIR/gpu_results/    # GPU results${NC}"

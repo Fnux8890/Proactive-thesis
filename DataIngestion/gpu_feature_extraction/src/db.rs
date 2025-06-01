@@ -88,14 +88,14 @@ pub async fn fetch_eras(
     let query = format!(r#"
         SELECT 
             DISTINCT era_id,
-            'level_{}' as era_level,
+            era_level,
             start_time,
             end_time,
             rows as row_count
         FROM {}
         WHERE rows >= $1
         ORDER BY start_time
-    "#, era_level.to_lowercase(), table_name);
+    "#, table_name);
     
     let eras = sqlx::query_as::<_, Era>(&query)
         .bind(min_rows as i32)
@@ -249,6 +249,58 @@ pub async fn write_features(
     
     // Commit all writes at once
     tx.commit().await?;
+    
+    Ok(())
+}
+
+// Additional functions needed by pipeline.rs
+
+pub async fn fetch_eras_in_range(
+    pool: &PgPool,
+    era_level: &str,
+    start_time: DateTime<Utc>,
+    end_time: DateTime<Utc>,
+    min_rows: usize,
+) -> Result<Vec<Era>> {
+    // Table name follows pattern: era_labels_level_{a|b|c}
+    let table_name = format!("era_labels_level_{}", era_level.to_lowercase());
+    
+    let query = format!(r#"
+        SELECT 
+            era_id, 
+            era_level, 
+            start_time, 
+            end_time, 
+            rows as row_count
+        FROM {}
+        WHERE era_level = $1
+          AND start_time >= $2
+          AND end_time <= $3
+          AND rows >= $4
+        ORDER BY start_time
+    "#, table_name);
+    
+    let eras = sqlx::query_as::<_, Era>(&query)
+        .bind(era_level)
+        .bind(start_time)
+        .bind(end_time)
+        .bind(min_rows as i32)
+        .fetch_all(pool)
+        .await?;
+    
+    Ok(eras)
+}
+
+pub async fn store_features(
+    pool: &PgPool,
+    features: &[FeatureSet],
+    table_name: &str,
+) -> Result<()> {
+    // Ensure table exists
+    create_features_table_if_not_exists(pool, table_name).await?;
+    
+    // Write features
+    write_features(pool, table_name, features.to_vec()).await?;
     
     Ok(())
 }

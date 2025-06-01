@@ -1,0 +1,71 @@
+use anyhow::Result;
+use sqlx::postgres::PgPoolOptions;
+use gpu_feature_extraction::sparse_pipeline::{SparsePipeline, SparsePipelineConfig};
+use chrono::{DateTime, Utc};
+use tracing::{info, error};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter("gpu_feature_extraction=debug")
+        .init();
+
+    info!("Starting sparse pipeline test...");
+
+    // Database connection
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/postgres".to_string());
+    
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+
+    info!("Connected to database");
+
+    // Test data availability
+    let count_query = "SELECT COUNT(*) as count FROM sensor_data_merged WHERE time >= '2014-06-01' AND time < '2014-06-08'";
+    let count: i64 = sqlx::query_scalar(count_query)
+        .fetch_one(&pool)
+        .await?;
+    
+    info!("Found {} records for test period", count);
+
+    // Configure sparse pipeline with lower thresholds for testing
+    let config = SparsePipelineConfig {
+        min_hourly_coverage: 0.05,  // 5% coverage (realistic for this data)
+        max_interpolation_gap: 2,
+        enable_parquet_checkpoints: true,
+        checkpoint_dir: std::path::PathBuf::from("/tmp/sparse_test"),
+        window_hours: 24,
+        slide_hours: 6,
+        enable_external_data: false,  // Disable for testing
+        greenhouse_lat: 56.1629,      // Aarhus coordinates
+        greenhouse_lon: 10.2039,
+        price_area: "DK2".to_string(),
+        phenotype_species: "Kalanchoe blossfeldiana".to_string(),
+    };
+
+    let pipeline = SparsePipeline::new(pool.clone(), config);
+    
+    let start_date = DateTime::parse_from_rfc3339("2014-06-01T00:00:00Z")?.with_timezone(&Utc);
+    let end_date = DateTime::parse_from_rfc3339("2014-06-02T00:00:00Z")?.with_timezone(&Utc);
+
+    info!("Running sparse pipeline for {} to {}", start_date, end_date);
+
+    match pipeline.run_pipeline(start_date, end_date).await {
+        Ok(results) => {
+            info!("Pipeline completed successfully!");
+            info!("  - Hourly data points: {}", results.filled_hourly_data.height());
+            info!("  - Window features: {}", results.daily_features.len());
+            info!("  - Monthly eras: {}", results.monthly_eras.len());
+        }
+        Err(e) => {
+            error!("Pipeline failed: {}", e);
+            return Err(e);
+        }
+    }
+
+    Ok(())
+}

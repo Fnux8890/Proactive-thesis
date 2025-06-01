@@ -17,6 +17,7 @@ services:
       - "5432:5432"
     volumes:
       - ./rust_pipeline/db_init/init.sql:/docker-entrypoint-initdb.d/00_init_sensor_data.sql:ro
+      - ./feature_extraction/pre_process/create_external_data_tables.sql:/docker-entrypoint-initdb.d/01_create_external_tables.sql:ro
       - postgres-data:/var/lib/postgresql/data
     networks:
       - pipeline-net
@@ -81,18 +82,23 @@ services:
       RUST_LOG: ${RUST_LOG:-gpu_feature_extraction=info}
       # Sparse pipeline settings
       SPARSE_MODE: ${SPARSE_MODE:-true}
+      ENHANCED_MODE: ${ENHANCED_MODE:-false}
       SPARSE_START_DATE: ${SPARSE_START_DATE:-2014-01-01}
       SPARSE_END_DATE: ${SPARSE_END_DATE:-2014-12-31}
       SPARSE_BATCH_SIZE: ${SPARSE_BATCH_SIZE:-24}
       SPARSE_MIN_ERA_ROWS: ${SPARSE_MIN_ERA_ROWS:-10}
       SPARSE_FEATURES_TABLE: ${SPARSE_FEATURES_TABLE:-sparse_features}
-    # Use environment variables instead of command args
+      # Enhanced pipeline settings
+      ENABLE_WEATHER_FEATURES: ${ENABLE_WEATHER_FEATURES:-true}
+      ENABLE_ENERGY_FEATURES: ${ENABLE_ENERGY_FEATURES:-true}
+      ENABLE_GROWTH_FEATURES: ${ENABLE_GROWTH_FEATURES:-true}
+    # Command will be overridden based on ENHANCED_MODE environment variable
+    # For enhanced mode: docker compose run sparse_pipeline --enhanced-mode --start-date 2014-01-01 --end-date 2014-07-01 
     command: [
-      "--sparse-mode",
-      "--start-date", "${SPARSE_START_DATE:-2014-01-01}",
-      "--end-date", "${SPARSE_END_DATE:-2014-12-31}",
-      "--batch-size", "${SPARSE_BATCH_SIZE:-24}",
+      "--database-url", "postgresql://postgres:postgres@db:5432/postgres",
+      "--era-level", "B",
       "--min-era-rows", "${SPARSE_MIN_ERA_ROWS:-10}",
+      "--batch-size", "${SPARSE_BATCH_SIZE:-24}",
       "--features-table", "${SPARSE_FEATURES_TABLE:-sparse_features}"
     ]
     volumes:

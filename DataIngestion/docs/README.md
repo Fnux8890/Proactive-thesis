@@ -129,3 +129,42 @@ When adding new documentation:
 - Reorganized documentation structure for better discoverability
 - Added comprehensive testing and deployment guides
 - Updated architecture documentation with latest improvements
+
+## 📂 Guide to Documentation Subfolders
+
+This section provides a brief overview of the main subfolders within `DataIngestion/docs/` to help you navigate the documentation:
+
+- **`architecture/`**: Contains documents related to the system's design, architectural decisions, component breakdowns, and analysis reports. This includes high-level pipeline flows, specific component designs (e.g., GPU feature extraction), and diagrams.
+  - `architecture/analysis/`: Detailed analysis of specific components or approaches.
+  - `architecture/implementations/`: Documentation on specific implemented architectural patterns or significant features.
+
+- **`database/`**: Focuses on database schemas, data model details, storage strategies, database-specific optimizations, and migration information related to database structure.
+
+- **`deployment/`**: Includes guides and information for deploying the DataIngestion pipeline. This covers Docker, Docker Compose configurations, cloud deployment strategies (e.g., using Terraform), and environment setup.
+  - `deployment/terraform/`: Specific documentation for Terraform-based infrastructure management.
+
+- **`experiments/`**: (Assuming based on common practice, verify actual content) Likely contains records, results, and analyses of various experiments conducted during development, such as performance tuning, algorithm comparisons, or feature validation.
+
+- **`feature_extraction/`**: Holds detailed documentation specific to the feature extraction processes, methodologies, and individual feature implementations. This is a deep dive into how features are engineered.
+
+- **`features/`**: General documentation about specific features developed or integrated into the system, perhaps at a higher level than `feature_extraction/` or covering cross-cutting feature concerns.
+
+- **`gpu/`**: Contains documentation specifically related to GPU acceleration, including setup, CUDA kernel details, RAPIDS/PyTorch usage in the pipeline, performance benchmarks, and troubleshooting for GPU components.
+
+- **`migrations/`**: Documents the process and history of data schema migrations, significant code refactoring efforts that impact data or interfaces, and guides for upgrading between different versions of the pipeline or its components.
+
+- **`notes/`**: A collection of miscellaneous notes, historical decisions, logs of specific fixes, developer thoughts, or meeting summaries that provide context but may not fit into formal documentation categories.
+
+- **`operations/`**: Provides operational guides, how-to documents for running and maintaining the pipeline, monitoring procedures, troubleshooting common issues, and guides for specific operational tasks (e.g., running era detection, preprocessing).
+  - `operations/cleanup/`: Guides for cleaning up data, logs, or intermediate artifacts.
+  - `operations/fixes/`: Documentation for specific bug fixes and solutions implemented.
+  - `operations/implementations/`: Notes on specific operational implementations or tools.
+
+- **`pipelines/`**: Contains user guides and detailed explanations for specific end-to-end pipelines that can be run, such as the sparse pipeline or enhanced sparse pipeline. This includes prerequisites, setup, execution steps, and expected outputs.
+
+- **`testing/`**: Includes testing strategies, guides for running tests, descriptions of test suites, test case details, and summaries of test results.
+  - `testing/results/`: Stores outputs or summaries from test runs.
+
+- **`tutorials/`**: (Assuming based on common practice, verify actual content) Likely provides step-by-step tutorials for common tasks, onboarding new developers, or using specific parts of the system.
+
+Key standalone files in `docs/` often provide overarching summaries, indexes (like this `README.md`), or specific high-level plans (e.g., `ENHANCED_SPARSE_PIPELINE_README.md`, `PIPELINE_OVERVIEW.md`).

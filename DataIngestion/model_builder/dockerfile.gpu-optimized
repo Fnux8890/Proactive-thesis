@@ -8,9 +8,10 @@ ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 
+RUN pip install uv
+
 # Install Python packages including RAPIDS ML libraries
-RUN pip install --no-cache-dir uv \
-    && uv pip install --system --no-cache-dir \
+RUN uv pip install --system --no-cache-dir \
     torch==2.3.* pytorch-lightning==2.* \
     pandas==2.* pyarrow==15.* \
     scikit-learn==1.* matplotlib==3.* seaborn==0.13.* \
