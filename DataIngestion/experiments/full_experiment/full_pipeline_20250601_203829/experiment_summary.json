@@ -1,0 +1,22 @@
+{
+  "experiment_name": "full_pipeline_20250601_203829",
+  "timestamp": "2025-06-01T18:41:10Z",
+  "configuration": {
+    "dataset": "full_2013_2016",
+    "start_date": "2013-12-01",
+    "end_date": "2016-09-08",
+    "batch_size": 48,
+    "min_era_rows": 200
+  },
+  "pipeline_stages": [
+    "full_data_ingestion",
+    "enhanced_sparse_feature_extraction", 
+    "comprehensive_model_training",
+    "cpu_moea_optimization",
+    "gpu_moea_optimization",
+    "comprehensive_evaluation"
+  ],
+  "experiment_type": "cpu_gpu_comparison",
+  "evaluation_framework": "lightgbm_validation",
+  "results_location": "experiments/full_experiment/full_pipeline_20250601_203829"
+}

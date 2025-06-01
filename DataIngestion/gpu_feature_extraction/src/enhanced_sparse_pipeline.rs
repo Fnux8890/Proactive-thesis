@@ -73,9 +73,9 @@ pub struct WeatherData {
     pub relative_humidity_2m: Option<f32>,
     pub precipitation: Option<f32>,
     pub shortwave_radiation: Option<f32>,
-    pub wind_speed_10m: Option<f32>,
+    pub windspeed_10m: Option<f32>,
     pub pressure_msl: Option<f32>,
-    pub cloud_cover: Option<f32>,
+    pub cloudcover: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,9 +177,7 @@ impl EnhancedSparsePipeline {
     
     pub async fn load_phenotype_data(&mut self) -> Result<()> {
         // Load Kalanchoe phenotype data from JSON
-        let phenotype_path = self.config.checkpoint_dir.parent()
-            .unwrap_or(&self.config.checkpoint_dir)
-            .join("../pre_process/phenotype.json");
+        let phenotype_path = PathBuf::from("/tmp/pre_process/phenotype.json");
             
         if phenotype_path.exists() {
             let content = std::fs::read_to_string(&phenotype_path)?;
@@ -235,9 +233,9 @@ impl EnhancedSparsePipeline {
             relative_humidity_2m,
             precipitation,
             shortwave_radiation,
-            wind_speed_10m,
+            windspeed_10m,
             pressure_msl,
-            cloud_cover
+            cloudcover
         FROM external_weather_aarhus 
         WHERE time BETWEEN $1 AND $2
         ORDER BY time
@@ -257,9 +255,9 @@ impl EnhancedSparsePipeline {
                 relative_humidity_2m: row.get("relative_humidity_2m"),
                 precipitation: row.get("precipitation"),
                 shortwave_radiation: row.get("shortwave_radiation"),
-                wind_speed_10m: row.get("wind_speed_10m"),
+                windspeed_10m: row.get("windspeed_10m"),
                 pressure_msl: row.get("pressure_msl"),
-                cloud_cover: row.get("cloud_cover"),
+                cloudcover: row.get("cloudcover"),
             });
         }
         
@@ -315,38 +313,38 @@ impl EnhancedSparsePipeline {
         let sensor_query = r#"
         SELECT 
             DATE_TRUNC('hour', time) as hour,
-            AVG(air_temp_c) as air_temp_c_mean,
+            AVG(air_temp_c)::FLOAT8 as air_temp_c_mean,
             COUNT(air_temp_c) as air_temp_c_count,
             STDDEV(air_temp_c) as air_temp_c_std,
             MIN(air_temp_c) as air_temp_c_min,
             MAX(air_temp_c) as air_temp_c_max,
             
-            AVG(co2_measured_ppm) as co2_mean,
+            AVG(co2_measured_ppm)::FLOAT8 as co2_mean,
             COUNT(co2_measured_ppm) as co2_count,
             
-            AVG(relative_humidity_percent) as humidity_mean,
+            AVG(relative_humidity_percent)::FLOAT8 as humidity_mean,
             COUNT(relative_humidity_percent) as humidity_count,
             
-            AVG(radiation_w_m2) as radiation_mean,
+            AVG(radiation_w_m2)::FLOAT8 as radiation_mean,
             COUNT(radiation_w_m2) as radiation_count,
             
-            AVG(light_intensity_umol) as light_intensity_mean,
+            AVG(light_intensity_umol)::FLOAT8 as light_intensity_mean,
             COUNT(light_intensity_umol) as light_count,
             
-            AVG(vpd_hpa) as vpd_mean,
+            AVG(vpd_hpa)::FLOAT8 as vpd_mean,
             COUNT(vpd_hpa) as vpd_count,
             
             -- Lamp status aggregation
             AVG(CASE WHEN lamp_grp1_no3_status OR lamp_grp1_no4_status OR 
                           lamp_grp2_no3_status OR lamp_grp2_no4_status OR
                           lamp_grp3_no3_status OR lamp_grp4_no3_status
-                     THEN 1.0 ELSE 0.0 END) as lamp_status_ratio,
+                     THEN 1.0 ELSE 0.0 END)::FLOAT8 as lamp_status_ratio,
             
             -- Heating signals
-            AVG(heating_setpoint_c) as heating_setpoint_mean,
+            AVG(heating_setpoint_c)::FLOAT8 as heating_setpoint_mean,
             
             -- Ventilation
-            AVG(vent_lee_afd3_percent + vent_wind_afd3_percent) / 2.0 as ventilation_mean
+            (AVG(vent_lee_afd3_percent + vent_wind_afd3_percent) / 2.0)::FLOAT8 as ventilation_mean
             
         FROM sensor_data 
         WHERE time BETWEEN $1 AND $2
@@ -944,18 +942,47 @@ impl EnhancedSparsePipeline {
         let (sensor_data, weather_data, energy_data) = 
             self.stage1_enhanced_aggregation(start_time, end_time).await?;
         
+        info!("Post-Stage 1: Moving to Stage 2 with sensor_data shape: {:?}", sensor_data.shape());
+        info!("DEBUG: About to call stage2_conservative_fill");
+        
         // Stage 2: Conservative gap filling (from original pipeline)
-        let filled_data = self.stage2_conservative_fill(sensor_data).await?;
+        info!("Stage 2: Conservative gap filling...");
+        let filled_data = match self.stage2_conservative_fill(sensor_data).await {
+            Ok(data) => {
+                info!("Stage 2 complete: filled data has {} rows", data.height());
+                data
+            },
+            Err(e) => {
+                warn!("Stage 2 failed: {}", e);
+                return Err(e);
+            }
+        };
         
         // Stage 3: Enhanced GPU feature extraction
-        let enhanced_features = self.stage3_enhanced_gpu_features(
+        let enhanced_features = match self.stage3_enhanced_gpu_features(
             filled_data.clone(),
             weather_data,
             energy_data,
-        ).await?;
+        ).await {
+            Ok(features) => {
+                info!("Stage 3 complete: {} features extracted", features.len());
+                features
+            },
+            Err(e) => {
+                warn!("Stage 3 failed: {}", e);
+                return Err(e);
+            }
+        };
         
         // Stage 4: Create enhanced eras with optimization metrics
+        info!("Stage 4: Creating enhanced eras...");
         let enhanced_eras = self.stage4_create_enhanced_eras(&enhanced_features).await?;
+        info!("Stage 4 complete: {} enhanced eras created", enhanced_eras.len());
+        
+        // Stage 5: Save enhanced features to database
+        info!("Stage 5: Starting database save...");
+        self.stage5_save_enhanced_features(&enhanced_features, "enhanced_sparse_features_full").await?;
+        info!("Stage 5 complete: features saved to database");
         
         // Calculate data quality metrics
         let quality_metrics = self.calculate_data_quality_metrics(&filled_data)?;
@@ -990,11 +1017,14 @@ impl EnhancedSparsePipeline {
     // Helper methods (simplified implementations)
     
     async fn stage2_conservative_fill(&self, data: DataFrame) -> Result<DataFrame> {
+        info!("STAGE2_CONSERVATIVE_FILL: Method started with {} rows", data.height());
         // Placeholder - use original conservative fill logic
+        info!("STAGE2_CONSERVATIVE_FILL: Method ending successfully");
         Ok(data)
     }
     
     async fn stage4_create_enhanced_eras(&self, features: &[EnhancedFeatureSet]) -> Result<Vec<Era>> {
+        info!("STAGE4_CREATE_ENHANCED_ERAS: Method started with {} features", features.len());
         let mut eras = Vec::new();
         
         // Group by month and create eras with optimization metrics
@@ -1045,7 +1075,85 @@ impl EnhancedSparsePipeline {
         Ok(eras)
     }
     
-    fn resample_to_resolution(&self, data: DataFrame, resolution: Duration) -> Result<DataFrame> {
+    /// Stage 5: Save enhanced features to database table
+    async fn stage5_save_enhanced_features(
+        &self,
+        features: &[EnhancedFeatureSet],
+        table_name: &str,
+    ) -> Result<()> {
+        info!("STAGE5_SAVE_ENHANCED_FEATURES: Method started with {} features for table {}", features.len(), table_name);
+        
+        // Create the enhanced features table if it doesn't exist
+        let create_table_query = format!(
+            r#"
+            CREATE TABLE IF NOT EXISTS {} (
+                id BIGSERIAL PRIMARY KEY,
+                era_id BIGINT NOT NULL,
+                resolution TEXT NOT NULL,
+                computed_at TIMESTAMPTZ NOT NULL,
+                sensor_features JSONB,
+                extended_stats JSONB,
+                weather_features JSONB,
+                energy_features JSONB,
+                growth_features JSONB,
+                temporal_features JSONB,
+                optimization_metrics JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )"#,
+            table_name
+        );
+        
+        sqlx::query(&create_table_query).execute(&self.pool).await?;
+        
+        // Create indexes for efficient querying
+        let index_queries = vec![
+            format!("CREATE INDEX IF NOT EXISTS idx_{}_era_id ON {} (era_id)", table_name, table_name),
+            format!("CREATE INDEX IF NOT EXISTS idx_{}_resolution ON {} (resolution)", table_name, table_name),
+            format!("CREATE INDEX IF NOT EXISTS idx_{}_computed_at ON {} (computed_at DESC)", table_name, table_name),
+        ];
+        
+        for index_query in index_queries {
+            sqlx::query(&index_query).execute(&self.pool).await?;
+        }
+        
+        // Insert features in batches
+        let mut tx = self.pool.begin().await?;
+        
+        for feature_set in features {
+            let insert_query = format!(
+                r#"
+                INSERT INTO {} (
+                    era_id, resolution, computed_at,
+                    sensor_features, extended_stats, weather_features,
+                    energy_features, growth_features, temporal_features,
+                    optimization_metrics
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                "#,
+                table_name
+            );
+            
+            sqlx::query(&insert_query)
+                .bind(feature_set.era_id)
+                .bind(&feature_set.resolution)
+                .bind(feature_set.computed_at)
+                .bind(serde_json::to_value(&feature_set.sensor_features)?)
+                .bind(serde_json::to_value(&feature_set.extended_stats)?)
+                .bind(serde_json::to_value(&feature_set.weather_features)?)
+                .bind(serde_json::to_value(&feature_set.energy_features)?)
+                .bind(serde_json::to_value(&feature_set.growth_features)?)
+                .bind(serde_json::to_value(&feature_set.temporal_features)?)
+                .bind(serde_json::to_value(&feature_set.optimization_metrics)?)
+                .execute(&mut *tx)
+                .await?;
+        }
+        
+        tx.commit().await?;
+        
+        info!("Successfully saved {} enhanced features to {}", features.len(), table_name);
+        Ok(())
+    }
+    
+    fn resample_to_resolution(&self, data: DataFrame, _resolution: Duration) -> Result<DataFrame> {
         // Placeholder - implement resampling logic
         Ok(data)
     }

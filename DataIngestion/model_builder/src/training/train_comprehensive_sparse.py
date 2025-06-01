@@ -40,46 +40,72 @@ class ComprehensiveFeatureLoader:
         self.engine = create_engine(database_url)
     
     def load_all_features(self):
-        """Load all features and pivot into a feature matrix."""
+        """Load all features from JSONB-based enhanced sparse features table."""
         logger.info(f"Loading comprehensive features from {self.features_table}")
         
-        # Get all unique feature names first
-        feature_names_query = f"""
-        SELECT DISTINCT feature_name 
-        FROM {self.features_table} 
-        ORDER BY feature_name
-        """
-        
-        feature_names_df = pd.read_sql_query(feature_names_query, self.engine)
-        feature_names = feature_names_df['feature_name'].tolist()
-        logger.info(f"Found {len(feature_names)} unique feature types")
-        
-        # Load data efficiently by sampling if too large
-        count_query = f"SELECT COUNT(DISTINCT timestamp) FROM {self.features_table}"
-        total_timestamps = pd.read_sql_query(count_query, self.engine).iloc[0, 0]
-        logger.info(f"Found {total_timestamps} unique timestamps")
-        
-        # Load the data
+        # Load the JSONB data from enhanced sparse features table
         main_query = f"""
-        SELECT timestamp, feature_name, feature_value, era_id, resolution
+        SELECT 
+            era_id,
+            resolution,
+            computed_at,
+            sensor_features,
+            extended_stats,
+            weather_features,
+            energy_features,
+            growth_features,
+            temporal_features,
+            optimization_metrics
         FROM {self.features_table}
-        ORDER BY timestamp, feature_name
+        ORDER BY computed_at, era_id
         """
         
         df = pd.read_sql_query(main_query, self.engine)
         logger.info(f"Loaded {len(df)} feature records")
         
-        # Pivot features into columns
-        logger.info("Pivoting features into matrix format...")
-        feature_matrix = df.pivot_table(
-            index=['timestamp', 'era_id'], 
-            columns='feature_name', 
-            values='feature_value', 
-            aggfunc='first'
-        ).reset_index()
+        # Extract features from JSONB columns
+        logger.info("Extracting features from JSONB columns...")
+        feature_matrix_rows = []
+        
+        for idx, row in df.iterrows():
+            feature_row = {
+                'era_id': row['era_id'],
+                'computed_at': row['computed_at'],
+                'resolution': row['resolution']
+            }
+            
+            # Extract features from each JSONB column
+            for col in ['sensor_features', 'extended_stats', 'weather_features', 
+                       'energy_features', 'growth_features', 'temporal_features', 
+                       'optimization_metrics']:
+                if row[col] is not None:
+                    if isinstance(row[col], str):
+                        import json
+                        features = json.loads(row[col])
+                    else:
+                        features = row[col]
+                    
+                    # Add prefix to avoid column name conflicts
+                    for feature_name, feature_value in features.items():
+                        prefixed_name = f"{col}_{feature_name}"
+                        feature_row[prefixed_name] = feature_value
+            
+            feature_matrix_rows.append(feature_row)
+        
+        feature_matrix = pd.DataFrame(feature_matrix_rows)
+        
+        # Get all feature column names (excluding metadata columns)
+        feature_names = [col for col in feature_matrix.columns 
+                        if col not in ['era_id', 'computed_at', 'resolution']]
+        
+        # Convert feature columns to numeric, coercing errors to NaN
+        logger.info("Converting feature columns to numeric types...")
+        for col in feature_names:
+            feature_matrix[col] = pd.to_numeric(feature_matrix[col], errors='coerce')
         
         logger.info(f"Created feature matrix: {feature_matrix.shape}")
-        logger.info(f"Feature columns: {list(feature_matrix.columns[2:])[:10]}...")  # Show first 10
+        logger.info(f"Feature columns: {feature_names[:10]}...")  # Show first 10
+        logger.info(f"Total feature types: {len(feature_names)}")
         
         return feature_matrix, feature_names
     
@@ -87,7 +113,7 @@ class ComprehensiveFeatureLoader:
         """Analyze the quality and completeness of features."""
         logger.info("Analyzing feature quality...")
         
-        feature_cols = [col for col in feature_matrix.columns if col not in ['timestamp', 'era_id']]
+        feature_cols = [col for col in feature_matrix.columns if col not in ['era_id', 'computed_at', 'resolution']]
         
         quality_stats = {}
         for col in feature_cols:
@@ -201,8 +227,8 @@ class EnhancedModelTrainer:
         """Prepare feature matrix for training."""
         logger.info("Preparing features for training...")
         
-        # Remove timestamp and era_id columns
-        feature_cols = [col for col in feature_matrix.columns if col not in ['timestamp', 'era_id']]
+        # Remove metadata columns
+        feature_cols = [col for col in feature_matrix.columns if col not in ['era_id', 'computed_at', 'resolution']]
         X = feature_matrix[feature_cols].copy()
         
         # Remove features with too much missing data

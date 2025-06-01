@@ -1,0 +1,40 @@
+[
+  {
+    "n_runs": 1,
+    "metrics": {
+      "hypervolume": {
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "values": [
+          0.0
+        ]
+      },
+      "spacing": {
+        "mean": 36781.91815362798,
+        "std": 0.0,
+        "min": 36781.91815362798,
+        "max": 36781.91815362798,
+        "values": [
+          36781.91815362798
+        ]
+      },
+      "n_solutions": {
+        "mean": 12.0,
+        "std": 0.0,
+        "min": 12,
+        "max": 12,
+        "values": [
+          12
+        ]
+      }
+    },
+    "runtime": {
+      "mean": 2.1331743851769716,
+      "std": 0.0,
+      "total": 2.1331743851769716
+    },
+    "problem_name": "GreenhouseOptimization"
+  }
+]

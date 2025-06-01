@@ -113,7 +113,15 @@
       "Bash(/usr/local/bin/cargo build --release --bin gpu_feature_extraction)",
       "Bash(docker:*)",
       "Bash(./run_full_pipeline_experiment.sh:*)",
-      "Bash(./test_pipeline_stages.sh:*)"
+      "Bash(./test_pipeline_stages.sh:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:15432/postgres\" python test_evaluator_fix.py)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:15432/postgres\" python3 test_evaluator_fix.py)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/postgres\" python3 extract_results.py)",
+      "Bash(./run_multiple_experiments.sh:*)",
+      "Bash(pip3 install:*)",
+      "Bash(for i in {1..5})",
+      "Bash(do echo \"=== CPU Run $i ===\")",
+      "Bash(do echo \"=== GPU Run $i ===\")"
     ],
     "deny": []
   },

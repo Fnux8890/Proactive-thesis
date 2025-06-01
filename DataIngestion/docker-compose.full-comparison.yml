@@ -86,6 +86,7 @@ services:
     volumes:
       - ./gpu_feature_extraction/checkpoints:/app/checkpoints:rw
       - ./gpu_feature_extraction/logs:/app/logs:rw
+      - ./feature_extraction/pre_process/phenotype.json:/tmp/pre_process/phenotype.json:ro
     depends_on:
       db:
         condition: service_healthy
@@ -131,6 +132,7 @@ services:
       - ./model_builder/models:/models
       - ./model_builder/model_builder_mlflow_staging:/mlflow
       - ./experiments/full_experiment/models:/app/output:rw
+    entrypoint: []
     command: ["python", "/app/src/training/train_comprehensive_sparse.py"]
     depends_on:
       enhanced_sparse_pipeline:

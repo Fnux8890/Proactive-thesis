@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-06-01T18:41:02.458465",
+  "features_table": "enhanced_sparse_features_full",
+  "model_performance": {
+    "energy_consumption": {
+      "rmse": 0.29225899940766376,
+      "r2": -2.58384031812664e-05
+    },
+    "plant_growth": {
+      "rmse": 0.10004891971583449,
+      "r2": -7.058742765275738e-05
+    },
+    "num_features": 78,
+    "training_samples": 166270
+  },
+  "top_features": {
+    "energy_consumption": [
+      "sensor_features_co2_mean_max",
+      "sensor_features_co2_mean_min",
+      "sensor_features_co2_mean_std",
+      "sensor_features_co2_mean_mean",
+      "sensor_features_temp_mean_max",
+      "sensor_features_temp_mean_min",
+      "sensor_features_temp_mean_std",
+      "sensor_features_co2_mean_count",
+      "sensor_features_lamp_ratio_max",
+      "sensor_features_lamp_ratio_min"
+    ],
+    "plant_growth": [
+      "sensor_features_co2_mean_max",
+      "sensor_features_co2_mean_min",
+      "sensor_features_co2_mean_std",
+      "sensor_features_co2_mean_mean",
+      "sensor_features_temp_mean_max",
+      "sensor_features_temp_mean_min",
+      "sensor_features_temp_mean_std",
+      "sensor_features_co2_mean_count",
+      "sensor_features_lamp_ratio_max",
+      "sensor_features_lamp_ratio_min"
+    ]
+  },
+  "feature_count": 78,
+  "sample_count": 166270
+}
