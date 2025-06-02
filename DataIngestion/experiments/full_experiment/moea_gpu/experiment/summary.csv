@@ -1,2 +1,2 @@
 problem,n_runs,runtime_mean,runtime_std,hypervolume_mean,hypervolume_std,spacing_mean,spacing_std,n_solutions_mean,n_solutions_std
-GreenhouseOptimization,1,0.23545599286444485,0.0,3.5891158438419017,0.0,0.16582899256721817,0.0,26.0,0.0
+GreenhouseOptimization,1,0.23523434717208147,0.0,3.0485673289539714,0.0,0.21992818010991985,0.0,26.0,0.0

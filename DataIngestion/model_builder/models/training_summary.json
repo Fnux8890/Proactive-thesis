@@ -1,17 +1,17 @@
 {
-  "timestamp": "2025-06-01T19:44:09.550528",
+  "timestamp": "2025-06-02T14:40:28.173221",
   "features_table": "enhanced_sparse_features_full",
   "model_performance": {
     "energy_consumption": {
-      "rmse": 0.29192345223609845,
-      "r2": -2.707072728713733e-05
+      "rmse": 0.29163981134563766,
+      "r2": -7.6088009186570105e-06
     },
     "plant_growth": {
-      "rmse": 0.09994535849051223,
-      "r2": -3.550527347084831e-05
+      "rmse": 0.09972172191783213,
+      "r2": -1.668502824525575e-05
     },
     "num_features": 78,
-    "training_samples": 300565
+    "training_samples": 351725
   },
   "top_features": {
     "energy_consumption": [
@@ -40,5 +40,5 @@
     ]
   },
   "feature_count": 78,
-  "sample_count": 300565
+  "sample_count": 351725
 }

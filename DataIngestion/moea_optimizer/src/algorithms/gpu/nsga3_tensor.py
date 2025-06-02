@@ -15,38 +15,46 @@ import torch
 logger = logging.getLogger(__name__)
 
 try:
-    from evox.algorithms.mo import TensorNSGA3
-    logger.info("Successfully imported TensorNSGA3 from evox.algorithms.mo")
+    # Try different import paths for evox NSGA3
+    from evox.algorithms.mo import NSGA3 as TensorNSGA3
+    logger.info("Successfully imported NSGA3 from evox.algorithms.mo")
 except ImportError:
     try:
         from evox.algorithms import NSGA3 as TensorNSGA3
         logger.info("Successfully imported NSGA3 from evox.algorithms")
     except ImportError:
-        # Fallback - create a dummy class for now
-        logger.warning("Could not import TensorNSGA3 from evox, using fallback implementation")
-        class TensorNSGA3:
-            def __init__(self, pop_size=100, n_objs=3, n_vars=6, ref_num=12, device='cuda', dtype=torch.float32, **kwargs):
-                self.pop_size = pop_size
-                self.n_objs = n_objs
-                self.n_vars = n_vars
-                self.ref_num = ref_num
-                self.device = device if isinstance(device, torch.device) else torch.device(device)
-                self.dtype = dtype
-                self.pc = 0.9  # crossover probability
-                self.eta_c = 15  # crossover eta
-                self.pm = 0.1  # mutation probability
-                self.eta_m = 20  # mutation eta
-                
-            def init(self):
-                # Initialize random population
-                pop = torch.rand(self.pop_size, self.n_vars, device=self.device, dtype=self.dtype)
-                return type('State', (), {'population': pop})()
-                
-            def step(self, state, fitness):
-                # Simple random step for testing
-                state.population += torch.randn_like(state.population) * 0.01
-                state.population = torch.clamp(state.population, 0, 1)
-                return state
+        try:
+            # Try the main evox import
+            import evox
+            TensorNSGA3 = evox.algorithms.NSGA3
+            logger.info("Successfully imported NSGA3 from evox main module")
+        except (ImportError, AttributeError):
+            # Fallback - create a dummy class for now
+            logger.warning("Could not import NSGA3 from evox, using fallback implementation")
+            
+            class TensorNSGA3:
+                def __init__(self, pop_size=100, n_objs=3, n_vars=6, ref_num=12, device='cuda', dtype=torch.float32, **kwargs):
+                    self.pop_size = pop_size
+                    self.n_objs = n_objs
+                    self.n_vars = n_vars
+                    self.ref_num = ref_num
+                    self.device = device if isinstance(device, torch.device) else torch.device(device)
+                    self.dtype = dtype
+                    self.pc = 0.9  # crossover probability
+                    self.eta_c = 15  # crossover eta
+                    self.pm = 0.1  # mutation probability
+                    self.eta_m = 20  # mutation eta
+                    
+                def init(self):
+                    # Initialize random population
+                    pop = torch.rand(self.pop_size, self.n_vars, device=self.device, dtype=self.dtype)
+                    return type('State', (), {'population': pop})()
+                    
+                def step(self, state, fitness):
+                    # Simple random step for testing
+                    state.population += torch.randn_like(state.population) * 0.01
+                    state.population = torch.clamp(state.population, 0, 1)
+                    return state
 
 from ...core.config_loader import MOEAConfig
 from ...utils.timer import MultiTimer
@@ -93,7 +101,7 @@ class TensorNSGA3Wrapper:
         Returns:
             Configured TensorNSGA3 algorithm
         """
-        # Algorithm configuration - evox NSGA3 might have different API
+        # Algorithm configuration - evox NSGA3 requires specific parameters
         try:
             # Check if we're using the fallback implementation
             if hasattr(TensorNSGA3, '__module__') and TensorNSGA3.__module__ == '__main__':
@@ -107,11 +115,41 @@ class TensorNSGA3Wrapper:
                     'dtype': torch.float16 if getattr(self.config.algorithm, 'mixed_precision', False) else torch.float32,
                 }
             else:
-                # This is evox's NSGA3 - try minimal parameters
+                # This is evox's NSGA3 - provide required parameters
                 logger.info(f"Using evox NSGA3 from module: {TensorNSGA3.__module__}")
+                
+                # EvoX v1.2.1 device handling: Set default device BEFORE creating tensors
+                # This is the recommended approach from evox documentation
+                target_device = self.device.type if self.device.type == "cuda" else "cpu"
+                torch.set_default_device(target_device)
+                logger.info(f"Set PyTorch default device to {target_device} for evox compatibility")
+                
+                # Extract bounds from problem or use defaults based on our greenhouse optimization
+                # With default device set, tensors will automatically be on the correct device
+                if hasattr(problem, 'xl') and hasattr(problem, 'xu'):
+                    # Convert to lists first, then to tensors (ensures consistent device placement)
+                    xl_list = problem.xl.cpu().numpy().tolist() if hasattr(problem.xl, 'cpu') else problem.xl
+                    xu_list = problem.xu.cpu().numpy().tolist() if hasattr(problem.xu, 'cpu') else problem.xu
+                    lb = torch.tensor(xl_list, dtype=torch.float32)
+                    ub = torch.tensor(xu_list, dtype=torch.float32)
+                else:
+                    # Default greenhouse optimization bounds - will be created on default device
+                    # [temperature_setpoint, humidity_setpoint, co2_setpoint, light_intensity, light_hours, ventilation_rate]
+                    lb = torch.tensor([18.0, 60.0, 400.0, 0.0, 0.0, 0.0], dtype=torch.float32)
+                    ub = torch.tensor([28.0, 85.0, 1000.0, 600.0, 18.0, 100.0], dtype=torch.float32)
+                
+                logger.info(f"Created evox bounds on device: lb={lb.device}, ub={ub.device}")
+                
                 algo_config = {
+                    'lb': lb,
+                    'ub': ub,
+                    'n_objs': problem.n_objs,
                     'pop_size': self.config.algorithm.population_size,
                 }
+                
+                logger.info(f"Creating evox NSGA3 with config: n_objs={problem.n_objs}, pop_size={self.config.algorithm.population_size}, n_vars={problem.n_vars}")
+                logger.info(f"Bounds: lb={lb}, ub={ub}")
+                
             algorithm = TensorNSGA3(**algo_config)
         except Exception as e:
             logger.error(f"Failed to create algorithm: {e}")
@@ -380,8 +418,23 @@ class TensorProblemWrapper:
         # Also set as attributes without 's' for compatibility
         self.n_var = self.n_vars
         self.n_obj = self.n_objs
-        self.xl = torch.tensor(pymoo_problem.xl, device=self.device, dtype=torch.float32)
-        self.xu = torch.tensor(pymoo_problem.xu, device=self.device, dtype=torch.float32)
+        
+        # Convert bounds to tensors - handle both scalar and array bounds
+        if hasattr(pymoo_problem, 'xl') and hasattr(pymoo_problem, 'xu'):
+            # Ensure bounds are arrays
+            xl = pymoo_problem.xl if isinstance(pymoo_problem.xl, (list, tuple, np.ndarray)) else [pymoo_problem.xl] * self.n_vars
+            xu = pymoo_problem.xu if isinstance(pymoo_problem.xu, (list, tuple, np.ndarray)) else [pymoo_problem.xu] * self.n_vars
+            
+            self.xl = torch.tensor(xl, device=self.device, dtype=torch.float32)
+            self.xu = torch.tensor(xu, device=self.device, dtype=torch.float32)
+        else:
+            # Default greenhouse optimization bounds if not provided
+            # [temperature_setpoint, humidity_setpoint, co2_setpoint, light_intensity, light_hours, ventilation_rate]
+            self.xl = torch.tensor([18.0, 60.0, 400.0, 0.0, 0.0, 0.0], device=self.device, dtype=torch.float32)
+            self.xu = torch.tensor([28.0, 85.0, 1000.0, 600.0, 18.0, 100.0], device=self.device, dtype=torch.float32)
+            
+        logger.info(f"TensorProblemWrapper: n_vars={self.n_vars}, n_objs={self.n_objs}")
+        logger.info(f"Bounds: xl={self.xl}, xu={self.xu}")
     
     def evaluate(self, x: torch.Tensor) -> torch.Tensor:
         """Evaluate the problem.

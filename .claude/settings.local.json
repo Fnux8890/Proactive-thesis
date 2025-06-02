@@ -121,7 +121,10 @@
       "Bash(pip3 install:*)",
       "Bash(for i in {1..5})",
       "Bash(do echo \"=== CPU Run $i ===\")",
-      "Bash(do echo \"=== GPU Run $i ===\")"
+      "Bash(do echo \"=== GPU Run $i ===\")",
+      "WebFetch(domain:evox.readthedocs.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)"
     ],
     "deny": []
   },

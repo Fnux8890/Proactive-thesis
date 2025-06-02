@@ -5,6 +5,7 @@ scipy>=1.11.0,<2.0.0
 
 # Optimization
 pymoo>=0.6.0,<0.7.0  # Multi-objective optimization framework
+evox>=1.2.0  # GPU-accelerated evolutionary computation with PyTorch 2.x support
 
 # Machine learning
 lightgbm>=4.0.0
